@@ -58,14 +58,16 @@ Voir [`.pre-commit-config.yaml`](../.pre-commit-config.yaml).
 
 ```
 Photobooth_Ben/
-├── Photobooth_start.py   # entrée : boucle principale + state + renders + event handlers (1172 L)
+├── Photobooth_start.py   # entrée : bootstrap + renders + event handlers + boucle principale (~1070 L)
 ├── config.py             # 96 constantes partagées — voir CONFIG.md
 ├── core/                 # modules métier (testables sans pygame)
 │   ├── arduino.py        # pyserial + thread → injecte KEYDOWN, pilote LEDs
 │   ├── camera.py         # gphoto2 + lock + retry
 │   ├── logger.py         # logging rotatif + sessions.jsonl
+│   ├── monitoring.py     # DiskMonitor + lister_images_slideshow
 │   ├── montage.py        # PIL : MontageGenerator10x15/Strip
-│   └── printer.py        # CUPS
+│   ├── printer.py        # CUPS
+│   └── session.py        # Etat enum + SessionState + metadata JSONL
 ├── ui/                   # helpers pygame (surfaces, fontes, caches)
 │   └── helpers.py
 ├── status.py             # diagnostic standalone (matériel, assets)

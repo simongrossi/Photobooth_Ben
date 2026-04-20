@@ -30,11 +30,8 @@ import pygame
 import os
 import sys
 import time
-import json
 import shutil
 import math
-from dataclasses import dataclass, field
-from enum import Enum
 from typing import Optional
 
 from PIL import Image, ImageOps
@@ -42,53 +39,13 @@ from datetime import datetime
 
 
 # ========================================================================================================
-# --- MACHINE D'ÉTAT (Sprint 4.5) ---
-# Les états de la boucle principale étaient des strings ("ACCUEIL", "DECOMPTE", ...),
-# vulnérables aux typos et sans support IDE. On passe à un Enum pour gagner la sécurité
-# de typage sans toucher à la structure de la boucle elle-même.
+# --- MACHINE D'ÉTAT + SESSION STATE (extraits dans core/session.py) ---
 # ========================================================================================================
-
-class Etat(Enum):
-    ACCUEIL = "ACCUEIL"
-    DECOMPTE = "DECOMPTE"
-    VALIDATION = "VALIDATION"
-    FIN = "FIN"
-
-
-# ========================================================================================================
-# --- ÉTAT DE SESSION (Sprint item 10) ---
-# Toutes les variables mutables de session sont encapsulées dans un dataclass.
-# Évite la dizaine de `global x` dispersés et rend le state machine explicitable.
-# Les subsystèmes indépendants (slideshow, monitoring disque) gardent leurs propres
-# globals pour rester modulaires.
-# ========================================================================================================
-
-@dataclass
-class SessionState:
-    """État mutable d'une session photobooth + état transverse (idle, confirm abandon)."""
-
-    etat: Etat = Etat.ACCUEIL
-    mode_actuel: str | None = None
-    photos_validees: list = field(default_factory=list)
-    id_session_timestamp: str = ""
-    session_start_ts: float = 0.0
-    path_montage: str = ""
-    img_preview_cache: object = None   # pygame.Surface | None
-    dernier_clic_time: float = 0.0
-    abandon_confirm_until: float = 0.0  # timestamp limite de la fenêtre de confirmation
-    last_activity_ts: float = 0.0       # pour déclenchement slideshow idle
-
-    def reset_pour_accueil(self):
-        """Reset complet après fin de session (printed/abandoned/capture_failed).
-        Préserve les compteurs temporels (last_activity_ts, etc.)."""
-        self.etat = Etat.ACCUEIL
-        self.mode_actuel = None
-        self.photos_validees = []
-        self.id_session_timestamp = ""
-        self.img_preview_cache = None
-        self.path_montage = ""
-
-
+from core.session import (  # noqa: E402
+    Etat,
+    SessionState,
+    terminer_session_et_revenir_accueil as _terminer_session_et_revenir_accueil,
+)
 
 
 # ========================================================================================================
@@ -118,7 +75,7 @@ def _purger_temp_et_verifier_disque() -> None:
     et log l'espace disque disponible. Avertit si < 1 Go.
 
     Appelé une seule fois au démarrage. Pour le monitoring continu pendant
-    l'événement, voir `verifier_disque_periodiquement()`."""
+    l'événement, voir `DiskMonitor` dans core/monitoring.py."""
     # Purge des fichiers temporaires résiduels
     nb_supprimes = 0
     try:
@@ -345,68 +302,17 @@ arduino_ctrl = ArduinoController(
 arduino_ctrl.start()
 
 
-_dernier_check_disque_ts = 0.0
-_disque_critique = False
-_disque_libre_mb = None
+# --- Monitoring disque + slideshow listing (extraits dans core/monitoring.py) ---
+from core.monitoring import DiskMonitor, lister_images_slideshow  # noqa: E402
 
-
-def verifier_disque_periodiquement() -> None:
-    """Check périodique (INTERVALLE_CHECK_DISQUE_S) de l'espace disque libre.
-
-    Met à jour les flags module-level `_disque_critique` et `_disque_libre_mb`
-    lus par le rendu ACCUEIL pour afficher un bandeau rouge si on descend sous
-    SEUIL_DISQUE_CRITIQUE_MB. Non-bloquant, silencieux sauf sur la transition
-    OK→critique où on log un warning."""
-    global _dernier_check_disque_ts, _disque_critique, _disque_libre_mb
-    maintenant = time.time()
-    if maintenant - _dernier_check_disque_ts < INTERVALLE_CHECK_DISQUE_S:
-        return
-    _dernier_check_disque_ts = maintenant
-    try:
-        _disque_libre_mb = shutil.disk_usage(PATH_DATA).free / (1024 ** 2)
-        etait_critique = _disque_critique
-        _disque_critique = _disque_libre_mb < SEUIL_DISQUE_CRITIQUE_MB
-        # On n'alerte que sur la transition pour éviter le spam de log
-        if _disque_critique and not etait_critique:
-            log_warning(
-                f"Espace disque critique : {_disque_libre_mb:.0f} Mo libres "
-                f"(seuil : {SEUIL_DISQUE_CRITIQUE_MB} Mo)"
-            )
-    except Exception as e:
-        log_warning(f"Check disque périodique échoué : {e}")
+disk_monitor = DiskMonitor(
+    path=PATH_DATA, seuil_mb=SEUIL_DISQUE_CRITIQUE_MB, intervalle_s=INTERVALLE_CHECK_DISQUE_S,
+)
 
 
 def terminer_session_et_revenir_accueil(issue: str) -> None:
-    """Centralise la fin de session : écrit la metadata + reset du SessionState.
-
-    Args:
-        issue: "printed" | "abandoned" | "capture_failed" (consommé par stats.py).
-
-    Le caller reste responsable de `session.dernier_clic_time = maintenant`."""
-    ecrire_metadata_session(issue, len(session.photos_validees), time.time() - session.session_start_ts)
-    session.reset_pour_accueil()
-
-
-def ecrire_metadata_session(issue: str, nb_photos: int, duree_s: float) -> None:
-    """Ajoute une ligne JSON dans data/sessions.jsonl.
-
-    Format append-only : une ligne par session terminée. Facile à scanner
-    post-événement via `stats.py`. Non-bloquant — toute erreur est loggée
-    en warning."""
-    try:
-        entry = {
-            "session_id": session.id_session_timestamp or None,
-            "mode": session.mode_actuel,
-            "issue": issue,          # "printed" | "retake" | "abandoned" | "capture_failed"
-            "nb_photos": nb_photos,
-            "duree_s": round(duree_s, 1),
-            "ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        }
-        chemin = os.path.join(PATH_DATA, "sessions.jsonl")
-        with open(chemin, "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-    except Exception as e:
-        log_warning(f"Écriture metadata session échouée : {e}")
+    """Wrapper module-local : délègue à core.session en passant le `session` global."""
+    _terminer_session_et_revenir_accueil(session, issue)
 
 
 # --- CACHE DES SURFACES STATIQUES (Sprint 3.4) ---
@@ -415,26 +321,6 @@ def ecrire_metadata_session(issue: str, nb_photos: int, duree_s: float) -> None:
 BANDEAU_CACHE = pygame.Surface((WIDTH, BANDEAU_HAUTEUR))
 BANDEAU_CACHE.set_alpha(BANDEAU_ALPHA)
 BANDEAU_CACHE.fill(BANDEAU_COULEUR)
-
-
-def lister_images_slideshow() -> list[str]:
-    """Scan les dossiers d'impression (PATH_PRINT_10X15 + PATH_PRINT_STRIP) pour
-    alimenter le slideshow d'attente. Retourne les NB_MAX_IMAGES_SLIDESHOW fichiers
-    les plus récents, tri mtime décroissant."""
-    fichiers = []
-    for dossier in (PATH_PRINT_10X15, PATH_PRINT_STRIP):
-        try:
-            for nom in os.listdir(dossier):
-                chemin = os.path.join(dossier, nom)
-                if os.path.isfile(chemin) and nom.lower().endswith((".jpg", ".jpeg", ".png")):
-                    try:
-                        fichiers.append((os.path.getmtime(chemin), chemin))
-                    except OSError:
-                        continue
-        except FileNotFoundError:
-            continue
-    fichiers.sort(key=lambda x: x[0], reverse=True)  # plus récents d'abord
-    return [f[1] for f in fichiers[:NB_MAX_IMAGES_SLIDESHOW]]
 
 
 # --- ÉTAT DE SESSION (Sprint item 10) ---
@@ -495,7 +381,9 @@ def _render_accueil_slideshow(session: SessionState, idle_seconds: float) -> Non
 
     # Rafraîchit la liste tous les 30 s pour inclure les nouvelles impressions
     if time.time() - slideshow_last_refresh > 30.0 or not slideshow_images:
-        slideshow_images = lister_images_slideshow()
+        slideshow_images = lister_images_slideshow(
+            [PATH_PRINT_10X15, PATH_PRINT_STRIP], NB_MAX_IMAGES_SLIDESHOW,
+        )
         slideshow_last_refresh = time.time()
         slideshow_cached_for_idx = -1
 
@@ -539,7 +427,7 @@ def _render_accueil_normal(session: SessionState) -> None:
 
     L'icône sélectionnée (session.mode_actuel) est zoomée et pulse. Le bandeau
     indique le bouton à presser pour démarrer. Si l'espace disque est critique
-    (_disque_critique), on superpose un bandeau rouge d'alerte en haut."""
+    (disk_monitor.critique), on superpose un bandeau rouge d'alerte en haut."""
     inserer_background(screen, fond_accueil)
     marge_centrale = MARGE_ACCUEIL
     axe_y_centre = (HEIGHT // 2) - 60
@@ -606,13 +494,13 @@ def _render_accueil_normal(session: SessionState) -> None:
     screen.blit(msg_rendu, (pos_x, pos_y))
 
     # Indicateur disque critique (Sprint 5.6)
-    if _disque_critique and _disque_libre_mb is not None:
+    if disk_monitor.critique and disk_monitor.libre_mb is not None:
         alerte_h = 40
         alerte = pygame.Surface((WIDTH, alerte_h), pygame.SRCALPHA)
         alerte.fill((180, 20, 20, 220))
         screen.blit(alerte, (0, 0))
         txt_alerte = font_bandeau.render(
-            f"⚠ ESPACE DISQUE CRITIQUE — {_disque_libre_mb:.0f} Mo libres",
+            f"⚠ ESPACE DISQUE CRITIQUE — {disk_monitor.libre_mb:.0f} Mo libres",
             True, (255, 255, 255),
         )
         screen.blit(
@@ -627,7 +515,7 @@ def render_accueil(session: SessionState) -> None:
 
     Dispatcher entre `_render_accueil_slideshow` et `_render_accueil_normal`.
     Déclenche aussi le check disque périodique (rate-limité)."""
-    verifier_disque_periodiquement()
+    disk_monitor.tick()
 
     idle_seconds = time.time() - session.last_activity_ts
     if idle_seconds > DUREE_IDLE_SLIDESHOW and session.mode_actuel is None:

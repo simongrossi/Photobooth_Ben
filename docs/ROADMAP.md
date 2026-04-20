@@ -4,7 +4,7 @@
 > effets exotiques, hardware, brainstorm), voir [IDEAS.md](IDEAS.md).
 > Pour l'historique de ce qui a été fait, voir [CHANGELOG.md](CHANGELOG.md).
 
-Dernière mise à jour : 2026-04-20 (post-merge Arduino + CI)
+Dernière mise à jour : 2026-04-21 (post-split session/monitoring)
 
 ---
 
@@ -14,7 +14,7 @@ Dernière mise à jour : 2026-04-20 (post-merge Arduino + CI)
 
 **UX événementiel** : splash caméra, flash + shutter sound, beep décompte, écran "Préparation...", confirmation abandon, slideshow d'attente, compteur photo strip, mode burst.
 
-**Architecture modulaire** : SessionState dataclass, UIContext singleton, split en `core/` + `ui/`, render functions extraites (DECOMPTE/VALIDATION/FIN/ACCUEIL), event handlers par état, MontageGenerator/CameraManager/PrinterManager encapsulés.
+**Architecture modulaire** : split en `core/` + `ui/` — `core/session` (Etat+SessionState+metadata), `core/monitoring` (DiskMonitor+slideshow), UIContext singleton, render functions extraites (DECOMPTE/VALIDATION/FIN/ACCUEIL), event handlers par état, MontageGenerator/CameraManager/PrinterManager encapsulés. `Photobooth_start.py` : 1183 → 1071 L.
 
 **Hardware** : contrôleur Arduino Nano (`core/arduino.py`) — 3 boutons-poussoirs à LED intégrée via pyserial, pilotage LED selon `Etat`, fallback clavier si pyserial absent. Firmware `arduino/photobooth_buttons/`.
 
@@ -40,7 +40,7 @@ Dernière mise à jour : 2026-04-20 (post-merge Arduino + CI)
 
 ### Tests & qualité
 
-- [ ] **Coverage `core/camera.py`** — à 0 % car cv2/gphoto2 absents en CI. Mocks complexes ou tests Pi-only (voir [TESTING.md](TESTING.md)). Global actuellement à 78 %, tout le reste ≥ 87 %.
+- [ ] **Coverage `core/camera.py`** — à 0 % car cv2/gphoto2 absents en CI. Mocks complexes ou tests Pi-only (voir [TESTING.md](TESTING.md)). Global à 80 %, tout le reste ≥ 87 %.
 
 ---
 

@@ -21,6 +21,14 @@ de données. Document à mettre à jour lors des refactors structurels majeurs.
      │      │  └─────────────────┘   │
      │      │                        │
      │      │  ┌─────────────────┐   │
+     │      │  │ session         │   │  ◄── Etat enum + SessionState + metadata JSONL
+     │      │  └─────────────────┘   │
+     │      │                        │
+     │      │  ┌─────────────────┐   │
+     │      │  │ monitoring      │   │  ◄── DiskMonitor + lister_images_slideshow
+     │      │  └─────────────────┘   │
+     │      │                        │
+     │      │  ┌─────────────────┐   │
      │      │  │ camera          │   │
      │      │  │ (gphoto2 + lock)│   │
      │      │  └─────────────────┘   │
@@ -196,8 +204,12 @@ Pour tests unitaires, `monkeypatch` suffit (voir test_montage.py).
 wrapper vers `camera_mgr.get_preview_frame()` car lisible et massivement
 utilisé dans `render_decompte`. Les autres wrappers ont été inlinés.
 
-**SessionState ne contient pas les globals slideshow** : `slideshow_images`,
-`_disque_critique` etc. restent en module-level car ce sont des subsystèmes
+**Sous-systèmes indépendants dans `core/monitoring.py`** : `DiskMonitor` et
+`lister_images_slideshow` ne dépendent pas de `SessionState`. Rate-limit interne
+à DiskMonitor, slideshow listing sans state. Testables en isolation.
+
+**SessionState ne contient pas les globals slideshow** : `slideshow_images` et
+cie restent en module-level de `Photobooth_start.py` car ce sont des subsystèmes
 indépendants du cycle de session.
 
 **Render functions ne sont pas toutes extraites** : `render_accueil` et les

@@ -29,7 +29,7 @@ open htmlcov/index.html
 ```
 
 Le seuil de couverture minimum est fixé à **75 %** dans `pyproject.toml`
-(`fail_under`). Mesure actuelle : **78 %** globale, avec tous les modules
+(`fail_under`). Mesure actuelle : **80 %** globale, avec tous les modules
 hors `core/camera.py` au-dessus de **87 %**.
 
 ---
@@ -42,6 +42,8 @@ hors `core/camera.py` au-dessus de **87 %**.
 | [test_arduino.py](../test_arduino.py) | 19 | `core/arduino.py` (ArduinoController, LEDs, tick, read loop) | FakeSerial + FakePygame mocks |
 | [test_printer.py](../test_printer.py) | 13 | `core/printer.py` (PrinterManager, lpstat/lp) | mock `subprocess.run`/`Popen` |
 | [test_logger.py](../test_logger.py) | 4 | `core/logger.py` (log_error wrapper legacy) | `caplog` pytest |
+| [test_session.py](../test_session.py) | 11 | `core/session.py` (Etat, SessionState, metadata JSONL) | monkeypatch `PATH_DATA` |
+| [test_monitoring.py](../test_monitoring.py) | 14 | `core/monitoring.py` (DiskMonitor, lister_images_slideshow) | fixtures `tmp_path` |
 | [test_status.py](../test_status.py) | 15 | `status.py` (diagnostic hardware/assets) | fixtures assets factices dans `tmp_path` |
 | [test_stats.py](../test_stats.py) | 15 | `stats.py` (parsing `sessions.jsonl`, histogramme horaire, CLI) | fixtures JSONL synthétiques |
 | [test_integration.py](../test_integration.py) | 6 | chaîne `CameraManager` → `MontageGenerator` → `PrinterManager` | mocks gphoto2/CUPS, réels PIL |
@@ -123,6 +125,8 @@ Modules mesurés (voir `[tool.coverage.run] source` dans `pyproject.toml`) :
 | `core/printer.py` | 100 % | mocks subprocess |
 | `core/logger.py` | 94 % | log_error + usage transitif |
 | `core/arduino.py` | 87 % | FakeSerial + FakePygame |
+| `core/session.py` | 100 % | dataclass + metadata JSONL |
+| `core/monitoring.py` | 95 % | DiskMonitor + slideshow listing |
 | `stats.py` | 100 % | tests in-process + CLI |
 | `status.py` | 93 % | fixtures + main() en process |
 

@@ -5,6 +5,28 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
 ---
 
+## `WIP` — Split Photobooth_start.py : core/session + core/monitoring
+
+### Added
+- `core/session.py` : `Etat` enum, `SessionState` dataclass, `ecrire_metadata_session()`,
+  `terminer_session_et_revenir_accueil()` — module pur, testable isolément
+- `core/monitoring.py` : `DiskMonitor` (classe rate-limitée, remplace 3 globals
+  module-level), `lister_images_slideshow(dossiers, nb_max)` (pure)
+- `test_session.py` (11 tests) + `test_monitoring.py` (14 tests)
+
+### Changed
+- `Photobooth_start.py` : imports depuis `core.session` et `core.monitoring`,
+  suppression de 190 lignes déplacées. 1183 → 1071 L.
+- `docs/ARCHITECTURE.md` : modules session + monitoring ajoutés au graphe
+- `docs/DEVELOPMENT.md` : arborescence mise à jour
+- `docs/TESTING.md` : nouveaux tests inventoriés, couverture actualisée
+
+### Stats
+- Coverage : 78 % → **80 %** (seuil via `core/session` 100 % et `core/monitoring` 95 %)
+- Tests totaux : 96 → **121** (+25)
+
+---
+
 ## `19973c3` (PR #1) — Boîtier Arduino : 3 boutons-poussoirs à LED intégrée
 
 ### Added
