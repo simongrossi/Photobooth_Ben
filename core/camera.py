@@ -8,50 +8,53 @@ Sprint 4.1 + 4.6 : extrait de Photobooth_start.py. Dépendances : pygame.surfarr
 (pour convertir le frame gphoto2 en Surface), cv2 (décodage JPEG), numpy (buffer),
 gphoto2 (pilote caméra).
 """
+from __future__ import annotations
+
 import os
 import subprocess
 import threading
 import time
+from typing import Optional
 
 import cv2
 import gphoto2 as gp
 import numpy as np
 import pygame
 
-from core.logger import log_error, log_info, log_warning, log_critical
+from core.logger import log_info, log_warning, log_critical
 
 
 class CameraManager:
     """Encapsule la caméra Canon/gphoto2 avec reconnexion rate-limitée et thread-safety."""
 
-    _DELAI_RECONNEXION = 2.0  # secondes min entre deux tentatives d'init en cas d'échec
+    _DELAI_RECONNEXION: float = 2.0  # secondes min entre deux tentatives d'init en cas d'échec
 
-    def __init__(self):
-        self._lock = threading.Lock()
-        self._cam = None
-        self._last_init_attempt = 0.0
+    def __init__(self) -> None:
+        self._lock: threading.Lock = threading.Lock()
+        self._cam: Optional[gp.Camera] = None
+        self._last_init_attempt: float = 0.0
 
     # ---- API publique ----
     @property
-    def is_connected(self):
+    def is_connected(self) -> bool:
         return self._cam is not None
 
     @property
-    def raw_camera(self):
+    def raw_camera(self) -> Optional[gp.Camera]:
         """Accès bas niveau à l'objet gphoto2.Camera (pour compat avec code legacy)."""
         return self._cam
 
-    def init(self):
+    def init(self) -> bool:
         """Tente d'initialiser la caméra. Retourne True/False."""
         with self._lock:
             return self._init_unlocked()
 
-    def set_liveview(self, state):
+    def set_liveview(self, state: int) -> None:
         """Active (1) ou désactive (0) le LiveView sur la caméra courante."""
         with self._lock:
             self._set_liveview_unlocked(state)
 
-    def get_preview_frame(self):
+    def get_preview_frame(self) -> Optional[pygame.Surface]:
         """Retourne une pygame.Surface du preview courant, ou None.
         Applique rate-limit sur les tentatives de reconnexion (évite de marteler gphoto2)."""
         with self._lock:
@@ -83,7 +86,7 @@ class CameraManager:
                 pass
             return None
 
-    def capture_hq(self, chemin_complet):
+    def capture_hq(self, chemin_complet: str) -> bool:
         """Capture HQ via subprocess gphoto2 avec retry 3× + backoff.
         Ferme la session LiveView avant, la relance après. Retourne True si fichier présent."""
         with self._lock:
@@ -133,7 +136,7 @@ class CameraManager:
             return capture_ok and os.path.exists(chemin_complet)
 
     # ---- Privés (supposent lock tenu) ----
-    def _init_unlocked(self):
+    def _init_unlocked(self) -> bool:
         # Nettoyage des processus système qui bloquent souvent l'USB sur Linux
         subprocess.run(["pkill", "-f", "gvfs-gphoto2-volume-monitor"], capture_output=True)
         subprocess.run(["pkill", "-f", "gphoto2"], capture_output=True)
@@ -148,7 +151,7 @@ class CameraManager:
             self._cam = None
             return False
 
-    def _set_liveview_unlocked(self, state):
+    def _set_liveview_unlocked(self, state: int) -> None:
         if not self._cam:
             return
         try:

@@ -87,8 +87,8 @@ def check_camera():
         return print_check("Caméra gphoto2", False, str(e))
 
     # Output gphoto2 : lignes "Model    Port" avec séparateur ----, on garde celles qui ne sont ni header ni sep
-    lines = [l.strip() for l in r.stdout.splitlines() if l.strip()]
-    modeles = [l for l in lines if not l.startswith("Model") and not l.startswith("----")]
+    lines = [ligne.strip() for ligne in r.stdout.splitlines() if ligne.strip()]
+    modeles = [ligne for ligne in lines if not ligne.startswith("Model") and not ligne.startswith("----")]
     ok = bool(modeles)
     return print_check("Caméra gphoto2 détectée", ok, modeles[0] if ok else "aucun appareil détecté")
 

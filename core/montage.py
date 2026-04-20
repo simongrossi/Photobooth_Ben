@@ -7,7 +7,10 @@ une base commune (MontageBase) et la fonction helper `charger_et_corriger`.
 Sprint 4.2 + 4.6 : extrait des 4 fonctions historiques generer_preview_* /
 generer_montage_* qui étaient dupliquées dans Photobooth_start.py.
 """
+from __future__ import annotations
+
 import os
+
 from PIL import Image, ImageOps
 
 from config import (
@@ -27,7 +30,7 @@ from config import (
 )
 
 
-def charger_et_corriger(chemin, rotation_forcee=0):
+def charger_et_corriger(chemin: str, rotation_forcee: float = 0) -> Image.Image:
     """Charge une image JPEG et la retourne en RGB. `with` ferme le file handle."""
     with Image.open(chemin) as src:
         img = src.convert("RGB")
@@ -40,7 +43,9 @@ class MontageBase:
     """Helpers partagés pour la génération de montages PIL."""
 
     @staticmethod
-    def _canvas_depuis_bg_ou_blanc(bg_path, size, rotation=0, redresser_si_horizontal=False):
+    def _canvas_depuis_bg_ou_blanc(
+        bg_path: str, size: tuple, rotation: float = 0, redresser_si_horizontal: bool = False,
+    ) -> Image.Image:
         """Charge le fond ou retourne une toile blanche.
         `redresser_si_horizontal` : si le fond source est paysage, le met debout
         (rotation 90° expand) avant d'appliquer `rotation` et le resize final."""
@@ -55,7 +60,10 @@ class MontageBase:
         return Image.new("RGB", size, "white")
 
     @staticmethod
-    def _coller_overlay(canvas, overlay_path, size, rotation=0, redresser_si_horizontal=False):
+    def _coller_overlay(
+        canvas: Image.Image, overlay_path: str, size: tuple,
+        rotation: float = 0, redresser_si_horizontal: bool = False,
+    ) -> None:
         """Applique l'overlay RGBA si le fichier existe."""
         if not (overlay_path and os.path.exists(overlay_path)):
             return
@@ -69,7 +77,7 @@ class MontageBase:
         canvas.paste(ov, (0, 0), ov)
 
     @staticmethod
-    def _chemin_prev():
+    def _chemin_prev() -> str:
         return os.path.join(PATH_TEMP, "montage_prev.jpg")
 
 
@@ -88,7 +96,7 @@ class MontageGenerator10x15(MontageBase):
     FINAL_QUALITY        = MONTAGE_10X15_FINAL_QUALITY
 
     @classmethod
-    def preview(cls, photos):
+    def preview(cls, photos: list) -> str:
         path_prev = cls._chemin_prev()
         canvas = Image.new("RGB", cls.PREVIEW_SIZE, "white")
         img_brute = charger_et_corriger(photos[0])
@@ -98,7 +106,7 @@ class MontageGenerator10x15(MontageBase):
         return path_prev
 
     @classmethod
-    def final(cls, photos, id_session):
+    def final(cls, photos: list, id_session: str) -> str:
         path_hd = os.path.join(PATH_TEMP, f"{PREFIXE_PRINT_10X15}_{id_session}.jpg")
         canvas = cls._canvas_depuis_bg_ou_blanc(BG_10X15_FILE, cls.FINAL_SIZE)
         img_brute = charger_et_corriger(photos[0])
@@ -127,7 +135,7 @@ class MontageGeneratorStrip(MontageBase):
     FINAL_ROTATION = STRIP_ROTATION_DEGREES
 
     @classmethod
-    def preview(cls, photos):
+    def preview(cls, photos: list) -> str:
         path_prev = cls._chemin_prev()
         l_p = cls.PREVIEW_PHOTO_LARGEUR
         ratio = float(STRIP_PHOTO_RATIO)
@@ -150,7 +158,7 @@ class MontageGeneratorStrip(MontageBase):
         return path_prev
 
     @classmethod
-    def final(cls, photos, id_session):
+    def final(cls, photos: list, id_session: str) -> str:
         path_hd = os.path.join(PATH_TEMP, f"{PREFIXE_PRINT_STRIP}_{id_session}.jpg")
 
         # Fond : redressement si horizontal, puis rotation 180° (imprimante tête-bêche)

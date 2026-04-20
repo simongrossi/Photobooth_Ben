@@ -37,22 +37,22 @@ if not _logger.handlers:
     _logger.addHandler(_handler_console)
 
 
-def log_info(message):
+def log_info(message: str) -> None:
     """Log explicite niveau INFO. Pour flux normal (démarrage session, photo sauvegardée, etc.)."""
     _logger.info(message)
 
 
-def log_warning(message):
+def log_warning(message: str) -> None:
     """Log explicite niveau WARNING. Pour anomalies non-bloquantes (retry, état dégradé)."""
     _logger.warning(message)
 
 
-def log_critical(message):
+def log_critical(message: str) -> None:
     """Log explicite niveau ERROR. Pour échecs bloquants (capture perdue, imprimante offline)."""
     _logger.error(message)
 
 
-def log_error(message):
+def log_error(message: str) -> None:
     """Wrapper historique — backward compat. Détecte le niveau depuis ❌/⚠️ en début de
     message, sinon INFO par défaut. Pour du code nouveau, préférer log_info/log_warning/log_critical."""
     try:

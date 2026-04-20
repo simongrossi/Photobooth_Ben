@@ -1,14 +1,32 @@
-from config import * # Cela importe TOUTES les variables de ton fichier config
-import config
+# Imports explicites depuis config (plus de `import *` pour dépendances visibles).
+# Liste triée alphabétiquement, mise à jour en ajoutant de nouvelles constantes.
+from config import (
+    ALPHA_TEXTE_REPOS, BANDEAU_10X15, BANDEAU_ACCUEIL, BANDEAU_ALPHA,
+    BANDEAU_COULEUR, BANDEAU_HAUTEUR, BANDEAU_STRIP, COULEUR_DECOMPTE,
+    COULEUR_FLASH, COULEUR_SOURIEZ, COULEUR_TEXTE_OFF, COULEUR_TEXTE_ON, COULEUR_TEXTE_REPOS,
+    DELAI_SECURITE,
+    DUREE_CONFIRM_ABANDON, DUREE_FLASH_BLANC, DUREE_IDLE_SLIDESHOW, DUREE_PAR_IMAGE_SLIDESHOW,
+    FILE_BG_ACCUEIL, FORMAT_TIMESTAMP, HEIGHT,
+    INTERVALLE_CHECK_DISQUE_S, LARGEUR_ICONE_10X15, LARGEUR_ICONE_STRIP, MARGE_ACCUEIL,
+    MODE_10x15, MODE_STRIP, NB_MAX_IMAGES_SLIDESHOW,
+    NOM_IMPRIMANTE_10X15, NOM_IMPRIMANTE_STRIP, OFFSET_DROITE_10X15, OFFSET_DROITE_STRIP,
+    PATH_DATA, PATH_IMG_10X15, PATH_IMG_STRIP, PATH_PRINT,
+    PATH_PRINT_10X15, PATH_PRINT_STRIP, PATH_RAW, PATH_SKIPPED,
+    PATH_SKIPPED_DELETED, PATH_SKIPPED_RETAKE, PATH_SOUNDS, PATH_TEMP,
+    POLICE_FICHIER, PREFIXE_DELETED, PREFIXE_PRINT_10X15, PREFIXE_PRINT_STRIP,
+    PREFIXE_RAW, PREFIXE_RETAKE, PULSE_LENT_MAX, PULSE_LENT_MIN, PULSE_LENT_VITESSE, PULSE_MAX,
+    PULSE_MIN, PULSE_VITESSE, SEUIL_DISQUE_CRITIQUE_MB, STRIP_BURST_DELAI_S,
+    STRIP_MODE_BURST, TAILLE_DECOMPTE, TAILLE_TEXTE_BANDEAU,
+    TAILLE_TEXTE_BOUTON, TAILLE_TITRE_ACCUEIL, TEMPS_DECOMPTE, TEXTE_PHOTO_COUNT,
+    TOUCHE_DROITE, TOUCHE_GAUCHE, TOUCHE_MILIEU,
+    TXT_BURST_COUNTDOWN, TXT_CONFIRM_ABANDON_1, TXT_CONFIRM_ABANDON_2, TXT_ERREUR_CAPTURE,
+    TXT_ERREUR_IMPRIMANTE, TXT_PREPARATION_IMP, TXT_SLIDESHOW_INVITATION, WIDTH, ZOOM_FACTOR,
+)
+import config  # accès qualifié `config.X` dans les render functions
 import pygame
-import cv2
 import os
-import sys
 import time
 import json
-import subprocess
-import numpy as np
-import gphoto2 as gp
 import shutil
 import math
 from dataclasses import dataclass, field
@@ -86,7 +104,7 @@ for d in dossiers_requis:
         print(f"📁 Dossier créé : {d}")
 
 # Logging : extrait dans logger.py (Sprint 4.6). On importe les 4 helpers.
-from core.logger import log_error, log_info, log_warning, log_critical, log_file  # noqa: E402
+from core.logger import log_info, log_warning, log_critical  # noqa: E402
 
 
 def _purger_temp_et_verifier_disque():
@@ -143,37 +161,10 @@ if camera_mgr.is_connected:
     camera_mgr.set_liveview(1)
 
 
-# --- Wrappers de compat pour le code existant ---
-def init_camera():
-    """Wrapper historique : retourne l'objet gphoto2 interne ou None."""
-    camera_mgr.init()
-    return camera_mgr.raw_camera
-
-
-def set_liveview(cam, state):  # noqa: ARG001 — cam ignoré (lu par le manager)
-    camera_mgr.set_liveview(state)
-
-
+# Wrapper de compat — seul `get_canon_frame` est encore appelé (dans render_decompte).
 def get_canon_frame():
     return camera_mgr.get_preview_frame()
 
-
-# Variable globale historique — certains appelants lisent encore `camera` pour tester la
-# présence (splash_connexion_camera). On fournit un accès mais le source de vérité est le
-# manager. L'ancienne réassignation `camera = init_camera()` n'a plus d'effet.
-class _CameraProxy:
-    """Compat : `camera` globale était un objet gphoto2 ; on l'expose via le manager."""
-    def __bool__(self):
-        return camera_mgr.is_connected
-
-    def __getattr__(self, name):
-        cam = camera_mgr.raw_camera
-        if cam is None:
-            raise AttributeError(f"caméra non connectée (attribut demandé : {name})")
-        return getattr(cam, name)
-
-
-camera = _CameraProxy()
 
 # ========================================================================================================
 # --- 2. FONCTIONS TECHNIQUES --- ########################################################################
@@ -199,7 +190,7 @@ def capturer_hq(id_session, index_photo):
         text_y = (HEIGHT // 2) - (txt_flash.get_height() // 2)
         screen.blit(txt_flash, (text_x, text_y))
     except Exception as e:
-        log_error(f"Affichage SOURIEZ échoué : {e}")
+        log_warning(f"Affichage SOURIEZ échoué : {e}")
     pygame.display.flip()
 
     # 3. Capture réelle via le CameraManager (gère retry, reset session, relance LiveView)
@@ -221,26 +212,7 @@ def capturer_hq(id_session, index_photo):
 # pygame, pas de globals UI), testable isolément. Import + wrappers de compat ci-dessous.
 # ========================================================================================================
 
-from core.montage import (
-    MontageBase,
-    MontageGenerator10x15,
-    MontageGeneratorStrip,
-    charger_et_corriger,
-)
-
-
-# --- Wrappers de compat : les call sites historiques continuent de fonctionner ---
-def generer_preview_10x15(photos):
-    return MontageGenerator10x15.preview(photos)
-
-def generer_montage_final_10x15(photos, id_session):
-    return MontageGenerator10x15.final(photos, id_session)
-
-def generer_preview_ecran_strip(photos):
-    return MontageGeneratorStrip.preview(photos)
-
-def generer_montage_impression_strip(photos, id_session):
-    return MontageGeneratorStrip.final(photos, id_session)
+from core.montage import MontageGenerator10x15, MontageGeneratorStrip  # noqa: E402
 
 
 # get_pygame_surf_cropped / get_pygame_surf / inserer_background : extraits dans ui.py (item 7)
@@ -254,19 +226,6 @@ from core.printer import PrinterManager  # noqa: E402
 
 # Singleton global utilisé par les wrappers et — pour du nouveau code — à appeler directement.
 printer_mgr = PrinterManager(NOM_IMPRIMANTE_10X15, NOM_IMPRIMANTE_STRIP)
-
-
-# --- Wrappers de compat ---
-def imprimante_prete(nom):
-    """Wrapper historique — prend un nom de file. Préserver pour code externe éventuel."""
-    for mode, n in printer_mgr._noms.items():
-        if n == nom:
-            return printer_mgr.is_ready(mode)
-    return False
-
-
-def imprimer_fichier_auto(chemin, mode):
-    return printer_mgr.send(chemin, mode)
 
 
 # ========================================================================================================
@@ -288,7 +247,7 @@ try:
         font_decompte   = pygame.font.Font(POLICE_FICHIER, TAILLE_DECOMPTE)
     else:
         raise FileNotFoundError
-except Exception as e:
+except Exception:
     # Fallback Arial
     font_titre       = pygame.font.SysFont("Arial", TAILLE_TITRE_ACCUEIL, bold=True)
     font_boutons    = pygame.font.SysFont("Arial", TAILLE_TEXTE_BOUTON)
@@ -305,10 +264,7 @@ except Exception as e:
 
 from ui import (  # noqa: E402
     UIContext, setup_sounds, jouer_son,
-    draw_text_shadow_soft, inserer_background, obtenir_couleur_pulse,
-    get_pygame_surf, get_pygame_surf_cropped,
-    LoaderAnimation,
-    afficher_message_plein_ecran, executer_avec_spinner,
+    draw_text_shadow_soft, inserer_background, executer_avec_spinner,
     ecran_erreur, ecran_attente_impression,
     splash_connexion_camera,
 )
@@ -370,7 +326,7 @@ def ecrire_metadata_session(issue, nb_photos, duree_s):
         with open(chemin, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except Exception as e:
-        log_error(f"⚠️ Écriture metadata session échouée : {e}")
+        log_warning(f"Écriture metadata session échouée : {e}")
 
 
 # --- CACHE DES SURFACES STATIQUES (Sprint 3.4) ---
@@ -426,7 +382,7 @@ try:
         fond_accueil = pygame.image.load(FILE_BG_ACCUEIL).convert()
         fond_accueil = pygame.transform.scale(fond_accueil, (WIDTH, HEIGHT))
     else:
-        log_error(f"Fond d'accueil manquant : {FILE_BG_ACCUEIL}")
+        log_warning(f"Fond d'accueil manquant : {FILE_BG_ACCUEIL}")
 
     # 2. Chargement 10x15 (Utilise LARGEUR_ICONE_10X15 du config)
     if os.path.exists(PATH_IMG_10X15):
@@ -437,7 +393,7 @@ try:
         icon_10x15_norm = pygame.transform.smoothscale(img_10x15_raw, (LARGEUR_ICONE_10X15, h_10x15))
         icon_10x15_select = pygame.transform.smoothscale(img_10x15_raw, (int(LARGEUR_ICONE_10X15 * ZOOM_FACTOR), int(h_10x15 * ZOOM_FACTOR)))
     else:
-        log_error(f"Image 10x15 manquante : {PATH_IMG_10X15}")
+        log_warning(f"Image 10x15 manquante : {PATH_IMG_10X15}")
 
     # 3. Chargement Strip (Utilise LARGEUR_ICONE_STRIP du config)
     if os.path.exists(PATH_IMG_STRIP):
@@ -448,14 +404,14 @@ try:
         icon_strip_norm = pygame.transform.smoothscale(img_strip_raw, (LARGEUR_ICONE_STRIP, h_strip))
         icon_strip_select = pygame.transform.smoothscale(img_strip_raw, (int(LARGEUR_ICONE_STRIP * ZOOM_FACTOR), int(h_strip * ZOOM_FACTOR)))
     else:
-        log_error(f"Image Strip manquante : {PATH_IMG_STRIP}")
+        log_warning(f"Image Strip manquante : {PATH_IMG_STRIP}")
 
     print("✅ Toutes les images de l'interface sont chargées.")
 
 except Exception as e:
     msg = f"Erreur critique lors du chargement des surfaces : {e}"
     print(f"⚠️ {msg}")
-    log_error(msg)
+    log_critical(msg)
 
 # --- Splash de connexion caméra (Sprint 2.1) ---
 # Si `camera` a été obtenue à l'init top du fichier, le splash se ferme immédiatement.
@@ -532,7 +488,7 @@ def render_decompte(session):
         session.photos_validees.append(chemin_photo)
         session.etat = Etat.VALIDATION
     else:
-        log_error("Erreur capture : retour à l'accueil")
+        log_critical("Erreur capture : retour à l'accueil")
         ecran_erreur(TXT_ERREUR_CAPTURE)
         terminer_session_et_revenir_accueil("capture_failed")
 
@@ -648,7 +604,7 @@ def render_fin(session):
                 ratio_m = raw_m.get_width() / raw_m.get_height()
                 session.img_preview_cache = pygame.transform.smoothscale(raw_m, (int(h_max_fin * ratio_m), h_max_fin))
             except Exception as e:
-                log_error(f"Erreur chargement aperçu FIN : {e}")
+                log_warning(f"Erreur chargement aperçu FIN : {e}")
 
     # Application des décalages spécifiques
     if session.img_preview_cache:
@@ -750,12 +706,13 @@ while running:
                             try:
                                 # Sprint 3.2 : génération dans un thread avec spinner animé
                                 p = executer_avec_spinner(
-                                    lambda: generer_montage_final_10x15(session.photos_validees, session.id_session_timestamp),
+                                    lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
                                     TXT_PREPARATION_IMP,
                                 )
                                 dest = os.path.join(PATH_SKIPPED_RETAKE, f"{PREFIXE_RETAKE}_{session.id_session_timestamp}.jpg")
                                 shutil.move(p, dest)
-                            except Exception as e: log_error(f"Erreur 10x15 Retake: {e}")
+                            except Exception as e:
+                                log_critical(f"Erreur 10x15 Retake: {e}")
 
                             session.photos_validees = []
                             session.etat = Etat.DECOMPTE
@@ -767,14 +724,14 @@ while running:
                             try:
                                 # Sprint 3.2 : génération threadée avec spinner animé (remplace le fig\xe9)
                                 p = executer_avec_spinner(
-                                    lambda: generer_montage_final_10x15(session.photos_validees, session.id_session_timestamp),
+                                    lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
                                     TXT_PREPARATION_IMP,
                                 )
                                 dest = os.path.join(PATH_PRINT_10X15, f"{PREFIXE_PRINT_10X15}_{session.id_session_timestamp}.jpg")
                                 shutil.copy(p, dest)
 
                                 # 2. On lance l'impression PHYSIQUE (seulement si le fichier est OK)
-                                if imprimer_fichier_auto(dest, "10x15"):
+                                if printer_mgr.send(dest, "10x15"):
                                     jouer_son("success")  # Sprint 2.3
                                     # 3. On affiche l'écran de chargement pour l'utilisateur
                                     ecran_attente_impression()
@@ -782,7 +739,7 @@ while running:
                                     ecran_erreur(TXT_ERREUR_IMPRIMANTE)  # Sprint 2.5/2.6
 
                             except Exception as e:
-                                log_error(f"Erreur 10x15 Print/Impression: {e}")
+                                log_critical(f"Erreur 10x15 Print/Impression: {e}")
                                 ecran_erreur(TXT_ERREUR_IMPRIMANTE)
 
                             # 4. Cooldown : on vide les événements en attente (Sprint 2.7)
@@ -798,12 +755,13 @@ while running:
                             try:
                                 # Sprint 3.2 : génération threadée avec spinner
                                 p = executer_avec_spinner(
-                                    lambda: generer_montage_final_10x15(session.photos_validees, session.id_session_timestamp),
+                                    lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
                                     TXT_PREPARATION_IMP,
                                 )
                                 dest = os.path.join(PATH_SKIPPED_DELETED, f"{PREFIXE_DELETED}_{session.id_session_timestamp}.jpg")
                                 shutil.move(p, dest)
-                            except Exception as e: log_error(f"Erreur 10x15 Deleted: {e}")
+                            except Exception as e:
+                                log_critical(f"Erreur 10x15 Deleted: {e}")
 
                             terminer_session_et_revenir_accueil("abandoned")  # Sprint 4.4
                             session.dernier_clic_time = maintenant
@@ -831,7 +789,7 @@ while running:
                                 session.etat = Etat.DECOMPTE
                             else:
                                 print("LOG: [Strips] -> 3 photos OK, passage à l'écran FIN")
-                                session.path_montage = generer_preview_ecran_strip(session.photos_validees)
+                                session.path_montage = MontageGeneratorStrip.preview(session.photos_validees)
                                 session.etat = Etat.FIN
                             session.dernier_clic_time = maintenant
 
@@ -853,12 +811,12 @@ while running:
                             # Sprint 3.2 : archive final threadée avec spinner
                             if session.mode_actuel == "strips":
                                 p = executer_avec_spinner(
-                                    lambda: generer_montage_impression_strip(session.photos_validees, session.id_session_timestamp),
+                                    lambda: MontageGeneratorStrip.final(session.photos_validees, session.id_session_timestamp),
                                     TXT_PREPARATION_IMP,
                                 )
                             else:
                                 p = executer_avec_spinner(
-                                    lambda: generer_montage_final_10x15(session.photos_validees, session.id_session_timestamp),
+                                    lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
                                     TXT_PREPARATION_IMP,
                                 )
 
@@ -867,10 +825,13 @@ while running:
                                 dest = os.path.join(PATH_SKIPPED_RETAKE, nom_dest)
                                 shutil.move(p, dest)
                         except Exception as e:
-                            log_error(f"Erreur archivage Recommencer : {e}")
+                            log_critical(f"Erreur archivage Recommencer : {e}")
 
                         # On vide les photos et on repart directement au décompte
-                        session.photos_validees = []; session.img_preview_cache = None; session.path_montage = ""; session.etat = Etat.DECOMPTE
+                        session.photos_validees = []
+                        session.img_preview_cache = None
+                        session.path_montage = ""
+                        session.etat = Etat.DECOMPTE
                         session.dernier_clic_time = maintenant
                         pygame.event.clear()
                         continue
@@ -883,14 +844,14 @@ while running:
                             # Sprint 3.2 : génération threadée avec spinner animé
                             if session.mode_actuel == "strips":
                                 p = executer_avec_spinner(
-                                    lambda: generer_montage_impression_strip(session.photos_validees, session.id_session_timestamp),
+                                    lambda: MontageGeneratorStrip.final(session.photos_validees, session.id_session_timestamp),
                                     TXT_PREPARATION_IMP,
                                 )
                                 nom_final = f"{PREFIXE_PRINT_STRIP}_{session.id_session_timestamp}.jpg"
                                 destination = os.path.join(PATH_PRINT_STRIP, nom_final)
                             else:
                                 p = executer_avec_spinner(
-                                    lambda: generer_montage_final_10x15(session.photos_validees, session.id_session_timestamp),
+                                    lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
                                     TXT_PREPARATION_IMP,
                                 )
                                 nom_final = f"{PREFIXE_PRINT_10X15}_{session.id_session_timestamp}.jpg"
@@ -900,14 +861,14 @@ while running:
                             shutil.copy(p, destination)
 
                             # 3. IMPRESSION PHYSIQUE avec vérification (Sprint 2.6)
-                            if imprimer_fichier_auto(destination, session.mode_actuel):
+                            if printer_mgr.send(destination, session.mode_actuel):
                                 jouer_son("success")  # Sprint 2.3
                                 ecran_attente_impression()
                             else:
                                 ecran_erreur(TXT_ERREUR_IMPRIMANTE)  # Sprint 2.5
 
                         except Exception as e:
-                            log_error(f"❌ Erreur Impression finale : {e}")
+                            log_critical(f"Erreur Impression finale : {e}")
                             ecran_erreur(TXT_ERREUR_IMPRIMANTE)
 
                         # Cooldown anti double-envoi (Sprint 2.7)
@@ -928,12 +889,12 @@ while running:
                                 # Sprint 3.2 : archive threadée avec spinner
                                 if session.mode_actuel == "strips":
                                     p = executer_avec_spinner(
-                                        lambda: generer_montage_impression_strip(session.photos_validees, session.id_session_timestamp),
+                                        lambda: MontageGeneratorStrip.final(session.photos_validees, session.id_session_timestamp),
                                         TXT_PREPARATION_IMP,
                                     )
                                 else:
                                     p = executer_avec_spinner(
-                                        lambda: generer_montage_final_10x15(session.photos_validees, session.id_session_timestamp),
+                                        lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
                                         TXT_PREPARATION_IMP,
                                     )
 
@@ -942,7 +903,7 @@ while running:
                                     dest = os.path.join(PATH_SKIPPED_DELETED, nom_deleted)
                                     shutil.move(p, dest)
                             except Exception as e:
-                                log_error(f"Erreur archivage Supprimer : {e}")
+                                log_critical(f"Erreur archivage Supprimer : {e}")
 
                             terminer_session_et_revenir_accueil("abandoned")  # Sprint 4.4
                             session.dernier_clic_time = maintenant
@@ -991,7 +952,7 @@ while running:
                         slideshow_cached_surface = pygame.transform.smoothscale(raw, new_size)
                         slideshow_cached_for_idx = idx
                     except Exception as e:
-                        log_error(f"⚠️ Slideshow load échoué : {e}")
+                        log_warning(f"Slideshow load échoué : {e}")
                         slideshow_cached_surface = None
 
                 if slideshow_cached_surface:

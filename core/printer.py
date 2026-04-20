@@ -5,7 +5,10 @@ Encapsule `lpstat` + `lp` dans un PrinterManager avec vérif d'état et 2 files
 
 Sprint 4.3 + 4.6 : extrait de Photobooth_start.py.
 """
+from __future__ import annotations
+
 import subprocess
+from typing import Optional
 
 from core.logger import log_info, log_warning, log_critical
 
@@ -13,14 +16,14 @@ from core.logger import log_info, log_warning, log_critical
 class PrinterManager:
     """Encapsule les files d'impression CUPS (10x15 + strip) avec vérif d'état."""
 
-    def __init__(self, nom_10x15, nom_strip):
-        self._noms = {"10x15": nom_10x15, "strips": nom_strip}
+    def __init__(self, nom_10x15: str, nom_strip: str) -> None:
+        self._noms: dict[str, str] = {"10x15": nom_10x15, "strips": nom_strip}
 
-    def nom(self, mode):
+    def nom(self, mode: str) -> Optional[str]:
         """Retourne le nom de la file CUPS pour ce mode, ou None."""
         return self._noms.get(mode)
 
-    def is_ready(self, mode):
+    def is_ready(self, mode: str) -> bool:
         """Vérifie via lpstat si la file est disponible (pas disabled, pas absente)."""
         nom_file = self._noms.get(mode)
         if not nom_file:
@@ -39,7 +42,7 @@ class PrinterManager:
             log_warning(f"Check imprimante {nom_file} échoué : {e}")
             return False
 
-    def send(self, chemin, mode):
+    def send(self, chemin: str, mode: str) -> bool:
         """Envoie à la file correspondante. Retourne True si l'envoi a démarré."""
         nom_file = self._noms.get(mode)
         if not nom_file:

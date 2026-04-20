@@ -52,7 +52,9 @@ class UIContext:
     font_decompte = None
 
     @classmethod
-    def setup(cls, screen, clock, font_titre, font_boutons, font_bandeau, font_decompte):
+    def setup(cls, screen, clock, font_titre, font_boutons, font_bandeau, font_decompte) -> None:
+        """Initialise le contexte UI. À appeler une fois au boot, après pygame.init()
+        et chargement des fontes, avant tout autre helper de ce module."""
         cls.screen = screen
         cls.clock = clock
         cls.font_titre = font_titre
@@ -166,15 +168,18 @@ class LoaderAnimation:
         diametre = ANIM_RAYON_POINT * 2
         self._point_buffer = pygame.Surface((diametre, diametre), pygame.SRCALPHA)
 
-    def reset(self):
+    def reset(self) -> None:
+        """Remet l'animation à son état initial (début de roue, longueur minimale)."""
         self.angle_tete = 0
         self.longueur_actuelle = 30
         self.dernier_temps = time.time()
 
     def _interpoler_couleur(self, c1, c2, facteur):
+        """Mélange linéaire entre deux couleurs RGB selon un facteur [0..1]."""
         return tuple(int(c1[j] + (c2[j] - c1[j]) * (1 - facteur)) for j in range(3))
 
-    def update_and_draw(self, screen):
+    def update_and_draw(self, screen) -> None:
+        """Fait tourner la roue d'une frame et la blite sur `screen`."""
         maintenant = time.time()
         dt = maintenant - self.dernier_temps
         self.dernier_temps = maintenant
