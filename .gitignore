@@ -3,6 +3,9 @@ __pycache__/
 *.pyc
 *.pyo
 .pytest_cache/
+.coverage
+htmlcov/
+profile.stats
 
 # Runtime data (généré par l'app)
 logs/
