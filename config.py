@@ -85,6 +85,20 @@ TOUCHE_DROITE = pygame.K_d if pygame else ord('d')
 DELAI_SECURITE = 2.0  # Temps d'attente (anti-rebond) entre deux pressions
 
 
+# --- Arduino Nano (3 boutons-poussoirs à LED intégrée) ---
+# Voir docs/ARDUINO.md pour le câblage, le flash du firmware et le protocole.
+# Désactivé si `ARDUINO_ENABLED = False` ou si pyserial n'est pas installé :
+# le photobooth reste 100 % utilisable au clavier (touches G/M/D).
+ARDUINO_ENABLED   = True
+# Port série — adapter selon l'OS :
+#   Linux/Raspberry : "/dev/ttyUSB0" (CH340) ou "/dev/ttyACM0" (FTDI/ATmega16U2)
+#   macOS           : "/dev/tty.usbserial-XXXX" ou "/dev/tty.usbmodemXXXX"
+#   Windows         : "COM3", "COM4", ...
+# Mettre à None pour désactiver sans toucher à ARDUINO_ENABLED.
+ARDUINO_PORT      = "/dev/ttyUSB0"
+ARDUINO_BAUDRATE  = 115200
+
+
 
 # ----DESIGN DU BANDEAU HORIZONTALE DE NAVIGATION EN BAS----
 BANDEAU_HAUTEUR = 60      # Hauteur en pixels 60 par défaut

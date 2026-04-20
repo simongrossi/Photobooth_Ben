@@ -1,6 +1,6 @@
 # Photobooth Ben
 
-Application photobooth événementiel en **Pygame + gphoto2 + PIL**, conçue pour un Raspberry Pi connecté à un Canon EOS et une imprimante DNP en mode CUPS. Deux modes de rendu : **10×15 grand format** (1 photo) ou **bandelettes** (3 photos). Lancement/interaction au clavier (3 touches : gauche, milieu, droite).
+Application photobooth événementiel en **Pygame + gphoto2 + PIL**, conçue pour un Raspberry Pi connecté à un Canon EOS et une imprimante DNP en mode CUPS. Deux modes de rendu : **10×15 grand format** (1 photo) ou **bandelettes** (3 photos). Interaction au clavier (3 touches : gauche, milieu, droite) **ou** via un boîtier **Arduino Nano à 3 boutons-poussoirs à LED intégrée** — voir [docs/ARDUINO.md](docs/ARDUINO.md).
 
 ---
 
@@ -63,7 +63,10 @@ Photobooth_Ben/
 │   ├── logger.py         # logging rotatif + log_info/warning/critical
 │   ├── camera.py         # CameraManager (gphoto2 + threading.Lock + retry)
 │   ├── montage.py        # MontageGenerator10x15/Strip (PIL)
-│   └── printer.py        # PrinterManager (CUPS lpstat/lp)
+│   ├── printer.py        # PrinterManager (CUPS lpstat/lp)
+│   └── arduino.py        # ArduinoController (pyserial + thread : 3 boutons + LEDs)
+├── arduino/              # firmware Nano (optionnel)
+│   └── photobooth_buttons/photobooth_buttons.ino
 ├── ui/                   # couche pygame
 │   ├── helpers.py        # UIContext + LoaderAnimation + écrans + sons
 │   └── __init__.py       # re-exporte pour `from ui import X`
@@ -142,11 +145,13 @@ Isolation via `monkeypatch` sur `PATH_TEMP` et chemins BG/overlay inexistants.
 
 ```bash
 pip install pygame opencv-python gphoto2 Pillow numpy pytest
+pip install pyserial   # optionnel — uniquement si boîtier Arduino utilisé
 ```
 
 Système (Raspberry OS / Debian) :
 ```bash
 sudo apt install gphoto2 cups-client
+sudo apt install python3-serial   # optionnel — boîtier Arduino
 ```
 
 ---
@@ -168,6 +173,7 @@ Validation automatique au chargement — un `AssertionError` explicite au démar
 ## Documentation
 
 - 🚀 **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** — **installation Raspberry Pi** (apt, CUPS, systemd, kiosk, troubleshooting)
+- 🎛 **[docs/ARDUINO.md](docs/ARDUINO.md)** — boîtier 3 boutons + LEDs (câblage, flash firmware, protocole)
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — diagramme des modules + machine d'état + flow de données
 - [docs/ROADMAP.md](docs/ROADMAP.md) — items dev à faire, priorisés court/moyen/long terme
 - [docs/IDEAS.md](docs/IDEAS.md) — pool d'idées + références open-source (PIBOOTH, photobooth-app, RaspAP)

@@ -12,6 +12,8 @@ mode kiosque. Testé avec Raspberry Pi 4 (4 Go) + Raspberry Pi OS bookworm
 - **Carte microSD 32 Go** (classe 10 minimum)
 - **Écran HDMI** 1280 × 800 ou 1920 × 1080
 - **Clavier USB** (3 touches utilisées : G, M, D configurables dans `config.py`)
+  — remplaçable (ou complété) par un **boîtier Arduino Nano 3 boutons à LED
+  intégrée**, voir [`ARDUINO.md`](ARDUINO.md)
 - **Canon EOS** compatible gphoto2 (cf. `http://www.gphoto.org/proj/libgphoto2/support.php`)
 - **Imprimante DNP** (ou équivalent CUPS) en USB
 - Câbles USB A-B + câble USB caméra
@@ -42,8 +44,13 @@ sudo apt install -y \
     python3-pygame python3-numpy python3-pil \
     python3-gphoto2 gphoto2 libgphoto2-dev \
     cups cups-client libcups2-dev \
+    python3-serial \
     git
 ```
+
+> `python3-serial` est uniquement nécessaire si le boîtier Arduino est
+> utilisé (voir [`ARDUINO.md`](ARDUINO.md)). Sinon, le photobooth se replie
+> silencieusement sur le clavier.
 
 ### Vérification rapide
 

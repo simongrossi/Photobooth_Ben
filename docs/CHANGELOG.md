@@ -5,6 +5,27 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
 ---
 
+## `WIP` — Boîtier Arduino : 3 boutons-poussoirs à LED intégrée
+
+### Added
+- `core/arduino.py` : `ArduinoController` (thread pyserial → `pygame.KEYDOWN`,
+  pilotage LED selon `Etat` via `tick()`)
+- `arduino/photobooth_buttons/photobooth_buttons.ino` : firmware Nano
+  (3 boutons `INPUT_PULLUP` + 3 LEDs PWM, protocole L/M/R ↔ LED:*:STATE)
+- `docs/ARDUINO.md` : câblage, flash, protocole, dépannage, checklist Pi
+- `config.py` : clefs `ARDUINO_ENABLED`, `ARDUINO_PORT`, `ARDUINO_BAUDRATE`
+
+### Changed
+- `Photobooth_start.py` : init du contrôleur après pygame, `arduino_ctrl.tick(...)`
+  dans la boucle principale, `close()` à la sortie
+- `docs/ARCHITECTURE.md` : mention du nouveau module dans le graphe de dépendances
+- `docs/DEPLOYMENT.md` : ajout de `python3-serial` + renvoi vers `ARDUINO.md`
+
+### Dépendance (optionnelle)
+- `pyserial` — absent = fallback silencieux sur clavier uniquement
+
+---
+
 ## `5d04934` — Quick wins code quality (6 items)
 
 **Code quality** sans changement fonctionnel.
