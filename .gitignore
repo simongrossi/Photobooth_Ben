@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Runtime data (généré par l'app)
+logs/
+data/
+assets/sounds/*.wav
+
+# Éditeurs
+.vscode/
+.idea/
+*.swp
+.DS_Store

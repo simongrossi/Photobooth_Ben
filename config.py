@@ -1,5 +1,9 @@
 import os
-import pygame 
+# Import tolérant : permet à status.py (diagnostic) de charger config.py sans pygame
+try:
+    import pygame
+except ImportError:
+    pygame = None
 
 # ==========================================
 # 1. INITIALISATION SYSTÈME & DOSSIERS
@@ -25,6 +29,12 @@ PATH_ASSETS     = os.path.join(BASE_DIR, "assets")
 PATH_INTERFACE  = os.path.join(PATH_ASSETS, "interface")
 PATH_FONDS      = os.path.join(PATH_ASSETS, "backgrounds")
 PATH_OVERLAYS   = os.path.join(PATH_ASSETS, "overlays")
+PATH_SOUNDS     = os.path.join(PATH_ASSETS, "sounds")
+
+# --- Fichiers sons (chargés si présents, sinon ignorés silencieusement) ---
+SON_BEEP        = os.path.join(PATH_SOUNDS, "beep.wav")      # Tick décompte
+SON_SHUTTER     = os.path.join(PATH_SOUNDS, "shutter.wav")   # Déclenchement photo
+SON_SUCCESS     = os.path.join(PATH_SOUNDS, "success.wav")   # Impression lancée
 
 
 # --- Chemins des fichiers d'interface (L'ÉCRAN) ---
@@ -65,9 +75,11 @@ MASQUE = 130   # Transparance des bande latérale noire si ratio image modifié 
 TEMPS_DECOMPTE = 1
 
 # --- Contrôles Clavier ---
-TOUCHE_GAUCHE = pygame.K_g 
-TOUCHE_MILIEU = pygame.K_m 
-TOUCHE_DROITE = pygame.K_d 
+# Les K_* de pygame pour les lettres minuscules correspondent à leur code ASCII.
+# Fallback ord() permet à config.py de se charger sans pygame (pour status.py).
+TOUCHE_GAUCHE = pygame.K_g if pygame else ord('g')
+TOUCHE_MILIEU = pygame.K_m if pygame else ord('m')
+TOUCHE_DROITE = pygame.K_d if pygame else ord('d')
 
 # --- Délais et Sécurité ---
 DELAI_SECURITE = 2.0  # Temps d'attente (anti-rebond) entre deux pressions
@@ -154,10 +166,45 @@ STRIP_PHOTO_RATIO = 0.80
 
 
 # --- Mode 10x15 (Photo Unique) ---
-PHOTO_10x15_LARGEUR  = 1600 
-PHOTO_10x15_HAUTEUR  = 1000 
+PHOTO_10x15_LARGEUR  = 1600
+PHOTO_10x15_HAUTEUR  = 1000
 PHOTO_10x15_OFFSET_X = -100 # Décalage gauche/droite
 PHOTO_10x15_OFFSET_Y = -50  # Décalage haut/bas
+
+# --- Dimensions finales d'impression (Sprint 4.8) ---
+# 10x15 à 300 DPI : 6" × 4" = 1800 × 1200 px
+MONTAGE_10X15_SIZE = (1800, 1200)
+# Bandelette à 300 DPI : 2" × 6" = 600 × 1800 px
+MONTAGE_STRIP_SIZE = (600, 1800)
+# Rotation appliquée au fond + overlay en mode strip (imprimante orientée tête-bêche)
+STRIP_ROTATION_DEGREES = 180
+
+# --- Dimensions de preview écran (mode 10x15) ---
+# Canvas + zone photo + offset = cadre blanc fin autour de la photo
+MONTAGE_10X15_PREVIEW_SIZE         = (900, 600)
+MONTAGE_10X15_PREVIEW_PHOTO_FIT    = (840, 540)
+MONTAGE_10X15_PREVIEW_PHOTO_OFFSET = (30, 30)
+MONTAGE_10X15_PREVIEW_QUALITY      = 80
+
+# --- Dimensions finales de montage (mode 10x15) ---
+# Photo + offset dans le canvas 1800×1200
+MONTAGE_10X15_FINAL_PHOTO_FIT      = (1640, 1040)
+MONTAGE_10X15_FINAL_PHOTO_OFFSET   = (80, 80)
+MONTAGE_10X15_FINAL_QUALITY        = 98
+
+# --- Dimensions de preview écran (mode strip) ---
+STRIP_PREVIEW_PHOTO_LARGEUR = 520
+STRIP_PREVIEW_ESPACEMENT    = 40
+STRIP_PREVIEW_MARGE_HB      = 20     # marge haut/bas de la bande
+STRIP_PREVIEW_CANVAS_LARGEUR = 600
+STRIP_PREVIEW_THUMBNAIL_MAX = (400, 800)
+STRIP_PREVIEW_QUALITY       = 90
+
+# --- Qualité JPEG des montages finaux strip ---
+STRIP_FINAL_QUALITY = 98
+
+# --- Couleur de fond des écrans transitoires (loader, spinner, attente) ---
+COULEUR_FOND_LOADER = (10, 10, 18)
 
 # ==========================================
 # 6. RÉGLAGES PRÉVISUALISATION (ÉCRAN)
@@ -203,6 +250,33 @@ TXT_BOUTON_ACCUEIL     = "Accueil"
 TXT_BOUTON_IMPRIMER    = "IMPRIMER"
 TXT_BOUTON_SUPPRIMER   = "Accueil"
 
+# --- Messages écran splash / erreur / préparation ---
+TXT_SPLASH_CAMERA       = "Connexion à l'appareil photo..."
+TXT_SPLASH_CAMERA_OK    = "Appareil photo connecté !"
+TXT_SPLASH_CAMERA_FAIL  = "Appareil photo non détecté - mode dégradé"
+TXT_PREPARATION_IMP     = "Préparation de votre impression..."
+TXT_ERREUR_CAPTURE      = "Erreur de capture - réessayez"
+TXT_ERREUR_IMPRIMANTE   = "Imprimante indisponible"
+TXT_CONFIRM_ABANDON_1   = "Abandonner votre session ?"
+TXT_CONFIRM_ABANDON_2   = "Appuyez encore sur le bouton rouge pour confirmer"
+
+DUREE_FLASH_BLANC  = 0.08  # Secondes de flash blanc pur avant la capture
+DUREE_ECRAN_ERREUR = 4.0   # Timeout auto des écrans d'erreur (secondes)
+DUREE_CONFIRM_ABANDON = 3.0  # Fenêtre de confirmation abandon (secondes)
+TIMEOUT_SPLASH_CAMERA = 10.0  # Timeout max splash connexion caméra (secondes)
+
+# --- Monitoring espace disque continu (Sprint 5.6) ---
+SEUIL_DISQUE_CRITIQUE_MB   = 500    # alerte si < 500 Mo libres pendant un événement
+INTERVALLE_CHECK_DISQUE_S  = 30.0   # fréquence de check (en secondes) pendant l'accueil
+
+# --- Slideshow d'attente sur l'accueil (Sprint 6.2) ---
+# Après N secondes sans activité sur l'accueil, les montages passés défilent en plein écran
+# pour attirer les invités.
+DUREE_IDLE_SLIDESHOW      = 30.0   # Secondes d'inactivité avant démarrage
+DUREE_PAR_IMAGE_SLIDESHOW = 3.5    # Durée d'affichage de chaque image
+NB_MAX_IMAGES_SLIDESHOW   = 40     # Plus récentes uniquement, pour éviter de scanner trop
+TXT_SLIDESHOW_INVITATION  = "Approchez pour commencer !"
+
 
 
 # ==========================================
@@ -231,3 +305,52 @@ ANIM_RAYON_POINT   = 28
 ANIM_V_ELASTIQUE   = 5.0
 
 FPS = 60
+
+
+# ==========================================
+# 9. VALIDATION AU CHARGEMENT (Sprint 4.7)
+# ==========================================
+# On vérifie au premier import que la config est cohérente. Un AssertionError
+# au démarrage est bien plus clair qu'un bug visuel à mi-événement.
+def _valider_config():
+    # Dimensions
+    assert WIDTH > 0 and HEIGHT > 0, f"Dimensions écran invalides : {WIDTH}x{HEIGHT}"
+    assert LIVE_W > 0 and LIVE_H > 0, f"Dimensions live invalides : {LIVE_W}x{LIVE_H}"
+    assert PHOTO_10x15_LARGEUR > 0 and PHOTO_10x15_HAUTEUR > 0
+
+    # Timings
+    assert TEMPS_DECOMPTE >= 1, f"TEMPS_DECOMPTE doit être >= 1 (actuel : {TEMPS_DECOMPTE})"
+    assert DELAI_SECURITE >= 0.5, f"DELAI_SECURITE trop court : {DELAI_SECURITE}"
+    assert FPS > 0, f"FPS invalide : {FPS}"
+    assert TEMPS_ATTENTE_IMP > 0, f"TEMPS_ATTENTE_IMP invalide : {TEMPS_ATTENTE_IMP}"
+
+    # Alpha channels
+    assert 0 <= MASQUE <= 255, f"MASQUE hors [0,255] : {MASQUE}"
+    assert 0 <= BANDEAU_ALPHA <= 255, f"BANDEAU_ALPHA hors [0,255] : {BANDEAU_ALPHA}"
+    assert 0 <= ALPHA_TEXTE_REPOS <= 255
+
+    # Sprint 2 params
+    assert DUREE_FLASH_BLANC >= 0, f"DUREE_FLASH_BLANC négatif : {DUREE_FLASH_BLANC}"
+    assert DUREE_ECRAN_ERREUR > 0, f"DUREE_ECRAN_ERREUR invalide : {DUREE_ECRAN_ERREUR}"
+    assert DUREE_CONFIRM_ABANDON > 0
+    assert TIMEOUT_SPLASH_CAMERA > 0
+
+    # Sprint 6.2 slideshow
+    assert DUREE_IDLE_SLIDESHOW > 0, f"DUREE_IDLE_SLIDESHOW invalide : {DUREE_IDLE_SLIDESHOW}"
+    assert DUREE_PAR_IMAGE_SLIDESHOW > 0
+    assert NB_MAX_IMAGES_SLIDESHOW > 0
+
+    # Strip dimensions cohérentes
+    assert 0.3 <= STRIP_PHOTO_RATIO <= 1.2, f"STRIP_PHOTO_RATIO suspect : {STRIP_PHOTO_RATIO}"
+    assert STRIP_MARGE_HAUT >= 0 and STRIP_MARGE_LATERALE >= 0 and STRIP_ESPACE_PHOTOS >= 0
+
+    # Tailles de montage
+    assert MONTAGE_10X15_SIZE[0] > 0 and MONTAGE_10X15_SIZE[1] > 0
+    assert MONTAGE_STRIP_SIZE[0] > 0 and MONTAGE_STRIP_SIZE[1] > 0
+
+    # Noms d'imprimantes
+    assert NOM_IMPRIMANTE_10X15 and isinstance(NOM_IMPRIMANTE_10X15, str)
+    assert NOM_IMPRIMANTE_STRIP and isinstance(NOM_IMPRIMANTE_STRIP, str)
+
+
+_valider_config()

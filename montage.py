@@ -1,0 +1,180 @@
+"""montage.py — génération de montages photo via PIL.
+
+Module pur (pas de pygame, pas de globals UI). Testable isolément.
+Expose deux classes (MontageGenerator10x15, MontageGeneratorStrip) qui partagent
+une base commune (MontageBase) et la fonction helper `charger_et_corriger`.
+
+Sprint 4.2 + 4.6 : extrait des 4 fonctions historiques generer_preview_* /
+generer_montage_* qui étaient dupliquées dans Photobooth_start.py.
+"""
+import os
+from PIL import Image, ImageOps
+
+from config import (
+    PATH_TEMP,
+    PREFIXE_PRINT_10X15, PREFIXE_PRINT_STRIP,
+    BG_10X15_FILE, OVERLAY_10X15,
+    BG_STRIPS_FILE, OVERLAY_STRIPS,
+    MONTAGE_10X15_SIZE, MONTAGE_STRIP_SIZE, STRIP_ROTATION_DEGREES,
+    STRIP_PHOTO_RATIO, STRIP_MARGE_HAUT, STRIP_MARGE_LATERALE, STRIP_ESPACE_PHOTOS,
+    MONTAGE_10X15_PREVIEW_SIZE, MONTAGE_10X15_PREVIEW_PHOTO_FIT,
+    MONTAGE_10X15_PREVIEW_PHOTO_OFFSET, MONTAGE_10X15_PREVIEW_QUALITY,
+    MONTAGE_10X15_FINAL_PHOTO_FIT, MONTAGE_10X15_FINAL_PHOTO_OFFSET,
+    MONTAGE_10X15_FINAL_QUALITY,
+    STRIP_PREVIEW_PHOTO_LARGEUR, STRIP_PREVIEW_ESPACEMENT, STRIP_PREVIEW_MARGE_HB,
+    STRIP_PREVIEW_CANVAS_LARGEUR, STRIP_PREVIEW_THUMBNAIL_MAX, STRIP_PREVIEW_QUALITY,
+    STRIP_FINAL_QUALITY,
+)
+
+
+def charger_et_corriger(chemin, rotation_forcee=0):
+    """Charge une image JPEG et la retourne en RGB. `with` ferme le file handle."""
+    with Image.open(chemin) as src:
+        img = src.convert("RGB")
+    if rotation_forcee != 0:
+        img = img.rotate(rotation_forcee, expand=True)
+    return img
+
+
+class MontageBase:
+    """Helpers partagés pour la génération de montages PIL."""
+
+    @staticmethod
+    def _canvas_depuis_bg_ou_blanc(bg_path, size, rotation=0, redresser_si_horizontal=False):
+        """Charge le fond ou retourne une toile blanche.
+        `redresser_si_horizontal` : si le fond source est paysage, le met debout
+        (rotation 90° expand) avant d'appliquer `rotation` et le resize final."""
+        if bg_path and os.path.exists(bg_path) and os.path.isfile(bg_path):
+            with Image.open(bg_path) as src:
+                canvas = src.convert("RGB")
+            if redresser_si_horizontal and canvas.width > canvas.height:
+                canvas = canvas.rotate(90, expand=True)
+            if rotation:
+                canvas = canvas.rotate(rotation)
+            return canvas.resize(size)
+        return Image.new("RGB", size, "white")
+
+    @staticmethod
+    def _coller_overlay(canvas, overlay_path, size, rotation=0, redresser_si_horizontal=False):
+        """Applique l'overlay RGBA si le fichier existe."""
+        if not (overlay_path and os.path.exists(overlay_path)):
+            return
+        with Image.open(overlay_path) as src:
+            ov = src.convert("RGBA")
+        if redresser_si_horizontal and ov.width > ov.height:
+            ov = ov.rotate(90, expand=True)
+        if rotation:
+            ov = ov.rotate(rotation)
+        ov = ov.resize(size)
+        canvas.paste(ov, (0, 0), ov)
+
+    @staticmethod
+    def _chemin_prev():
+        return os.path.join(PATH_TEMP, "montage_prev.jpg")
+
+
+class MontageGenerator10x15(MontageBase):
+    """Montage grand format 10x15. Preview = 900×600 simple ; final = 1800×1200 avec BG+overlay.
+    Toutes les dimensions sont configurables dans config.py (section Sprint 4.8)."""
+
+    PREVIEW_SIZE         = MONTAGE_10X15_PREVIEW_SIZE
+    PREVIEW_PHOTO_FIT    = MONTAGE_10X15_PREVIEW_PHOTO_FIT
+    PREVIEW_PHOTO_OFFSET = MONTAGE_10X15_PREVIEW_PHOTO_OFFSET
+    PREVIEW_QUALITY      = MONTAGE_10X15_PREVIEW_QUALITY
+
+    FINAL_SIZE           = MONTAGE_10X15_SIZE
+    FINAL_PHOTO_FIT      = MONTAGE_10X15_FINAL_PHOTO_FIT
+    FINAL_PHOTO_OFFSET   = MONTAGE_10X15_FINAL_PHOTO_OFFSET
+    FINAL_QUALITY        = MONTAGE_10X15_FINAL_QUALITY
+
+    @classmethod
+    def preview(cls, photos):
+        path_prev = cls._chemin_prev()
+        canvas = Image.new("RGB", cls.PREVIEW_SIZE, "white")
+        img_brute = charger_et_corriger(photos[0])
+        photo_fit = ImageOps.fit(img_brute, cls.PREVIEW_PHOTO_FIT, Image.Resampling.LANCZOS)
+        canvas.paste(photo_fit, cls.PREVIEW_PHOTO_OFFSET)
+        canvas.save(path_prev, quality=cls.PREVIEW_QUALITY)
+        return path_prev
+
+    @classmethod
+    def final(cls, photos, id_session):
+        path_hd = os.path.join(PATH_TEMP, f"{PREFIXE_PRINT_10X15}_{id_session}.jpg")
+        canvas = cls._canvas_depuis_bg_ou_blanc(BG_10X15_FILE, cls.FINAL_SIZE)
+        img_brute = charger_et_corriger(photos[0])
+        photo_fit = ImageOps.fit(img_brute, cls.FINAL_PHOTO_FIT, Image.Resampling.LANCZOS)
+        canvas.paste(photo_fit, cls.FINAL_PHOTO_OFFSET)
+        cls._coller_overlay(canvas, OVERLAY_10X15, cls.FINAL_SIZE)
+        canvas.save(path_hd, quality=cls.FINAL_QUALITY)
+        return path_hd
+
+
+class MontageGeneratorStrip(MontageBase):
+    """Montage bandelettes verticales. Preview = thumbnail 400×800 ; final = 600×1800
+    avec BG/overlay rotés 180° (imprimante tête-bêche)."""
+
+    # Preview (écran) — dimensions configurables dans config.py
+    PREVIEW_PHOTO_LARGEUR   = STRIP_PREVIEW_PHOTO_LARGEUR
+    PREVIEW_ESPACEMENT      = STRIP_PREVIEW_ESPACEMENT
+    PREVIEW_MARGE_HAUT_BAS  = STRIP_PREVIEW_MARGE_HB
+    PREVIEW_CANEVAS_LARGEUR = STRIP_PREVIEW_CANVAS_LARGEUR
+    PREVIEW_THUMBNAIL_MAX   = STRIP_PREVIEW_THUMBNAIL_MAX
+    PREVIEW_QUALITY         = STRIP_PREVIEW_QUALITY
+
+    # Final (impression)
+    FINAL_SIZE     = MONTAGE_STRIP_SIZE
+    FINAL_QUALITY  = STRIP_FINAL_QUALITY
+    FINAL_ROTATION = STRIP_ROTATION_DEGREES
+
+    @classmethod
+    def preview(cls, photos):
+        path_prev = cls._chemin_prev()
+        l_p = cls.PREVIEW_PHOTO_LARGEUR
+        ratio = float(STRIP_PHOTO_RATIO)
+        h_p = int(l_p * ratio)
+        espacement = cls.PREVIEW_ESPACEMENT
+        marge_hb = cls.PREVIEW_MARGE_HAUT_BAS
+        hauteur_totale = (h_p * 3) + (espacement * 2) + (marge_hb * 2)
+
+        bande_v = Image.new("RGB", (cls.PREVIEW_CANEVAS_LARGEUR, hauteur_totale), "white")
+        offset_x = (cls.PREVIEW_CANEVAS_LARGEUR - l_p) // 2
+
+        for i in range(min(len(photos), 3)):
+            img = charger_et_corriger(photos[i])
+            img_fit = ImageOps.fit(img, (l_p, h_p), Image.Resampling.LANCZOS)
+            pos_y = marge_hb + i * (h_p + espacement)
+            bande_v.paste(img_fit, (offset_x, pos_y))
+
+        bande_v.thumbnail(cls.PREVIEW_THUMBNAIL_MAX, Image.Resampling.LANCZOS)
+        bande_v.save(path_prev, "JPEG", quality=cls.PREVIEW_QUALITY)
+        return path_prev
+
+    @classmethod
+    def final(cls, photos, id_session):
+        path_hd = os.path.join(PATH_TEMP, f"{PREFIXE_PRINT_STRIP}_{id_session}.jpg")
+
+        # Fond : redressement si horizontal, puis rotation 180° (imprimante tête-bêche)
+        canvas = cls._canvas_depuis_bg_ou_blanc(
+            BG_STRIPS_FILE, cls.FINAL_SIZE,
+            rotation=cls.FINAL_ROTATION, redresser_si_horizontal=True,
+        )
+
+        marge_haut = STRIP_MARGE_HAUT
+        marge_lat = STRIP_MARGE_LATERALE
+        espace_entre = STRIP_ESPACE_PHOTOS
+        photo_w = cls.FINAL_SIZE[0] - (2 * marge_lat)
+        photo_h = int(photo_w * float(STRIP_PHOTO_RATIO))
+
+        for i in range(min(len(photos), 3)):
+            img = charger_et_corriger(photos[i])
+            img_fit = ImageOps.fit(img, (photo_w, photo_h), Image.Resampling.LANCZOS)
+            pos_y = marge_haut + i * (photo_h + espace_entre)
+            canvas.paste(img_fit, (marge_lat, pos_y))
+
+        cls._coller_overlay(
+            canvas, OVERLAY_STRIPS, cls.FINAL_SIZE,
+            rotation=cls.FINAL_ROTATION, redresser_si_horizontal=True,
+        )
+
+        canvas.save(path_hd, "JPEG", quality=cls.FINAL_QUALITY)
+        return path_hd
