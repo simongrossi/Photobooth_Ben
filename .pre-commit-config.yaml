@@ -1,0 +1,23 @@
+# Pre-commit hooks. À activer localement avec :
+#   pip install pre-commit
+#   pre-commit install
+# Ensuite chaque `git commit` lance ruff (auto-fix) + pytest.
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.10
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+        stages: [manual]  # pas forcé à chaque commit, sur demande
+
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest (test_montage.py)
+        entry: python3 -m pytest test_montage.py -q
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]

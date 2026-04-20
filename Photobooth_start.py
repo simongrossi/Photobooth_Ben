@@ -263,7 +263,7 @@ except Exception:
 # ========================================================================================================
 
 from ui import (  # noqa: E402
-    UIContext, setup_sounds, jouer_son,
+    UIContext, AccueilAssets, setup_sounds, jouer_son,
     draw_text_shadow_soft, inserer_background, executer_avec_spinner,
     ecran_erreur, ecran_attente_impression,
     splash_connexion_camera,
@@ -371,47 +371,23 @@ slideshow_cached_surface = None       # surface pygame de l'image courante
 slideshow_cached_for_idx = -1         # l'index pour lequel la surface est valide
 
 
-# --- CHARGEMENT DES SURFACES ---
-fond_accueil = None
-icon_10x15 = None
-icon_strip = None
-
-try:
-    # 1. Chargement du fond d'écran
-    if os.path.exists(FILE_BG_ACCUEIL):
-        fond_accueil = pygame.image.load(FILE_BG_ACCUEIL).convert()
-        fond_accueil = pygame.transform.scale(fond_accueil, (WIDTH, HEIGHT))
-    else:
-        log_warning(f"Fond d'accueil manquant : {FILE_BG_ACCUEIL}")
-
-    # 2. Chargement 10x15 (Utilise LARGEUR_ICONE_10X15 du config)
-    if os.path.exists(PATH_IMG_10X15):
-        img_10x15_raw = pygame.image.load(PATH_IMG_10X15).convert_alpha()
-        ratio_10x15 = img_10x15_raw.get_height() / img_10x15_raw.get_width()
-        h_10x15 = int(LARGEUR_ICONE_10X15 * ratio_10x15)
-        
-        icon_10x15_norm = pygame.transform.smoothscale(img_10x15_raw, (LARGEUR_ICONE_10X15, h_10x15))
-        icon_10x15_select = pygame.transform.smoothscale(img_10x15_raw, (int(LARGEUR_ICONE_10X15 * ZOOM_FACTOR), int(h_10x15 * ZOOM_FACTOR)))
-    else:
-        log_warning(f"Image 10x15 manquante : {PATH_IMG_10X15}")
-
-    # 3. Chargement Strip (Utilise LARGEUR_ICONE_STRIP du config)
-    if os.path.exists(PATH_IMG_STRIP):
-        img_strip_raw = pygame.image.load(PATH_IMG_STRIP).convert_alpha()
-        ratio_strip = img_strip_raw.get_height() / img_strip_raw.get_width()
-        h_strip = int(LARGEUR_ICONE_STRIP * ratio_strip)
-        
-        icon_strip_norm = pygame.transform.smoothscale(img_strip_raw, (LARGEUR_ICONE_STRIP, h_strip))
-        icon_strip_select = pygame.transform.smoothscale(img_strip_raw, (int(LARGEUR_ICONE_STRIP * ZOOM_FACTOR), int(h_strip * ZOOM_FACTOR)))
-    else:
-        log_warning(f"Image Strip manquante : {PATH_IMG_STRIP}")
-
-    print("✅ Toutes les images de l'interface sont chargées.")
-
-except Exception as e:
-    msg = f"Erreur critique lors du chargement des surfaces : {e}"
-    print(f"⚠️ {msg}")
-    log_critical(msg)
+# --- CHARGEMENT DES SURFACES (cache boot-time via AccueilAssets) ---
+accueil_assets = AccueilAssets.charger(
+    bg_path=FILE_BG_ACCUEIL,
+    img_10x15_path=PATH_IMG_10X15,
+    img_strip_path=PATH_IMG_STRIP,
+    largeur_10x15=LARGEUR_ICONE_10X15,
+    largeur_strip=LARGEUR_ICONE_STRIP,
+    zoom_factor=ZOOM_FACTOR,
+    taille_ecran=(WIDTH, HEIGHT),
+)
+# Alias pour les render functions qui accèdent aux globals
+fond_accueil = accueil_assets.fond
+icon_10x15_norm = accueil_assets.icon_10x15_norm
+icon_10x15_select = accueil_assets.icon_10x15_select
+icon_strip_norm = accueil_assets.icon_strip_norm
+icon_strip_select = accueil_assets.icon_strip_select
+print("✅ Interface chargée (AccueilAssets).")
 
 # --- Splash de connexion caméra (Sprint 2.1) ---
 # Si `camera` a été obtenue à l'init top du fichier, le splash se ferme immédiatement.
@@ -427,6 +403,147 @@ session.abandon_confirm_until = 0.0
 # Chaque état a sa fonction de rendu. Accèdent aux globals du module (screen, fontes,
 # assets, caches). `session` est passé explicitement pour rendre la dépendance visible.
 # ========================================================================================================
+
+def _render_accueil_slideshow(session, idle_seconds):
+    """Rendu du slideshow plein écran avec invitation pulsée.
+    Extrait du rendu accueil pour clarté (Sprint item 11)."""
+    global slideshow_images, slideshow_last_refresh, slideshow_cached_for_idx, slideshow_cached_surface
+
+    # Rafraîchit la liste tous les 30 s pour inclure les nouvelles impressions
+    if time.time() - slideshow_last_refresh > 30.0 or not slideshow_images:
+        slideshow_images = lister_images_slideshow()
+        slideshow_last_refresh = time.time()
+        slideshow_cached_for_idx = -1
+
+    screen.fill((0, 0, 0))
+    if slideshow_images:
+        temps_slideshow = idle_seconds - DUREE_IDLE_SLIDESHOW
+        idx = int(temps_slideshow / DUREE_PAR_IMAGE_SLIDESHOW) % len(slideshow_images)
+        if idx != slideshow_cached_for_idx:
+            try:
+                raw = pygame.image.load(slideshow_images[idx]).convert()
+                iw, ih = raw.get_size()
+                scale = min(WIDTH / iw, HEIGHT / ih)
+                slideshow_cached_surface = pygame.transform.smoothscale(
+                    raw, (int(iw * scale), int(ih * scale)),
+                )
+                slideshow_cached_for_idx = idx
+            except Exception as e:
+                log_warning(f"Slideshow load échoué : {e}")
+                slideshow_cached_surface = None
+
+        if slideshow_cached_surface:
+            sx = (WIDTH - slideshow_cached_surface.get_width()) // 2
+            sy = (HEIGHT - slideshow_cached_surface.get_height()) // 2
+            screen.blit(slideshow_cached_surface, (sx, sy))
+    else:
+        inserer_background(screen, fond_accueil)
+
+    # Invitation pulsée + bandeau noir pour lisibilité
+    alpha_inv = 150 + int(80 * math.sin(time.time() * 2))
+    inv_surf = font_titre.render(TXT_SLIDESHOW_INVITATION, True, (255, 255, 255))
+    inv_surf.set_alpha(alpha_inv)
+    inv_x = WIDTH // 2 - inv_surf.get_width() // 2
+    inv_bg = pygame.Surface((WIDTH, inv_surf.get_height() + 30), pygame.SRCALPHA)
+    inv_bg.fill((0, 0, 0, 130))
+    screen.blit(inv_bg, (0, HEIGHT - inv_surf.get_height() - 60))
+    screen.blit(inv_surf, (inv_x, HEIGHT - inv_surf.get_height() - 45))
+
+
+def _render_accueil_normal(session):
+    """Rendu de l'accueil standard : 2 icônes (10x15/strip) + bandeau de conseil."""
+    inserer_background(screen, fond_accueil)
+    marge_centrale = MARGE_ACCUEIL
+    axe_y_centre = (HEIGHT // 2) - 60
+
+    # Effet de clignotement doux (pulsation)
+    amplitude = (PULSE_MAX - PULSE_MIN) // 2
+    pulse = (PULSE_MIN + amplitude) + int(amplitude * math.sin(time.time() * PULSE_VITESSE))
+
+    amp_lente = (PULSE_LENT_MAX - PULSE_LENT_MIN) // 2
+    pulse_lent = (PULSE_LENT_MIN + amp_lente) + int(amp_lente * math.sin(time.time() * PULSE_LENT_VITESSE))
+
+    facteur_pulse = (pulse - PULSE_MIN) / (PULSE_MAX - PULSE_MIN) if (PULSE_MAX - PULSE_MIN) != 0 else 0
+    couleur_choisie = tuple(
+        int(COULEUR_TEXTE_OFF[i] + (COULEUR_TEXTE_ON[i] - COULEUR_TEXTE_OFF[i]) * facteur_pulse)
+        for i in range(3)
+    )
+
+    # Bloc gauche : 10x15
+    if icon_10x15_norm:
+        is_sel = (session.mode_actuel == "10x15")
+        img_draw = icon_10x15_select if is_sel else icon_10x15_norm
+        x_10 = (WIDTH // 2) - img_draw.get_width() - (marge_centrale // 2) + OFFSET_DROITE_10X15
+        y_10 = axe_y_centre - (img_draw.get_height() // 2)
+        img_draw.set_alpha(pulse if is_sel else 130)
+        screen.blit(img_draw, (x_10, y_10))
+
+        color_txt_10 = couleur_choisie if is_sel else COULEUR_TEXTE_REPOS
+        txt_10 = font_boutons.render(MODE_10x15, True, color_txt_10)
+        if not is_sel:
+            txt_10.set_alpha(ALPHA_TEXTE_REPOS)
+        screen.blit(txt_10, (x_10 + img_draw.get_width() // 2 - txt_10.get_width() // 2,
+                             y_10 + img_draw.get_height() + 20))
+
+    # Bloc droit : STRIPS
+    if icon_strip_norm:
+        is_sel = (session.mode_actuel == "strips")
+        img_draw = icon_strip_select if is_sel else icon_strip_norm
+        x_s = (WIDTH // 2) + (marge_centrale // 2) + OFFSET_DROITE_STRIP
+        y_s = axe_y_centre - (img_draw.get_height() // 2)
+        img_draw.set_alpha(pulse if is_sel else 130)
+        screen.blit(img_draw, (x_s, y_s))
+
+        color_txt_s = couleur_choisie if is_sel else COULEUR_TEXTE_REPOS
+        txt_s = font_boutons.render(MODE_STRIP, True, color_txt_s)
+        if not is_sel:
+            txt_s.set_alpha(ALPHA_TEXTE_REPOS)
+        screen.blit(txt_s, (x_s + img_draw.get_width() // 2 - txt_s.get_width() // 2,
+                            y_s + img_draw.get_height() + 20))
+
+    # Bandeau navigation (surface cachée Sprint 3.4)
+    screen.blit(BANDEAU_CACHE, (0, HEIGHT - BANDEAU_HAUTEUR))
+
+    if session.mode_actuel == "10x15":
+        msg_txt = BANDEAU_10X15
+    elif session.mode_actuel == "strips":
+        msg_txt = BANDEAU_STRIP
+    else:
+        msg_txt = BANDEAU_ACCUEIL
+
+    couleur_txt = (pulse, pulse, pulse) if session.mode_actuel else (pulse_lent, pulse_lent, pulse_lent)
+    msg_rendu = font_bandeau.render(msg_txt, True, couleur_txt)
+    pos_x = WIDTH // 2 - msg_rendu.get_width() // 2
+    pos_y = (HEIGHT - BANDEAU_HAUTEUR // 2) - (msg_rendu.get_height() // 2)
+    screen.blit(msg_rendu, (pos_x, pos_y))
+
+    # Indicateur disque critique (Sprint 5.6)
+    if _disque_critique and _disque_libre_mb is not None:
+        alerte_h = 40
+        alerte = pygame.Surface((WIDTH, alerte_h), pygame.SRCALPHA)
+        alerte.fill((180, 20, 20, 220))
+        screen.blit(alerte, (0, 0))
+        txt_alerte = font_bandeau.render(
+            f"⚠ ESPACE DISQUE CRITIQUE — {_disque_libre_mb:.0f} Mo libres",
+            True, (255, 255, 255),
+        )
+        screen.blit(
+            txt_alerte,
+            (WIDTH // 2 - txt_alerte.get_width() // 2, (alerte_h - txt_alerte.get_height()) // 2),
+        )
+
+
+def render_accueil(session):
+    """ACCUEIL : slideshow d'attente si idle > seuil ET mode_actuel is None,
+    sinon rendu normal (icônes + bandeau + alerte disque)."""
+    verifier_disque_periodiquement()
+
+    idle_seconds = time.time() - session.last_activity_ts
+    if idle_seconds > DUREE_IDLE_SLIDESHOW and session.mode_actuel is None:
+        _render_accueil_slideshow(session, idle_seconds)
+    else:
+        _render_accueil_normal(session)
+
 
 def render_decompte(session):
     """DECOMPTE : preview caméra + compteur + capture HQ + transition d'état.
@@ -646,6 +763,228 @@ def render_fin(session):
 
 
 # ========================================================================================================
+# --- EVENT HANDLERS (Sprint item 9) ---
+# Un handler par état qui peut recevoir des touches (ACCUEIL/VALIDATION/FIN).
+# Chaque handler mute `session` en place. Les `return` anticipés remplacent les
+# `continue` du code inline (le for event loop extérieur passe à l'event suivant).
+# DECOMPTE n'a pas de handler car l'état est non-interactif (géré par render_decompte).
+# ========================================================================================================
+
+def handle_accueil_event(event, session, maintenant, ecoule):
+    """ACCUEIL : G/D sélectionnent le mode, M valide et passe à DECOMPTE.
+    Debounce via DELAI_SECURITE."""
+    if ecoule < DELAI_SECURITE:
+        return
+    if event.key == TOUCHE_GAUCHE:
+        print("Mode 10x15 sélectionné")
+        session.mode_actuel = "10x15"
+    elif event.key == TOUCHE_DROITE:
+        print("Mode Bandelettes sélectionné")
+        session.mode_actuel = "strips"
+    elif event.key == TOUCHE_MILIEU and session.mode_actuel:
+        print(f"🚀 {session.mode_actuel} Validé !")
+        session.photos_validees = []
+        session.dernier_clic_time = maintenant
+        session.etat = Etat.DECOMPTE
+
+
+def _handle_validation_10x15(event, session, maintenant):
+    """VALIDATION mode 10x15 : retake / imprimer / abandon (debounce géré par caller)."""
+    if event.key == TOUCHE_GAUCHE:
+        # Retake : archive en RETAKE puis retourne au décompte
+        print("LOG: [10x15] -> Refaire : Archivage RETAKE et relance")
+        try:
+            p = executer_avec_spinner(
+                lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
+                TXT_PREPARATION_IMP,
+            )
+            dest = os.path.join(PATH_SKIPPED_RETAKE, f"{PREFIXE_RETAKE}_{session.id_session_timestamp}.jpg")
+            shutil.move(p, dest)
+        except Exception as e:
+            log_critical(f"Erreur 10x15 Retake: {e}")
+        session.photos_validees = []
+        session.etat = Etat.DECOMPTE
+        session.dernier_clic_time = maintenant
+
+    elif event.key == TOUCHE_MILIEU:
+        # Imprimer direct + retour accueil
+        print("LOG: [10x15] -> Impression directe et Accueil")
+        try:
+            p = executer_avec_spinner(
+                lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
+                TXT_PREPARATION_IMP,
+            )
+            dest = os.path.join(PATH_PRINT_10X15, f"{PREFIXE_PRINT_10X15}_{session.id_session_timestamp}.jpg")
+            shutil.copy(p, dest)
+            if printer_mgr.send(dest, "10x15"):
+                jouer_son("success")
+                ecran_attente_impression()
+            else:
+                ecran_erreur(TXT_ERREUR_IMPRIMANTE)
+        except Exception as e:
+            log_critical(f"Erreur 10x15 Print/Impression: {e}")
+            ecran_erreur(TXT_ERREUR_IMPRIMANTE)
+
+        pygame.event.clear()
+        terminer_session_et_revenir_accueil("printed")
+        session.dernier_clic_time = maintenant
+
+    elif event.key == TOUCHE_DROITE:
+        # Abandon : archive en DELETED et retour accueil
+        print("LOG: [10x15] -> Abandon : Archivage DELETED et Accueil")
+        try:
+            p = executer_avec_spinner(
+                lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
+                TXT_PREPARATION_IMP,
+            )
+            dest = os.path.join(PATH_SKIPPED_DELETED, f"{PREFIXE_DELETED}_{session.id_session_timestamp}.jpg")
+            shutil.move(p, dest)
+        except Exception as e:
+            log_critical(f"Erreur 10x15 Deleted: {e}")
+        terminer_session_et_revenir_accueil("abandoned")
+        session.dernier_clic_time = maintenant
+
+
+def _handle_validation_strips(event, session, maintenant):
+    """VALIDATION mode strips : retake dernière / valider-continue / annuler."""
+    if event.key == TOUCHE_GAUCHE:
+        print("LOG: [Strips] -> Refaire la dernière photo")
+        if session.photos_validees:
+            session.photos_validees.pop()
+        session.img_preview_cache = None
+        session.etat = Etat.DECOMPTE
+        session.dernier_clic_time = maintenant
+
+    elif event.key == TOUCHE_MILIEU:
+        session.img_preview_cache = None
+        if len(session.photos_validees) < 3:
+            print(f"LOG: [Strips] -> Photo {len(session.photos_validees)} validée")
+            session.etat = Etat.DECOMPTE
+        else:
+            print("LOG: [Strips] -> 3 photos OK, passage à l'écran FIN")
+            session.path_montage = MontageGeneratorStrip.preview(session.photos_validees)
+            session.etat = Etat.FIN
+        session.dernier_clic_time = maintenant
+
+    elif event.key == TOUCHE_DROITE:
+        terminer_session_et_revenir_accueil("abandoned")
+        session.dernier_clic_time = maintenant
+
+
+def handle_validation_event(event, session, maintenant, ecoule):
+    """VALIDATION : dispatch selon mode (10x15 vs strips). Debounce 0.5 s."""
+    if ecoule < 0.5:
+        return
+    if session.mode_actuel == "10x15":
+        _handle_validation_10x15(event, session, maintenant)
+    elif session.mode_actuel == "strips":
+        _handle_validation_strips(event, session, maintenant)
+
+
+def handle_fin_event(event, session, maintenant, ecoule):
+    """FIN : recommencer / imprimer / abandon (double-press confirm). Debounce 1 s."""
+    if ecoule < 1.0:
+        return
+
+    if event.key == TOUCHE_GAUCHE:
+        # Recommencer : archive en RETAKE + repars au décompte (garde id_session)
+        print("LOG: [FIN] -> Recommencer : Archivage et relance")
+        session.abandon_confirm_until = 0.0
+        try:
+            if session.mode_actuel == "strips":
+                p = executer_avec_spinner(
+                    lambda: MontageGeneratorStrip.final(session.photos_validees, session.id_session_timestamp),
+                    TXT_PREPARATION_IMP,
+                )
+            else:
+                p = executer_avec_spinner(
+                    lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
+                    TXT_PREPARATION_IMP,
+                )
+            if os.path.exists(p):
+                nom_dest = f"{PREFIXE_RETAKE}_{session.id_session_timestamp}.jpg"
+                shutil.move(p, os.path.join(PATH_SKIPPED_RETAKE, nom_dest))
+        except Exception as e:
+            log_critical(f"Erreur archivage Recommencer : {e}")
+
+        session.photos_validees = []
+        session.img_preview_cache = None
+        session.path_montage = ""
+        session.etat = Etat.DECOMPTE
+        session.dernier_clic_time = maintenant
+        pygame.event.clear()
+        return
+
+    if event.key == TOUCHE_MILIEU:
+        # Imprimer : génère HD, copie en PRINT_<mode>, envoie CUPS
+        print(f"LOG: [FIN] -> Impression ({session.mode_actuel})")
+        session.abandon_confirm_until = 0.0
+        try:
+            if session.mode_actuel == "strips":
+                p = executer_avec_spinner(
+                    lambda: MontageGeneratorStrip.final(session.photos_validees, session.id_session_timestamp),
+                    TXT_PREPARATION_IMP,
+                )
+                destination = os.path.join(
+                    PATH_PRINT_STRIP, f"{PREFIXE_PRINT_STRIP}_{session.id_session_timestamp}.jpg",
+                )
+            else:
+                p = executer_avec_spinner(
+                    lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
+                    TXT_PREPARATION_IMP,
+                )
+                destination = os.path.join(
+                    PATH_PRINT_10X15, f"{PREFIXE_PRINT_10X15}_{session.id_session_timestamp}.jpg",
+                )
+
+            shutil.copy(p, destination)
+
+            if printer_mgr.send(destination, session.mode_actuel):
+                jouer_son("success")
+                ecran_attente_impression()
+            else:
+                ecran_erreur(TXT_ERREUR_IMPRIMANTE)
+        except Exception as e:
+            log_critical(f"Erreur Impression finale : {e}")
+            ecran_erreur(TXT_ERREUR_IMPRIMANTE)
+
+        pygame.event.clear()
+        terminer_session_et_revenir_accueil("printed")
+        session.dernier_clic_time = maintenant
+        return
+
+    if event.key == TOUCHE_DROITE:
+        # Abandon avec confirmation double-press
+        if session.abandon_confirm_until and time.time() < session.abandon_confirm_until:
+            # 2e appui dans la fenêtre → abandon confirmé
+            print("LOG: [FIN] -> Abandon confirmé (deleted_)")
+            session.abandon_confirm_until = 0.0
+            try:
+                if session.mode_actuel == "strips":
+                    p = executer_avec_spinner(
+                        lambda: MontageGeneratorStrip.final(session.photos_validees, session.id_session_timestamp),
+                        TXT_PREPARATION_IMP,
+                    )
+                else:
+                    p = executer_avec_spinner(
+                        lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
+                        TXT_PREPARATION_IMP,
+                    )
+                if os.path.exists(p):
+                    nom_deleted = f"{PREFIXE_DELETED}_{session.id_session_timestamp}.jpg"
+                    shutil.move(p, os.path.join(PATH_SKIPPED_DELETED, nom_deleted))
+            except Exception as e:
+                log_critical(f"Erreur archivage Supprimer : {e}")
+            terminer_session_et_revenir_accueil("abandoned")
+            session.dernier_clic_time = maintenant
+        else:
+            # 1er appui → on arme la fenêtre de confirmation
+            print("LOG: [FIN] -> Demande de confirmation abandon")
+            session.abandon_confirm_until = time.time() + DUREE_CONFIRM_ABANDON
+            session.dernier_clic_time = maintenant
+
+
+# ========================================================================================================
 # --- BOUCLE PRINCIPALE --- ##############################################################################
 # ========================================================================================================
 
@@ -675,245 +1014,13 @@ while running:
             if slideshow_etait_actif:
                 continue
 
-            # --- 1. ÉTAT ACCUEIL ---
+            # Dispatch par état vers le handler approprié
             if session.etat is Etat.ACCUEIL:
-                if ecoule >= DELAI_SECURITE:
-                    if event.key == TOUCHE_GAUCHE:
-                        print("Mode 10x15 sélectionné")
-                        session.mode_actuel = "10x15"
-                    elif event.key == TOUCHE_DROITE:
-                        print("Mode Bandelettes sélectionné")
-                        session.mode_actuel = "strips"
-                    elif event.key == TOUCHE_MILIEU:
-                        if session.mode_actuel:
-                            print(f"🚀 {session.mode_actuel} Validé !")
-                            session.photos_validees = []
-                            session.dernier_clic_time = maintenant
-                            session.etat = Etat.DECOMPTE
-
-            # --- 2. ÉTAT VALIDATION ---
+                handle_accueil_event(event, session, maintenant, ecoule)
             elif session.etat is Etat.VALIDATION:
-                if ecoule >= 0.5:
-
-                    # ==================================================================
-                    # CAS DU MODE : 10X15 (Direct, une seule photo)
-                    # ==================================================================
-                    if session.mode_actuel == "10x15":
-                        
-                        # --- GAUCHE : REFAIRE (Archivage SKIPPED + Relance) ---
-                        if event.key == TOUCHE_GAUCHE:
-                            print("LOG: [10x15] -> Refaire : Archivage RETAKE et relance")
-                            try:
-                                # Sprint 3.2 : génération dans un thread avec spinner animé
-                                p = executer_avec_spinner(
-                                    lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
-                                    TXT_PREPARATION_IMP,
-                                )
-                                dest = os.path.join(PATH_SKIPPED_RETAKE, f"{PREFIXE_RETAKE}_{session.id_session_timestamp}.jpg")
-                                shutil.move(p, dest)
-                            except Exception as e:
-                                log_critical(f"Erreur 10x15 Retake: {e}")
-
-                            session.photos_validees = []
-                            session.etat = Etat.DECOMPTE
-                            session.dernier_clic_time = maintenant
-
-                        # --- MILIEU : IMPRIMER DIRECTEMENT ---
-                        elif event.key == TOUCHE_MILIEU:
-                            print("LOG: [10x15] -> Impression directe et Accueil")
-                            try:
-                                # Sprint 3.2 : génération threadée avec spinner animé (remplace le fig\xe9)
-                                p = executer_avec_spinner(
-                                    lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
-                                    TXT_PREPARATION_IMP,
-                                )
-                                dest = os.path.join(PATH_PRINT_10X15, f"{PREFIXE_PRINT_10X15}_{session.id_session_timestamp}.jpg")
-                                shutil.copy(p, dest)
-
-                                # 2. On lance l'impression PHYSIQUE (seulement si le fichier est OK)
-                                if printer_mgr.send(dest, "10x15"):
-                                    jouer_son("success")  # Sprint 2.3
-                                    # 3. On affiche l'écran de chargement pour l'utilisateur
-                                    ecran_attente_impression()
-                                else:
-                                    ecran_erreur(TXT_ERREUR_IMPRIMANTE)  # Sprint 2.5/2.6
-
-                            except Exception as e:
-                                log_critical(f"Erreur 10x15 Print/Impression: {e}")
-                                ecran_erreur(TXT_ERREUR_IMPRIMANTE)
-
-                            # 4. Cooldown : on vide les événements en attente (Sprint 2.7)
-                            pygame.event.clear()
-
-                            # Sprint 4.4 : metadata + reset session + retour accueil
-                            terminer_session_et_revenir_accueil("printed")
-                            session.dernier_clic_time = maintenant
-
-                        # --- DROITE : ABANDONNER ---
-                        elif event.key == TOUCHE_DROITE:
-                            print("LOG: [10x15] -> Abandon : Archivage DELETED et Accueil")
-                            try:
-                                # Sprint 3.2 : génération threadée avec spinner
-                                p = executer_avec_spinner(
-                                    lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
-                                    TXT_PREPARATION_IMP,
-                                )
-                                dest = os.path.join(PATH_SKIPPED_DELETED, f"{PREFIXE_DELETED}_{session.id_session_timestamp}.jpg")
-                                shutil.move(p, dest)
-                            except Exception as e:
-                                log_critical(f"Erreur 10x15 Deleted: {e}")
-
-                            terminer_session_et_revenir_accueil("abandoned")  # Sprint 4.4
-                            session.dernier_clic_time = maintenant
-
-
-                    # ==================================================================
-                    # CAS DU MODE : STRIPS (Série de 3 photos)
-                    # ==================================================================
-                    elif session.mode_actuel == "strips":
-                        
-                        # --- GAUCHE : REFAIRE LA DERNIÈRE PHOTO ---
-                        if event.key == TOUCHE_GAUCHE:
-                            print("LOG: [Strips] -> Refaire la dernière photo")
-                            if len(session.photos_validees) > 0:
-                                session.photos_validees.pop()
-                            session.img_preview_cache = None # Crucial pour forcer la mise à jour au prochain tour
-                            session.etat = Etat.DECOMPTE
-                            session.dernier_clic_time = maintenant
-
-                        # --- MILIEU : VALIDER ET CONTINUER / FINIR ---
-                        elif event.key == TOUCHE_MILIEU:
-                            session.img_preview_cache = None # On vide le cache car on change de photo
-                            if len(session.photos_validees) < 3:
-                                print(f"LOG: [Strips] -> Photo {len(session.photos_validees)} validée")
-                                session.etat = Etat.DECOMPTE
-                            else:
-                                print("LOG: [Strips] -> 3 photos OK, passage à l'écran FIN")
-                                session.path_montage = MontageGeneratorStrip.preview(session.photos_validees)
-                                session.etat = Etat.FIN
-                            session.dernier_clic_time = maintenant
-
-                        # --- DROITE : TOUT ANNULER ---
-                        elif event.key == TOUCHE_DROITE:
-                            terminer_session_et_revenir_accueil("abandoned")  # Sprint 4.4
-                            session.dernier_clic_time = maintenant
-
-                    continue # Sortie propre du bloc validation
-
-            # --- 3. ÉTAT FIN (Aperçu final du montage) ---
+                handle_validation_event(event, session, maintenant, ecoule)
             elif session.etat is Etat.FIN:
-                if ecoule >= 1.0:
-                    # --- BOUTON GAUCHE : RECOMMENCER ---
-                    if event.key == TOUCHE_GAUCHE:
-                        print("LOG: [FIN] -> Recommencer : Archivage et relance")
-                        session.abandon_confirm_until = 0.0  # Sprint 2.8 : toute autre touche annule la confirmation
-                        try:
-                            # Sprint 3.2 : archive final threadée avec spinner
-                            if session.mode_actuel == "strips":
-                                p = executer_avec_spinner(
-                                    lambda: MontageGeneratorStrip.final(session.photos_validees, session.id_session_timestamp),
-                                    TXT_PREPARATION_IMP,
-                                )
-                            else:
-                                p = executer_avec_spinner(
-                                    lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
-                                    TXT_PREPARATION_IMP,
-                                )
-
-                            if os.path.exists(p):
-                                nom_dest = f"{PREFIXE_RETAKE}_{session.id_session_timestamp}.jpg"
-                                dest = os.path.join(PATH_SKIPPED_RETAKE, nom_dest)
-                                shutil.move(p, dest)
-                        except Exception as e:
-                            log_critical(f"Erreur archivage Recommencer : {e}")
-
-                        # On vide les photos et on repart directement au décompte
-                        session.photos_validees = []
-                        session.img_preview_cache = None
-                        session.path_montage = ""
-                        session.etat = Etat.DECOMPTE
-                        session.dernier_clic_time = maintenant
-                        pygame.event.clear()
-                        continue
-
-                    # --- BOUTON MILIEU : IMPRIMER ---
-                    elif event.key == TOUCHE_MILIEU:
-                        print(f"LOG: [FIN] -> Impression ({session.mode_actuel})")
-                        session.abandon_confirm_until = 0.0  # Sprint 2.8
-                        try:
-                            # Sprint 3.2 : génération threadée avec spinner animé
-                            if session.mode_actuel == "strips":
-                                p = executer_avec_spinner(
-                                    lambda: MontageGeneratorStrip.final(session.photos_validees, session.id_session_timestamp),
-                                    TXT_PREPARATION_IMP,
-                                )
-                                nom_final = f"{PREFIXE_PRINT_STRIP}_{session.id_session_timestamp}.jpg"
-                                destination = os.path.join(PATH_PRINT_STRIP, nom_final)
-                            else:
-                                p = executer_avec_spinner(
-                                    lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
-                                    TXT_PREPARATION_IMP,
-                                )
-                                nom_final = f"{PREFIXE_PRINT_10X15}_{session.id_session_timestamp}.jpg"
-                                destination = os.path.join(PATH_PRINT_10X15, nom_final)
-
-                            # 2. Sauvegarde dans le dossier PRINT
-                            shutil.copy(p, destination)
-
-                            # 3. IMPRESSION PHYSIQUE avec vérification (Sprint 2.6)
-                            if printer_mgr.send(destination, session.mode_actuel):
-                                jouer_son("success")  # Sprint 2.3
-                                ecran_attente_impression()
-                            else:
-                                ecran_erreur(TXT_ERREUR_IMPRIMANTE)  # Sprint 2.5
-
-                        except Exception as e:
-                            log_critical(f"Erreur Impression finale : {e}")
-                            ecran_erreur(TXT_ERREUR_IMPRIMANTE)
-
-                        # Cooldown anti double-envoi (Sprint 2.7)
-                        pygame.event.clear()
-
-                        # Sprint 4.4 : metadata + reset + retour accueil
-                        terminer_session_et_revenir_accueil("printed")
-                        session.dernier_clic_time = maintenant
-                        continue
-
-                    # --- BOUTON DROITE : SUPPRIMER / ABANDON (Sprint 2.8 : double-press confirm) ---
-                    elif event.key == TOUCHE_DROITE:
-                        if session.abandon_confirm_until and time.time() < session.abandon_confirm_until:
-                            # 2e appui dans la fenêtre → on confirme l'abandon
-                            print("LOG: [FIN] -> Abandon confirmé (deleted_)")
-                            session.abandon_confirm_until = 0.0
-                            try:
-                                # Sprint 3.2 : archive threadée avec spinner
-                                if session.mode_actuel == "strips":
-                                    p = executer_avec_spinner(
-                                        lambda: MontageGeneratorStrip.final(session.photos_validees, session.id_session_timestamp),
-                                        TXT_PREPARATION_IMP,
-                                    )
-                                else:
-                                    p = executer_avec_spinner(
-                                        lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
-                                        TXT_PREPARATION_IMP,
-                                    )
-
-                                if os.path.exists(p):
-                                    nom_deleted = f"{PREFIXE_DELETED}_{session.id_session_timestamp}.jpg"
-                                    dest = os.path.join(PATH_SKIPPED_DELETED, nom_deleted)
-                                    shutil.move(p, dest)
-                            except Exception as e:
-                                log_critical(f"Erreur archivage Supprimer : {e}")
-
-                            terminer_session_et_revenir_accueil("abandoned")  # Sprint 4.4
-                            session.dernier_clic_time = maintenant
-                            continue
-                        else:
-                            # 1er appui → on arme la confirmation, pas d'abandon immédiat
-                            print("LOG: [FIN] -> Demande de confirmation abandon")
-                            session.abandon_confirm_until = time.time() + DUREE_CONFIRM_ABANDON
-                            session.dernier_clic_time = maintenant
-                            continue
+                handle_fin_event(event, session, maintenant, ecoule)
 
 
     # ----------------------------------------------------------------------------------------------------
@@ -924,158 +1031,7 @@ while running:
     # ----------------------------------------------------------------------------------------------------
 
     if session.etat is Etat.ACCUEIL:
-        # Sprint 5.6 : check espace disque à chaque passage sur l'accueil (rate-limité)
-        verifier_disque_periodiquement()
-
-        # --- SLIDESHOW D'ATTENTE (Sprint 6.2) ---
-        # Si plus de DUREE_IDLE_SLIDESHOW secondes sans activité et aucun mode sélectionné,
-        # on fait défiler les montages précédents en plein écran pour attirer les invités.
-        idle_seconds = time.time() - session.last_activity_ts
-        if idle_seconds > DUREE_IDLE_SLIDESHOW and session.mode_actuel is None:
-            # Rafraîchit la liste périodiquement (pour inclure les impressions récentes)
-            if time.time() - slideshow_last_refresh > 30.0 or not slideshow_images:
-                slideshow_images = lister_images_slideshow()
-                slideshow_last_refresh = time.time()
-                slideshow_cached_for_idx = -1  # invalide le cache (liste a pu changer)
-
-            screen.fill((0, 0, 0))
-            if slideshow_images:
-                # Index basé sur le temps écoulé en slideshow
-                temps_slideshow = idle_seconds - DUREE_IDLE_SLIDESHOW
-                idx = int(temps_slideshow / DUREE_PAR_IMAGE_SLIDESHOW) % len(slideshow_images)
-                if idx != slideshow_cached_for_idx:
-                    try:
-                        raw = pygame.image.load(slideshow_images[idx]).convert()
-                        iw, ih = raw.get_size()
-                        scale = min(WIDTH / iw, HEIGHT / ih)
-                        new_size = (int(iw * scale), int(ih * scale))
-                        slideshow_cached_surface = pygame.transform.smoothscale(raw, new_size)
-                        slideshow_cached_for_idx = idx
-                    except Exception as e:
-                        log_warning(f"Slideshow load échoué : {e}")
-                        slideshow_cached_surface = None
-
-                if slideshow_cached_surface:
-                    sx = (WIDTH - slideshow_cached_surface.get_width()) // 2
-                    sy = (HEIGHT - slideshow_cached_surface.get_height()) // 2
-                    screen.blit(slideshow_cached_surface, (sx, sy))
-            else:
-                # Pas d'images passées : on garde le fond d'accueil
-                inserer_background(screen, fond_accueil)
-
-            # Invitation pulsée en bas
-            alpha_inv = 150 + int(80 * math.sin(time.time() * 2))
-            inv_surf = font_titre.render(TXT_SLIDESHOW_INVITATION, True, (255, 255, 255))
-            inv_surf.set_alpha(alpha_inv)
-            inv_x = WIDTH // 2 - inv_surf.get_width() // 2
-            # Bandeau noir derrière le texte pour lisibilité sur toute image
-            inv_bg = pygame.Surface((WIDTH, inv_surf.get_height() + 30), pygame.SRCALPHA)
-            inv_bg.fill((0, 0, 0, 130))
-            screen.blit(inv_bg, (0, HEIGHT - inv_surf.get_height() - 60))
-            screen.blit(inv_surf, (inv_x, HEIGHT - inv_surf.get_height() - 45))
-
-            pygame.display.flip()
-            clock.tick(30)
-            continue  # on ne rend pas l'accueil normal
-
-        # --- ACCUEIL NORMAL ---
-        inserer_background(screen, fond_accueil)
-        marge_centrale = MARGE_ACCUEIL
-        axe_y_centre = (HEIGHT // 2) - 60
-        
-        # --- Effet de clignotement doux (pulsation) ---
-        amplitude = (PULSE_MAX - PULSE_MIN) // 2
-        moyenne = PULSE_MIN + amplitude
-        pulse = moyenne + int(amplitude * math.sin(time.time() * PULSE_VITESSE))
-        
-        amp_lente = (PULSE_LENT_MAX - PULSE_LENT_MIN) // 2
-        moy_lente = PULSE_LENT_MIN + amp_lente
-        pulse_lent = moy_lente + int(amp_lente * math.sin(time.time() * PULSE_LENT_VITESSE))
-
-        # On calcule le mélange de couleur entre OFF et ON
-        facteur_pulse = (pulse - PULSE_MIN) / (PULSE_MAX - PULSE_MIN) if (PULSE_MAX - PULSE_MIN) != 0 else 0
-
-        # Calcul de la couleur mélangée
-        r = int(COULEUR_TEXTE_OFF[0] + (COULEUR_TEXTE_ON[0] - COULEUR_TEXTE_OFF[0]) * facteur_pulse)
-        g = int(COULEUR_TEXTE_OFF[1] + (COULEUR_TEXTE_ON[1] - COULEUR_TEXTE_OFF[1]) * facteur_pulse)
-        b = int(COULEUR_TEXTE_OFF[2] + (COULEUR_TEXTE_ON[2] - COULEUR_TEXTE_OFF[2]) * facteur_pulse)
-        couleur_choisie = (r, g, b)
-
-        # --- BLOC GAUCHE : 10x15 ---
-        if icon_10x15_norm:
-            is_sel = (session.mode_actuel == "10x15")
-            img_draw = icon_10x15_select if is_sel else icon_10x15_norm
-            
-            # Calcul de base + ton OFFSET (vers la droite si positif)
-            x_10 = (WIDTH // 2) - img_draw.get_width() - (marge_centrale // 2) + OFFSET_DROITE_10X15
-            
-            y_10 = axe_y_centre - (img_draw.get_height() // 2)
-            img_draw.set_alpha(pulse if is_sel else 130)
-            screen.blit(img_draw, (x_10, y_10))
-            
-            color_txt_10 = couleur_choisie if (session.mode_actuel == "10x15") else COULEUR_TEXTE_REPOS
-            txt_10 = font_boutons.render(MODE_10x15, True, color_txt_10)
-            if not is_sel:   # --- TRANSPARENCE AU REPOS ---
-                txt_10.set_alpha(ALPHA_TEXTE_REPOS)
-
-            screen.blit(txt_10, (x_10 + img_draw.get_width()//2 - txt_10.get_width()//2, y_10 + img_draw.get_height() + 20))
-
-        # --- BLOC DROIT : STRIPS ---
-        if icon_strip_norm:
-            is_sel = (session.mode_actuel == "strips")
-            img_draw = icon_strip_select if is_sel else icon_strip_norm
-            
-            # Calcul de base + ton OFFSET (vers la droite si positif)
-            x_s = (WIDTH // 2) + (marge_centrale // 2) + OFFSET_DROITE_STRIP
-            
-            y_s = axe_y_centre - (img_draw.get_height() // 2)
-            img_draw.set_alpha(pulse if is_sel else 130)
-            screen.blit(img_draw, (x_s, y_s))
-            
-            color_txt_s = couleur_choisie if (session.mode_actuel == "strips") else COULEUR_TEXTE_REPOS
-            txt_s = font_boutons.render(MODE_STRIP, True, color_txt_s)
-            if not is_sel:  # --- TRANSPARENCE AU REPOS ---
-                txt_s.set_alpha(ALPHA_TEXTE_REPOS)
-            screen.blit(txt_s, (x_s + img_draw.get_width()//2 - txt_s.get_width()//2, y_s + img_draw.get_height() + 20))
-
-        # --- BANDEAU NAVIGATION (Sprint 3.4 : surface cachée) ---
-        screen.blit(BANDEAU_CACHE, (0, HEIGHT - BANDEAU_HAUTEUR))
-
-        # Choix du texte selon le mode
-        if session.mode_actuel == "10x15":
-            msg_txt = BANDEAU_10X15
-        elif session.mode_actuel == "strips":
-            msg_txt = BANDEAU_STRIP
-        else:
-            msg_txt = BANDEAU_ACCUEIL
-
-        # Gestion de la couleur de pulsation (Blanc/Gris)
-        couleur_txt_bandeau = (pulse, pulse, pulse) if session.mode_actuel else (pulse_lent, pulse_lent, pulse_lent)
-        
-        msg_rendu = font_bandeau.render(msg_txt, True, couleur_txt_bandeau)
-
-        # Centrage automatique basé sur la hauteur configurée
-        pos_x = WIDTH // 2 - msg_rendu.get_width() // 2
-        pos_y = (HEIGHT - BANDEAU_HAUTEUR // 2) - (msg_rendu.get_height() // 2)
-
-        screen.blit(msg_rendu, (pos_x, pos_y))
-
-        # --- INDICATEUR DISQUE CRITIQUE (Sprint 5.6) ---
-        # Seulement visible de l'accueil : bandeau rouge semi-transparent en haut avec
-        # l'espace restant, pour que l'admin puisse réagir avant que ça bloque.
-        if _disque_critique and _disque_libre_mb is not None:
-            alerte_h = 40
-            alerte = pygame.Surface((WIDTH, alerte_h), pygame.SRCALPHA)
-            alerte.fill((180, 20, 20, 220))
-            screen.blit(alerte, (0, 0))
-            txt_alerte = font_bandeau.render(
-                f"⚠ ESPACE DISQUE CRITIQUE — {_disque_libre_mb:.0f} Mo libres",
-                True, (255, 255, 255),
-            )
-            screen.blit(
-                txt_alerte,
-                (WIDTH // 2 - txt_alerte.get_width() // 2, (alerte_h - txt_alerte.get_height()) // 2),
-            )
+        render_accueil(session)
 
     elif session.etat is Etat.DECOMPTE:
         render_decompte(session)

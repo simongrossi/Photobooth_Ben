@@ -64,6 +64,86 @@ class UIContext:
 
 
 # ========================================================================================================
+# --- Asset store pour l'écran d'accueil (cache des surfaces chargées au boot) ---
+# ========================================================================================================
+
+class AccueilAssets:
+    """Cache des surfaces pygame de l'accueil, chargées une seule fois au boot.
+
+    Évite de recharger les images à chaque frame — les `smoothscale` sont
+    appliqués ici, les render blits utilisent directement les Surface prêtes.
+
+    Utilisation :
+        assets = AccueilAssets.charger(
+            bg_path=FILE_BG_ACCUEIL,
+            img_10x15_path=PATH_IMG_10X15, img_strip_path=PATH_IMG_STRIP,
+            largeur_10x15=LARGEUR_ICONE_10X15, largeur_strip=LARGEUR_ICONE_STRIP,
+            zoom_factor=ZOOM_FACTOR, taille_ecran=(WIDTH, HEIGHT),
+        )
+    """
+
+    def __init__(self) -> None:
+        self.fond = None
+        self.icon_10x15_norm = None
+        self.icon_10x15_select = None
+        self.icon_strip_norm = None
+        self.icon_strip_select = None
+
+    @classmethod
+    def charger(
+        cls, bg_path: str, img_10x15_path: str, img_strip_path: str,
+        largeur_10x15: int, largeur_strip: int, zoom_factor: float,
+        taille_ecran: tuple,
+    ) -> "AccueilAssets":
+        """Charge toutes les surfaces depuis disque. Toute erreur individuelle est
+        logguée en warning mais ne bloque pas le boot (l'app tourne en mode dégradé
+        sans le ou les assets manquants)."""
+        store = cls()
+
+        # 1. Fond d'accueil
+        if os.path.exists(bg_path):
+            try:
+                bg = pygame.image.load(bg_path).convert()
+                store.fond = pygame.transform.scale(bg, taille_ecran)
+            except Exception as e:
+                log_warning(f"Chargement fond accueil échoué : {e}")
+        else:
+            log_warning(f"Fond d'accueil manquant : {bg_path}")
+
+        # 2. Icône 10x15 (2 échelles : normale + sélectionnée)
+        if os.path.exists(img_10x15_path):
+            try:
+                raw = pygame.image.load(img_10x15_path).convert_alpha()
+                ratio = raw.get_height() / raw.get_width()
+                h = int(largeur_10x15 * ratio)
+                store.icon_10x15_norm = pygame.transform.smoothscale(raw, (largeur_10x15, h))
+                store.icon_10x15_select = pygame.transform.smoothscale(
+                    raw, (int(largeur_10x15 * zoom_factor), int(h * zoom_factor)),
+                )
+            except Exception as e:
+                log_warning(f"Chargement icône 10x15 échoué : {e}")
+        else:
+            log_warning(f"Image 10x15 manquante : {img_10x15_path}")
+
+        # 3. Icône strip (2 échelles)
+        if os.path.exists(img_strip_path):
+            try:
+                raw = pygame.image.load(img_strip_path).convert_alpha()
+                ratio = raw.get_height() / raw.get_width()
+                h = int(largeur_strip * ratio)
+                store.icon_strip_norm = pygame.transform.smoothscale(raw, (largeur_strip, h))
+                store.icon_strip_select = pygame.transform.smoothscale(
+                    raw, (int(largeur_strip * zoom_factor), int(h * zoom_factor)),
+                )
+            except Exception as e:
+                log_warning(f"Chargement icône strip échoué : {e}")
+        else:
+            log_warning(f"Image strip manquante : {img_strip_path}")
+
+        return store
+
+
+# ========================================================================================================
 # --- Sons (fallback silencieux si mixer indispo ou fichiers absents) ---
 # ========================================================================================================
 
