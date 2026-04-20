@@ -124,6 +124,30 @@ class TestCLI:
 # --- Tests in-process pour la couverture ---
 
 
+class TestCheckTemperature:
+    def test_fichier_absent_retourne_true_non_bloquant(self, monkeypatch, capsys):
+        """Sur macOS/Windows, pas de /sys/class/thermal → pas un échec."""
+        monkeypatch.setattr(status, "TEMP_PATH", "/nonexistent/thermal")
+        assert status.check_temperature() is True
+        assert "non disponible" in capsys.readouterr().out
+
+    def test_temperature_normale(self, tmp_path, monkeypatch, capsys):
+        f = tmp_path / "temp"
+        f.write_text("42000")
+        monkeypatch.setattr(status, "TEMP_PATH", str(f))
+        monkeypatch.setattr(status, "SEUIL_TEMP_CRITIQUE_C", 75.0)
+        assert status.check_temperature() is True
+        assert "42.0 °C" in capsys.readouterr().out
+
+    def test_temperature_critique(self, tmp_path, monkeypatch, capsys):
+        f = tmp_path / "temp"
+        f.write_text("82000")
+        monkeypatch.setattr(status, "TEMP_PATH", str(f))
+        monkeypatch.setattr(status, "SEUIL_TEMP_CRITIQUE_C", 75.0)
+        assert status.check_temperature() is False
+        assert "AU-DESSUS" in capsys.readouterr().out
+
+
 class TestCheckPythonDeps:
     def test_module_present(self, capsys):
         """PIL est dans les deps dev — doit être trouvé."""

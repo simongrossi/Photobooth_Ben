@@ -5,7 +5,24 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
 ---
 
-## `WIP` — Split Photobooth_start.py : core/session + core/monitoring
+## `WIP` — Monitoring température CPU (Raspberry Pi)
+
+### Added
+- `core/monitoring.py::TempMonitor` — même pattern que DiskMonitor,
+  lit `/sys/class/thermal/thermal_zone0/temp`, inerte silencieux hors Pi
+- `config.py` : `SEUIL_TEMP_CRITIQUE_C=75.0`, `INTERVALLE_CHECK_TEMP_S=30.0`,
+  `TEMP_PATH`
+- `status.py::check_temperature()` — diagnostic pré-événement non-bloquant
+- `Photobooth_start.py` : bandeau orange en ACCUEIL si CPU ≥ 75 °C
+- Tests : 7 nouveaux tests TempMonitor + 3 tests check_temperature
+
+### Stats
+- Tests : 121 → **131** (+10)
+- Coverage : 80.1 % → **80.6 %**
+
+---
+
+## `fb704ab` — Split Photobooth_start.py : core/session + core/monitoring
 
 ### Added
 - `core/session.py` : `Etat` enum, `SessionState` dataclass, `ecrire_metadata_session()`,

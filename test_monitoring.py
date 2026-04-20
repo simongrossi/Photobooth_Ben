@@ -11,7 +11,7 @@ import time
 import pytest
 
 from core import monitoring
-from core.monitoring import DiskMonitor, lister_images_slideshow
+from core.monitoring import DiskMonitor, TempMonitor, lister_images_slideshow
 
 
 # --- DiskMonitor ---
@@ -77,6 +77,85 @@ class TestDiskMonitorErreur:
         dm.tick()
         apres = time.time()
         assert avant <= dm._dernier_check_ts <= apres
+
+
+# --- TempMonitor ---
+
+
+@pytest.fixture
+def temp_file_factory(tmp_path):
+    """Retourne un factory qui crée un faux /sys/.../temp avec une valeur donnée."""
+    def _make(millideg: int) -> str:
+        path = tmp_path / f"temp_{millideg}"
+        path.write_text(str(millideg))
+        return str(path)
+    return _make
+
+
+class TestTempMonitorLecture:
+    def test_lecture_ok_convertit_millideg_en_celsius(self, temp_file_factory):
+        path = temp_file_factory(55000)
+        tm = TempMonitor(path=path, seuil_c=75.0, intervalle_s=0)
+        tm.tick(maintenant=100.0)
+        assert tm.temp_c == 55.0
+        assert tm.critique is False
+
+    def test_temperature_au_dessus_seuil_critique(self, temp_file_factory):
+        path = temp_file_factory(80000)
+        tm = TempMonitor(path=path, seuil_c=75.0, intervalle_s=0)
+        tm.tick(maintenant=100.0)
+        assert tm.temp_c == 80.0
+        assert tm.critique is True
+
+    def test_pile_au_seuil_est_critique(self, temp_file_factory):
+        path = temp_file_factory(75000)
+        tm = TempMonitor(path=path, seuil_c=75.0, intervalle_s=0)
+        tm.tick(maintenant=100.0)
+        assert tm.critique is True
+
+
+class TestTempMonitorFallback:
+    def test_fichier_absent_inerte_silencieux(self, tmp_path):
+        tm = TempMonitor(path=str(tmp_path / "pas_ici"), seuil_c=75.0, intervalle_s=0)
+        tm.tick(maintenant=100.0)
+        assert tm.temp_c is None
+        assert tm.critique is False
+
+    def test_contenu_invalide_warn_pas_crash(self, tmp_path, caplog):
+        path = tmp_path / "t"
+        path.write_text("pas-un-nombre")
+        tm = TempMonitor(path=str(path), seuil_c=75.0, intervalle_s=0)
+        with caplog.at_level("WARNING", logger="photobooth"):
+            tm.tick(maintenant=100.0)
+        assert any("Check température" in r.message for r in caplog.records)
+
+
+class TestTempMonitorRateLimit:
+    def test_tick_dans_intervalle_skip(self, temp_file_factory):
+        path = temp_file_factory(50000)
+        tm = TempMonitor(path=path, seuil_c=75.0, intervalle_s=30)
+        tm.tick(maintenant=100.0)
+        premier = tm._dernier_check_ts
+        tm.tick(maintenant=110.0)
+        assert tm._dernier_check_ts == premier
+
+    def test_transition_ok_vers_critique_loggue_une_fois(self, temp_file_factory, caplog):
+        # 1er check à 50 °C, puis le fichier change à 80 °C
+        path = temp_file_factory(50000)
+        tm = TempMonitor(path=path, seuil_c=75.0, intervalle_s=1)
+        tm.tick(maintenant=100.0)
+        assert tm.critique is False
+
+        # Simule une montée en température
+        import os as _os
+        _os.remove(path)
+        open(path, "w").write("82000")
+
+        with caplog.at_level("WARNING", logger="photobooth"):
+            tm.tick(maintenant=200.0)
+            tm.tick(maintenant=300.0)  # déjà critique → pas de 2e warn
+        warnings = [r for r in caplog.records if "Température CPU critique" in r.message]
+        assert len(warnings) == 1
 
 
 # --- lister_images_slideshow ---

@@ -4,7 +4,7 @@
 > effets exotiques, hardware, brainstorm), voir [IDEAS.md](IDEAS.md).
 > Pour l'historique de ce qui a été fait, voir [CHANGELOG.md](CHANGELOG.md).
 
-Dernière mise à jour : 2026-04-21 (post-split session/monitoring)
+Dernière mise à jour : 2026-04-21 (post-TempMonitor)
 
 ---
 
@@ -34,13 +34,16 @@ Dernière mise à jour : 2026-04-21 (post-split session/monitoring)
 
 ### UX micro
 
-- [ ] Bip sonore **différent** pour la dernière seconde du décompte (tension)
-- [ ] Countdown en **filigrane** pendant la capture en mode strip (3 → 2 → 1)
-- [ ] **Watermark** discret configurable "Événement XYZ — 20/04/2026"
+_Les 3 items historiques (beep dernière seconde, filigrane strip, watermark)
+sont livrés — voir [CHANGELOG.md](CHANGELOG.md) et [CONFIG.md](CONFIG.md)._
 
 ### Tests & qualité
 
 - [ ] **Coverage `core/camera.py`** — à 0 % car cv2/gphoto2 absents en CI. Mocks complexes ou tests Pi-only (voir [TESTING.md](TESTING.md)). Global à 80 %, tout le reste ≥ 87 %.
+
+### Optimisations rapides
+
+_Monitoring température CPU livré — voir [CHANGELOG.md](CHANGELOG.md)._
 
 ---
 
@@ -58,7 +61,6 @@ Dernière mise à jour : 2026-04-21 (post-split session/monitoring)
 - [ ] **Watchdog `systemd`** — unit file `photobooth.service` qui relance si crash
 - [ ] **Kiosk mode** — désactiver Alt+Tab, souris, raccourcis système, plein écran forcé
 - [ ] **Auto-upload nightly** vers NAS / Dropbox / Nextcloud (cron job rsync)
-- [ ] **Monitoring température Raspberry** — alerte écran si > 75°C
 
 ---
 

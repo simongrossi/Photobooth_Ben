@@ -306,6 +306,14 @@ par défaut.
 | `SEUIL_DISQUE_CRITIQUE_MB` | `500` | Alerte bandeau rouge si < 500 Mo libres |
 | `INTERVALLE_CHECK_DISQUE_S` | `30.0` | Fréquence check disque pendant l'accueil |
 
+### Monitoring température CPU (Pi)
+
+| Constante | Défaut | Effet |
+|---|---|---|
+| `SEUIL_TEMP_CRITIQUE_C` | `75.0` | Alerte bandeau orange si CPU ≥ 75 °C (Pi throttle à ~80 °C) |
+| `INTERVALLE_CHECK_TEMP_S` | `30.0` | Fréquence check température pendant l'accueil |
+| `TEMP_PATH` | `/sys/class/thermal/thermal_zone0/temp` | Fichier système lu. Sur macOS/Windows, le monitor est inerte silencieusement |
+
 ### Slideshow d'attente
 
 | Constante | Défaut | Effet |

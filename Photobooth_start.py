@@ -10,7 +10,7 @@ from config import (
     DELAI_SECURITE,
     DUREE_CONFIRM_ABANDON, DUREE_FLASH_BLANC, DUREE_IDLE_SLIDESHOW, DUREE_PAR_IMAGE_SLIDESHOW,
     FILE_BG_ACCUEIL, FORMAT_TIMESTAMP, HEIGHT,
-    INTERVALLE_CHECK_DISQUE_S, LARGEUR_ICONE_10X15, LARGEUR_ICONE_STRIP, MARGE_ACCUEIL,
+    INTERVALLE_CHECK_DISQUE_S, INTERVALLE_CHECK_TEMP_S, LARGEUR_ICONE_10X15, LARGEUR_ICONE_STRIP, MARGE_ACCUEIL,
     MODE_10x15, MODE_STRIP, NB_MAX_IMAGES_SLIDESHOW,
     NOM_IMPRIMANTE_10X15, NOM_IMPRIMANTE_STRIP, OFFSET_DROITE_10X15, OFFSET_DROITE_STRIP,
     PATH_DATA, PATH_IMG_10X15, PATH_IMG_STRIP, PATH_PRINT,
@@ -18,8 +18,11 @@ from config import (
     PATH_SKIPPED_DELETED, PATH_SKIPPED_RETAKE, PATH_SOUNDS, PATH_TEMP,
     POLICE_FICHIER, PREFIXE_DELETED, PREFIXE_PRINT_10X15, PREFIXE_PRINT_STRIP,
     PREFIXE_RAW, PREFIXE_RETAKE, PULSE_LENT_MAX, PULSE_LENT_MIN, PULSE_LENT_VITESSE, PULSE_MAX,
-    PULSE_MIN, PULSE_VITESSE, SEUIL_DISQUE_CRITIQUE_MB, STRIP_BURST_DELAI_S,
-    STRIP_MODE_BURST, TAILLE_DECOMPTE, TAILLE_TEXTE_BANDEAU,
+    PULSE_MIN, PULSE_VITESSE,
+    SEUIL_DISQUE_CRITIQUE_MB, SEUIL_TEMP_CRITIQUE_C,
+    STRIP_BURST_DELAI_S, STRIP_MODE_BURST,
+    TAILLE_DECOMPTE, TAILLE_TEXTE_BANDEAU,
+    TEMP_PATH,
     TAILLE_TEXTE_BOUTON, TAILLE_TITRE_ACCUEIL, TEMPS_DECOMPTE, TEXTE_PHOTO_COUNT,
     TOUCHE_DROITE, TOUCHE_GAUCHE, TOUCHE_MILIEU,
     TXT_BURST_COUNTDOWN, TXT_CONFIRM_ABANDON_1, TXT_CONFIRM_ABANDON_2, TXT_ERREUR_CAPTURE,
@@ -303,10 +306,13 @@ arduino_ctrl.start()
 
 
 # --- Monitoring disque + slideshow listing (extraits dans core/monitoring.py) ---
-from core.monitoring import DiskMonitor, lister_images_slideshow  # noqa: E402
+from core.monitoring import DiskMonitor, TempMonitor, lister_images_slideshow  # noqa: E402
 
 disk_monitor = DiskMonitor(
     path=PATH_DATA, seuil_mb=SEUIL_DISQUE_CRITIQUE_MB, intervalle_s=INTERVALLE_CHECK_DISQUE_S,
+)
+temp_monitor = TempMonitor(
+    path=TEMP_PATH, seuil_c=SEUIL_TEMP_CRITIQUE_C, intervalle_s=INTERVALLE_CHECK_TEMP_S,
 )
 
 
@@ -427,7 +433,8 @@ def _render_accueil_normal(session: SessionState) -> None:
 
     L'icône sélectionnée (session.mode_actuel) est zoomée et pulse. Le bandeau
     indique le bouton à presser pour démarrer. Si l'espace disque est critique
-    (disk_monitor.critique), on superpose un bandeau rouge d'alerte en haut."""
+    (disk_monitor.critique), on superpose un bandeau rouge d'alerte en haut.
+    Idem pour la température CPU (temp_monitor.critique), bandeau orange."""
     inserer_background(screen, fond_accueil)
     marge_centrale = MARGE_ACCUEIL
     axe_y_centre = (HEIGHT // 2) - 60
@@ -493,29 +500,47 @@ def _render_accueil_normal(session: SessionState) -> None:
     pos_y = (HEIGHT - BANDEAU_HAUTEUR // 2) - (msg_rendu.get_height() // 2)
     screen.blit(msg_rendu, (pos_x, pos_y))
 
-    # Indicateur disque critique (Sprint 5.6)
+    # Indicateur disque critique (Sprint 5.6) + température CPU
+    alerte_h = 40
+    y_alerte = 0
     if disk_monitor.critique and disk_monitor.libre_mb is not None:
-        alerte_h = 40
         alerte = pygame.Surface((WIDTH, alerte_h), pygame.SRCALPHA)
         alerte.fill((180, 20, 20, 220))
-        screen.blit(alerte, (0, 0))
+        screen.blit(alerte, (0, y_alerte))
         txt_alerte = font_bandeau.render(
             f"⚠ ESPACE DISQUE CRITIQUE — {disk_monitor.libre_mb:.0f} Mo libres",
             True, (255, 255, 255),
         )
         screen.blit(
             txt_alerte,
-            (WIDTH // 2 - txt_alerte.get_width() // 2, (alerte_h - txt_alerte.get_height()) // 2),
+            (WIDTH // 2 - txt_alerte.get_width() // 2,
+             y_alerte + (alerte_h - txt_alerte.get_height()) // 2),
+        )
+        y_alerte += alerte_h
+
+    if temp_monitor.critique and temp_monitor.temp_c is not None:
+        alerte = pygame.Surface((WIDTH, alerte_h), pygame.SRCALPHA)
+        alerte.fill((200, 120, 20, 220))
+        screen.blit(alerte, (0, y_alerte))
+        txt_alerte = font_bandeau.render(
+            f"🌡 CPU CHAUD — {temp_monitor.temp_c:.1f} °C",
+            True, (255, 255, 255),
+        )
+        screen.blit(
+            txt_alerte,
+            (WIDTH // 2 - txt_alerte.get_width() // 2,
+             y_alerte + (alerte_h - txt_alerte.get_height()) // 2),
         )
 
 
 def render_accueil(session: SessionState) -> None:
     """ACCUEIL : slideshow d'attente si idle > seuil ET mode_actuel is None,
-    sinon rendu normal (icônes + bandeau + alerte disque).
+    sinon rendu normal (icônes + bandeau + alertes disque/température).
 
     Dispatcher entre `_render_accueil_slideshow` et `_render_accueil_normal`.
-    Déclenche aussi le check disque périodique (rate-limité)."""
+    Déclenche aussi les checks monitoring périodiques (rate-limités)."""
     disk_monitor.tick()
+    temp_monitor.tick()
 
     idle_seconds = time.time() - session.last_activity_ts
     if idle_seconds > DUREE_IDLE_SLIDESHOW and session.mode_actuel is None:

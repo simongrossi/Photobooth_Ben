@@ -300,6 +300,14 @@ TXT_BURST_COUNTDOWN  = "Photo suivante dans"
 SEUIL_DISQUE_CRITIQUE_MB   = 500    # alerte si < 500 Mo libres pendant un événement
 INTERVALLE_CHECK_DISQUE_S  = 30.0   # fréquence de check (en secondes) pendant l'accueil
 
+# --- Monitoring température CPU (Raspberry Pi) ---
+# Lit /sys/class/thermal/thermal_zone0/temp (standard Pi / Linux). Sur
+# macOS/Windows ou fichier absent, le monitor est inerte silencieusement.
+# Le Pi throttle à ~80 °C ; 75 °C est un bon signal précoce à l'utilisateur.
+SEUIL_TEMP_CRITIQUE_C      = 75.0
+INTERVALLE_CHECK_TEMP_S    = 30.0
+TEMP_PATH                  = "/sys/class/thermal/thermal_zone0/temp"
+
 # --- Slideshow d'attente sur l'accueil (Sprint 6.2) ---
 # Après N secondes sans activité sur l'accueil, les montages passés défilent en plein écran
 # pour attirer les invités.
@@ -387,6 +395,10 @@ def _valider_config():
     assert DUREE_IDLE_SLIDESHOW > 0, f"DUREE_IDLE_SLIDESHOW invalide : {DUREE_IDLE_SLIDESHOW}"
     assert DUREE_PAR_IMAGE_SLIDESHOW > 0
     assert NB_MAX_IMAGES_SLIDESHOW > 0
+
+    # Monitoring température
+    assert SEUIL_TEMP_CRITIQUE_C > 0, f"SEUIL_TEMP_CRITIQUE_C invalide : {SEUIL_TEMP_CRITIQUE_C}"
+    assert INTERVALLE_CHECK_TEMP_S > 0
 
     # Strip dimensions cohérentes
     assert 0.3 <= STRIP_PHOTO_RATIO <= 1.2, f"STRIP_PHOTO_RATIO suspect : {STRIP_PHOTO_RATIO}"
