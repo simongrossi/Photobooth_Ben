@@ -74,8 +74,9 @@ Photobooth_Ben/
 ├── stats.py              # rapport post-événement (sessions.jsonl)
 ├── profile.py            # profiling CPU (cProfile)
 ├── profile_mem.py        # profiling mémoire (tracemalloc)
-├── test_*.py             # 48 tests pytest
+├── test_*.py             # tests pytest
 ├── arduino/              # firmware Nano (.ino)
+├── deploy/               # infra Pi : systemd unit, kiosk.sh, installer
 └── docs/                 # toute la doc .md
 ```
 

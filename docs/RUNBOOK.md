@@ -71,10 +71,14 @@ Si besoin d'ajuster un texte : éditer `config.py` section 7 (voir
 ### Lancement
 
 ```bash
-sudo systemctl start photobooth.service    # si systemd configuré
+sudo systemctl start photobooth.service    # si systemd configuré (via deploy/install.sh)
 # OU
 python3 Photobooth_start.py                # manuel
 ```
+
+Si le service systemd a été installé (`sudo ./deploy/install.sh`), il démarrera
+**automatiquement au boot** avec watchdog et mode kiosque. Voir
+[deploy/README.md](../deploy/README.md).
 
 ### Surveillance discrète
 
@@ -94,6 +98,14 @@ Toutes les 30–60 min, vérifier du coin de l'œil :
 sudo systemctl restart photobooth.service
 
 # OU si lancé manuellement : Échap pour quitter, puis relancer
+```
+
+Si systemd affiche `Failed with result 'exit-code'` et refuse de relancer
+(5 crashs en 60 s — limite du watchdog) :
+
+```bash
+sudo systemctl reset-failed photobooth.service
+sudo systemctl start photobooth.service
 ```
 
 Ne **pas** couper l'alim du Pi brutalement sauf nécessité — attendre un retour

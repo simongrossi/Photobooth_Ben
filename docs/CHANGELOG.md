@@ -5,7 +5,38 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
 ---
 
-## `WIP` — Monitoring température CPU (Raspberry Pi)
+## `WIP` — Watchdog systemd + mode kiosque
+
+### Added
+- `deploy/photobooth.service` : unit systemd templatisé (`@USER@`, `@HOME@`)
+  avec watchdog (`Restart=on-failure`, `StartLimitBurst=5/60s`, `MemoryMax=1G`,
+  `TimeoutStopSec=30`)
+- `deploy/kiosk.sh` : wrapper de démarrage (xset off, unclutter, export
+  `PHOTOBOOTH_KIOSK=1`, venv, exec python)
+- `deploy/install.sh` : installeur idempotent (apt install unclutter, sed
+  substitution placeholders, systemctl enable)
+- `deploy/uninstall.sh` : retrait propre du service
+- `deploy/README.md` : guide complet d'installation + dépannage
+
+### Changed
+- `Photobooth_start.py` : `pygame.display.set_mode()` prend `FULLSCREEN | NOFRAME`
+  si `config.KIOSK_FULLSCREEN=True`, curseur caché en kiosque
+- `config.py` : `KIOSK_FULLSCREEN = os.environ.get("PHOTOBOOTH_KIOSK") == "1"`
+  — auto-activation depuis l'env posé par `kiosk.sh`
+- `docs/DEPLOYMENT.md` : sections 8 (systemd) et 9 (kiosque) remplacées par
+  des pointeurs vers `deploy/`, plus de heredoc inline
+- `docs/RUNBOOK.md` : commande de rearm watchdog (`systemctl reset-failed`)
+
+### Pourquoi
+- Fichiers d'infra versionnés (testables, reviewables) plutôt que heredocs
+  enfouis dans la doc
+- Watchdog complet avec limite anti-boucle + memory cap + stop gracieux
+- Mode kiosque activable via env sans modification de config.py (dev/prod
+  même base)
+
+---
+
+## `e60ec6c` — Monitoring température CPU (Raspberry Pi)
 
 ### Added
 - `core/monitoring.py::TempMonitor` — même pattern que DiskMonitor,

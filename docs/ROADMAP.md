@@ -4,7 +4,7 @@
 > effets exotiques, hardware, brainstorm), voir [IDEAS.md](IDEAS.md).
 > Pour l'historique de ce qui a été fait, voir [CHANGELOG.md](CHANGELOG.md).
 
-Dernière mise à jour : 2026-04-21 (post-TempMonitor)
+Dernière mise à jour : 2026-04-21 (post-watchdog/kiosk)
 
 ---
 
@@ -58,8 +58,9 @@ _Monitoring température CPU livré — voir [CHANGELOG.md](CHANGELOG.md)._
 
 ### Robustesse & infra
 
-- [ ] **Watchdog `systemd`** — unit file `photobooth.service` qui relance si crash
-- [ ] **Kiosk mode** — désactiver Alt+Tab, souris, raccourcis système, plein écran forcé
+_Watchdog systemd + kiosk mode livrés — voir [deploy/README.md](../deploy/README.md)
+et [CHANGELOG.md](CHANGELOG.md)._
+
 - [ ] **Auto-upload nightly** vers NAS / Dropbox / Nextcloud (cron job rsync)
 
 ---

@@ -78,6 +78,7 @@ Pour les modifier en production voir [RUNBOOK.md](RUNBOOK.md).
 |---|---|---|
 | `WIDTH, HEIGHT` | `1280, 800` | Résolution de la fenêtre pygame |
 | `LIVE_W, LIVE_H` | `800, 600` | Taille du flux vidéo live (preview) |
+| `KIOSK_FULLSCREEN` | `False` | Auto-activé si `PHOTOBOOTH_KIOSK=1` dans l'env (posé par `deploy/kiosk.sh`). `True` → `FULLSCREEN\|NOFRAME` + curseur caché |
 | `MASQUE` | `130` | Alpha des bandes latérales noires (si ratio modifié). 0 = invisible, 255 = opaque |
 | `TEMPS_DECOMPTE` | `1` | Durée d'un tick de décompte (s). `1` = décompte rapide |
 | `TOUCHE_GAUCHE/MILIEU/DROITE` | `K_g/K_m/K_d` | Bindings clavier (lettres minuscules) |

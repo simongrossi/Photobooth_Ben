@@ -246,7 +246,10 @@ printer_mgr = PrinterManager(NOM_IMPRIMANTE_10X15, NOM_IMPRIMANTE_STRIP)
 # ========================================================================================================
 
 pygame.init()
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
+_display_flags = (pygame.FULLSCREEN | pygame.NOFRAME) if config.KIOSK_FULLSCREEN else 0
+screen = pygame.display.set_mode((WIDTH, HEIGHT), _display_flags)
+if config.KIOSK_FULLSCREEN:
+    pygame.mouse.set_visible(False)
 clock = pygame.time.Clock()
 pygame.font.init()
 

@@ -74,6 +74,11 @@ Photobooth_Ben/
 ├── stats.py              # rapport fin de soirée (sessions.jsonl)
 ├── test_montage.py       # 18 tests pytest (isolation via monkeypatch)
 ├── README.md
+├── deploy/                 # infra Pi (systemd + kiosque)
+│   ├── photobooth.service  # unit systemd avec watchdog
+│   ├── kiosk.sh            # wrapper démarrage (xset, unclutter, venv)
+│   ├── install.sh          # installeur idempotent
+│   └── README.md           # guide d'installation
 ├── docs/
 │   ├── ROADMAP.md          # items actionnables priorisés
 │   ├── IDEAS.md            # idées en vrac

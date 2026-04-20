@@ -178,92 +178,53 @@ cat data/sessions.jsonl            # historique des sessions
 
 ---
 
-## 8. Auto-start au boot (systemd)
+## 8. Auto-start au boot + watchdog + kiosque
 
-Pour que le photobooth démarre automatiquement au boot :
+Les fichiers d'infrastructure sont versionnés dans [`deploy/`](../deploy/) :
 
-### 8.1 Créer le service
+| Fichier | Rôle |
+|---|---|
+| [`deploy/photobooth.service`](../deploy/photobooth.service) | Unit systemd avec watchdog, limites mémoire, restart policy |
+| [`deploy/kiosk.sh`](../deploy/kiosk.sh) | Wrapper démarrage : xset off, unclutter, PHOTOBOOTH_KIOSK=1, venv, exec |
+| [`deploy/install.sh`](../deploy/install.sh) | Installe unclutter, substitue `@USER@` / `@HOME@`, enable service |
+| [`deploy/uninstall.sh`](../deploy/uninstall.sh) | Retire le service proprement |
 
-```bash
-sudo tee /etc/systemd/system/photobooth.service > /dev/null << 'EOF'
-[Unit]
-Description=Photobooth Ben
-After=graphical.target
-Wants=graphical.target
-
-[Service]
-Type=simple
-User=ton_user
-Environment="DISPLAY=:0"
-Environment="XAUTHORITY=/home/ton_user/.Xauthority"
-WorkingDirectory=/home/ton_user/Photobooth_Ben
-ExecStart=/home/ton_user/Photobooth_Ben/.venv/bin/python3 /home/ton_user/Photobooth_Ben/Photobooth_start.py
-Restart=on-failure
-RestartSec=5
-StandardOutput=append:/home/ton_user/Photobooth_Ben/logs/systemd.log
-StandardError=append:/home/ton_user/Photobooth_Ben/logs/systemd.log
-
-[Install]
-WantedBy=graphical.target
-EOF
-```
-
-Remplacer `ton_user` par ton nom d'utilisateur réel (`pi`, `simon`, etc.).
-
-### 8.2 Activer
+### 8.1 Installation
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable photobooth.service
+cd ~/Photobooth_Ben
+sudo ./deploy/install.sh
 sudo systemctl start photobooth.service
-
-# Vérifier l'état
-sudo systemctl status photobooth.service
-journalctl -u photobooth.service -f    # logs en temps réel
 ```
 
-### 8.3 Watchdog
+### 8.2 Watchdog
 
-Le service redémarre automatiquement sur crash grâce à `Restart=on-failure`.
-Si le photobooth crashe 5 × en 60 s, systemd arrête d'essayer (comportement
-par défaut — voir `StartLimitBurst` / `StartLimitIntervalSec` à ajuster si besoin).
+Le service `photobooth.service` embarque par défaut :
 
----
+- `Restart=on-failure` + `RestartSec=5` : relance 5 s après chaque crash
+- `StartLimitBurst=5` / `StartLimitIntervalSec=60` : **5 crashs en 60 s →
+  arrêt définitif** (évite la boucle infinie). Rearm :
+  `sudo systemctl reset-failed photobooth.service`
+- `MemoryMax=1G` : kill + restart si fuite mémoire
+- `TimeoutStopSec=30` : 30 s de grâce pour `SIGTERM` avant `SIGKILL`
+  (permet la fermeture propre Arduino + caméra)
 
-## 9. Mode kiosque
+Quitter via **Échap** est un exit propre — pas de relance.
 
-Pour cacher le bureau, le curseur et désactiver l'économiseur :
+### 8.3 Mode kiosque
 
-```bash
-# Installer unclutter (masque le curseur après 2s d'inactivité)
-sudo apt install -y unclutter
+Le wrapper `kiosk.sh` :
 
-# Éditer ~/.config/autostart/screensaver-off.desktop
-mkdir -p ~/.config/autostart
-cat > ~/.config/autostart/photobooth-kiosk.desktop << 'EOF'
-[Desktop Entry]
-Type=Application
-Name=Photobooth kiosk setup
-Exec=bash -c 'xset s off; xset -dpms; xset s noblank; unclutter -idle 2 &'
-X-GNOME-Autostart-enabled=true
-EOF
-```
+- Désactive l'économiseur d'écran et DPMS (`xset s off; xset -dpms`)
+- Cache le curseur (`unclutter -root -idle 0`)
+- Exporte `PHOTOBOOTH_KIOSK=1` → pygame passe en `FULLSCREEN | NOFRAME`
+  (voir `KIOSK_FULLSCREEN` dans [CONFIG.md](CONFIG.md))
 
-Alternative plus agressive : désactiver le bureau graphique et lancer
-pygame directement via X :
+En dev local (variable absente), pygame reste en mode fenêtré standard — même
+code, deux environnements.
 
-```bash
-# Booter en CLI puis X minimal
-sudo raspi-config → Boot Options → Console Autologin
-```
-
-Ajouter à `~/.bashrc` :
-```bash
-if [[ -z $DISPLAY && $XDG_VTNR -eq 1 ]]; then
-    startx /home/ton_user/Photobooth_Ben/.venv/bin/python3 \
-           /home/ton_user/Photobooth_Ben/Photobooth_start.py -- -nocursor
-fi
-```
+Pour les détails de maintenance et dépannage infra, voir
+[`deploy/README.md`](../deploy/README.md).
 
 ---
 

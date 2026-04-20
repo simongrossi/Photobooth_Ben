@@ -1,0 +1,61 @@
+# Unit systemd du photobooth Ben — à installer dans /etc/systemd/system/.
+#
+# Les placeholders @USER@ et @HOME@ sont remplacés par deploy/install.sh, ou
+# manuellement (sed -i "s|@USER@|pi|g; s|@HOME@|/home/pi|g" photobooth.service).
+#
+# Watchdog : systemd redémarre automatiquement le photobooth en cas de crash
+# (Restart=on-failure), avec backoff de 5 s. Si 5 crashs se produisent en moins
+# de 60 s, systemd arrête d'essayer (évite la boucle infinie sur bug permanent).
+# Rearm manuel via : sudo systemctl reset-failed photobooth.service
+#
+# Mode kiosque : le service doit démarrer après que le serveur graphique X est
+# prêt (graphical.target), avec DISPLAY et XAUTHORITY pour accéder à l'écran.
+
+[Unit]
+Description=Photobooth Ben (kiosque événementiel)
+Documentation=file://@HOME@/Photobooth_Ben/docs/DEPLOYMENT.md
+After=graphical.target cups.service
+Wants=graphical.target
+# Si les assets réseau sont utilisés (NAS, upload), ajouter :
+# After=network-online.target
+# Wants=network-online.target
+
+[Service]
+Type=simple
+User=@USER@
+Group=@USER@
+
+# Environnement graphique (X11 classique). Pour Wayland, adapter si besoin.
+Environment="DISPLAY=:0"
+Environment="XAUTHORITY=@HOME@/.Xauthority"
+# Active le mode plein écran pygame (lit PHOTOBOOTH_KIOSK dans config.py)
+Environment="PHOTOBOOTH_KIOSK=1"
+
+WorkingDirectory=@HOME@/Photobooth_Ben
+
+# Lance le wrapper kiosk.sh qui configure l'écran (xset, unclutter) avant
+# d'exec le process Python. Le venv est chargé à l'intérieur du wrapper.
+ExecStart=@HOME@/Photobooth_Ben/deploy/kiosk.sh
+
+# Watchdog — relance sur crash uniquement, pas sur exit propre (Échap)
+Restart=on-failure
+RestartSec=5
+
+# Limite anti-boucle : si 5 crashs en 60 s → arrêt définitif jusqu'à
+# `systemctl reset-failed` manuel.
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+# Logs : journalctl + fichier dédié (utile pour diff rapide J+1).
+StandardOutput=append:@HOME@/Photobooth_Ben/logs/systemd.log
+StandardError=append:@HOME@/Photobooth_Ben/logs/systemd.log
+
+# Fuite mémoire ? Force un restart si > 1 Go (sanity check, hors conditions normales)
+MemoryMax=1G
+
+# Arrêt propre : SIGTERM, 30 s de grâce puis SIGKILL
+TimeoutStopSec=30
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=graphical.target

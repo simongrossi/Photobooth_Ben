@@ -68,6 +68,11 @@ FORMAT_TIMESTAMP = "%Y-%m-%d_%Hh%M_%S"
 WIDTH, HEIGHT = 1280, 800       # Résolution de la fenêtre Pygame
 LIVE_W, LIVE_H = 800, 600       # Taille du flux vidéo en direct (Preview)
 
+# Mode kiosque : pygame passe en FULLSCREEN + NOFRAME si la variable
+# d'environnement PHOTOBOOTH_KIOSK=1 est posée (par deploy/kiosk.sh en prod).
+# En dev (env vide), reste en fenêtré standard pour faciliter le debug.
+KIOSK_FULLSCREEN = os.environ.get("PHOTOBOOTH_KIOSK", "0") == "1"
+
 
 MASQUE = 130   # Transparance des bande latérale noire si ratio image modifié (valeur : 0 invisble à 255 opaque)
 
