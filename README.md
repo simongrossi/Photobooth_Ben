@@ -45,28 +45,43 @@ assets/
 
 ## Architecture
 
-| Fichier | Rôle |
-|---------|------|
-| [Photobooth_start.py](Photobooth_start.py) | Entrée + boucle principale + UI pygame |
-| [config.py](config.py) | Constantes centralisées + validation au chargement |
-| [camera.py](camera.py) | `CameraManager` — gphoto2 avec `threading.Lock` + retry |
-| [montage.py](montage.py) | `MontageGenerator10x15` / `MontageGeneratorStrip` — génération PIL |
-| [printer.py](printer.py) | `PrinterManager` — CUPS `lpstat` + `lp` |
-| [logger.py](logger.py) | Logging rotatif + `log_info` / `log_warning` / `log_critical` |
-| [status.py](status.py) | Diagnostic autonome pré-événement |
-| [stats.py](stats.py) | Rapport fin de soirée à partir de `sessions.jsonl` |
-| [test_montage.py](test_montage.py) | 18 tests pytest (isolation via `monkeypatch`) |
+```
+Photobooth_Ben/
+├── Photobooth_start.py   # entrée + boucle principale + state + renders + event handlers
+├── config.py             # constantes + validation au chargement
+├── core/                 # logique métier (testable sans pygame display)
+│   ├── logger.py         # logging rotatif + log_info/warning/critical
+│   ├── camera.py         # CameraManager (gphoto2 + threading.Lock + retry)
+│   ├── montage.py        # MontageGenerator10x15/Strip (PIL)
+│   └── printer.py        # PrinterManager (CUPS lpstat/lp)
+├── ui/                   # couche pygame
+│   ├── helpers.py        # UIContext + LoaderAnimation + écrans + sons
+│   └── __init__.py       # re-exporte pour `from ui import X`
+├── status.py             # diagnostic autonome pré-événement
+├── stats.py              # rapport fin de soirée (sessions.jsonl)
+├── test_montage.py       # 18 tests pytest (isolation via monkeypatch)
+├── README.md
+├── docs/
+│   ├── ROADMAP.md
+│   ├── IDEAS.md
+│   ├── CHANGELOG.md
+│   └── ARCHITECTURE.md
+└── .gitignore
+```
 
 ### Modules purs (testables isolément, sans pygame)
 
-- `montage.py` — pur PIL + `config`
-- `printer.py` — pur subprocess + `logger`
-- `logger.py` — logging standard
+- [core/montage.py](core/montage.py) — pur PIL + `config`
+- [core/printer.py](core/printer.py) — pur subprocess + `logger`
+- [core/logger.py](core/logger.py) — logging standard
 
 ### Modules avec dépendances pygame
 
-- `camera.py` — utilise `pygame.surfarray.make_surface` pour convertir les frames gphoto2
-- `Photobooth_start.py` — boucle principale, fontes, UI helpers, machine d'état
+- [core/camera.py](core/camera.py) — utilise `pygame.surfarray.make_surface` pour convertir les frames gphoto2
+- [ui/helpers.py](ui/helpers.py) — `UIContext`, rendus, animations, sons
+- [Photobooth_start.py](Photobooth_start.py) — boucle principale, fontes, état de session, renders par état
+
+Voir [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) pour le graphe de dépendances + machine d'état + flow de données.
 
 ---
 
@@ -140,24 +155,12 @@ Validation automatique au chargement — un `AssertionError` explicite au démar
 
 ---
 
-## Roadmap & idées
+## Documentation
 
-- [docs/ROADMAP.md](docs/ROADMAP.md) — items actionnables priorisés (court / moyen / long terme)
-- [docs/IDEAS.md](docs/IDEAS.md) — pool d'idées en vrac + références open-source (PIBOOTH, photobooth-app, RaspAP, nodogsplash)
-
----
-
-## Historique des sprints
-
-Le projet a été refactoré par sprints incrémentaux (voir commit history) :
-- **Sprint 1** — stabilité (fuites, retry, except)
-- **Sprint 2** — UX événementiel (flash, sons, écrans d'erreur, confirmation abandon)
-- **Sprint 3** — performance (threading, cache, loader GC)
-- **Sprint 4** — architecture modulaire (extraction CameraManager, MontageGenerator, PrinterManager, logger)
-- **Sprint 5** — observabilité (logging rotatif, metadata sessions, monitoring disque, status.py, stats.py)
-- **Sprint 6** — features événementiel (slideshow idle, compteur photo strip)
-
-Chaque item est documenté dans [docs/ROADMAP.md](docs/ROADMAP.md).
+- [docs/ROADMAP.md](docs/ROADMAP.md) — items dev à faire, priorisés court/moyen/long terme
+- [docs/IDEAS.md](docs/IDEAS.md) — pool d'idées + références open-source (PIBOOTH, photobooth-app, RaspAP)
+- [docs/CHANGELOG.md](docs/CHANGELOG.md) — historique des commits par sprint
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — diagramme des modules + machine d'état + flow de données
 
 ---
 

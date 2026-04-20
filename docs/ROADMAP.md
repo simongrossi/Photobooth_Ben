@@ -1,49 +1,66 @@
 # Roadmap — Photobooth Ben
 
-> Items sérieux, actionnables, priorisés. Pour les idées en vrac (micro-touches UX,
-> effets exotiques, hardware, features brainstorm), voir [IDEAS.md](IDEAS.md).
+> Items dev actionnables, priorisés. Pour les idées en vrac (micro-touches UX,
+> effets exotiques, hardware, brainstorm), voir [IDEAS.md](IDEAS.md).
+> Pour l'historique de ce qui a été fait, voir [CHANGELOG.md](CHANGELOG.md).
 
 Dernière mise à jour : 2026-04-20
 
 ---
 
-## État actuel
+## État actuel — fait ✅
 
-- **Stabilité** : fuites mémoire corrigées, retry caméra, débounce robuste, écrans d'erreur visibles
-- **UX** : splash caméra, flash + son shutter, écran "Préparation...", confirmation abandon, slideshow d'attente
-- **Architecture modulaire** : `camera.py`, `montage.py`, `printer.py`, `logger.py`, `status.py` extraits
-- **Observabilité** : logging rotatif, `sessions.jsonl` metadata, script `status.py` pré-événement
-- **Performance** : threading pour génération montage avec spinner, cache des surfaces statiques
+**Stabilité & bugs** : fuites PIL corrigées, retry caméra + rate-limit, débounce robuste, écrans d'erreur visibles, except Exception typés.
+
+**UX événementiel** : splash caméra, flash + shutter sound, beep décompte, écran "Préparation...", confirmation abandon, slideshow d'attente, compteur photo strip, mode burst.
+
+**Architecture modulaire** : SessionState dataclass, UIContext singleton, split en `core/` + `ui/`, 4 render functions extraites (DECOMPTE/VALIDATION/FIN), MontageGenerator/CameraManager/PrinterManager encapsulés.
+
+**Performance** : threading spinner génération montage, cache des surfaces statiques, loader GC optim, purge temp + check disque continu.
+
+**Observabilité** : logging rotatif, `sessions.jsonl` metadata, `status.py` (diagnostic), `stats.py` (rapport avec histogramme horaire), monitoring disque avec bandeau rouge.
+
+**Code quality** : `from config import *` → imports explicites (96 noms), dead code nettoyé, ruff clean, type hints sur classes publiques, log_error → log_info/warning/critical, tests pytest 18/18.
 
 ---
 
-## Court terme — 30 min chacun
+## Court terme — 30 min à 1 h chacun
 
-- [ ] **5.3** Tests unitaires `MontageGenerator` (pytest sur images factices, isolé depuis `montage.py`)
-- [ ] **5.6 suite** Monitoring espace disque **continu** pendant l'événement (actuellement : check seul au boot → alerte écran si < 500 Mo)
-- [ ] **6.6** Script stats fin de soirée — parse `sessions.jsonl` → nb sessions, taux impression, durée moyenne, heure de pointe
-- [ ] **4.8 suite** Externaliser les constantes restantes dans `config.py` : `(840, 540)`, `(1640, 1040)`, offsets `(30, 30)` / `(80, 80)`, `l_p = 520`
-- [ ] **5.2** Migrer les `log_error()` explicites vers `log_info` / `log_warning` / `log_error` nommés (remplacer la détection auto par emoji)
+### Tests & CI
+
+- [ ] **Tests status.py + stats.py** — fixtures JSONL synthétiques, vérif retour codes
+- [ ] **GitHub Actions CI** — `pytest` + `ruff check` à chaque push sur main
+- [ ] **Coverage report** — `pytest --cov=core`, cible 60% puis 80%
+- [ ] **pre-commit hook** — ruff auto-fix + pytest avant chaque commit
+
+### UX micro
+
+- [ ] Bip sonore **différent** pour la dernière seconde du décompte (tension)
+- [ ] Countdown en **filigrane** pendant la capture en mode strip (3 → 2 → 1)
+- [ ] **Watermark** discret configurable "Événement XYZ — 20/04/2026"
 
 ---
 
 ## Moyen terme — 1 à 3 h chacun
 
-### Architecture
-- [ ] **4.6 finir** Extraire `LoaderAnimation` dans `loader.py` + UI helpers (`afficher_message_plein_ecran`, `ecran_erreur`, `splash_connexion_camera`, `executer_avec_spinner`) dans `ui.py` via un `UIContext` singleton
-- [ ] Split en dossiers `core/` + `ui/` (après extraction complète des UI helpers)
-
 ### Features événementiel
-- [ ] **Filtres preset image** — N&B, sépia, vintage/polaroid, HDR. PIL (`ImageEnhance` + `ImageFilter`) suffit. Écran de choix avant le décompte. Appliqués dans `MontageGenerator` avant sauvegarde
-- [ ] **6.4** Galerie admin — touche cachée (F1) → grille des montages du jour, navigation flèches, retour Échap
-- [ ] **6.5** Overlays thématiques sélectionnables (mariage, anniversaire, Noël...) — écran de choix avant le décompte
-- [ ] Mode **burst** en strip — 3 photos auto sans validation intermédiaire (plus fluide)
-- [ ] Mode **timer 10s** — compte à rebours sans appui clavier (pour groupes qui veulent tous être sur la photo)
 
-### Robustesse
+- [ ] **Filtres preset image** — N&B, sépia, vintage/polaroid via `PIL.ImageEnhance` + `ImageFilter`. Écran de choix avant le décompte. Appliqués dans `MontageGenerator.final()`
+- [ ] **6.4 Galerie admin** — touche cachée (F1) → grille des montages du jour, navigation flèches, retour Échap. Nouvel état `Etat.GALERIE`
+- [ ] **6.5 Overlays thématiques** sélectionnables (mariage, anniversaire, Noël, Halloween...) — scan `assets/overlays/<theme>/`, écran choix avant décompte
+- [ ] Mode **timer 10s** — compte à rebours sans appui clavier pour groupes (3e mode accueil ou toggle depuis strip/10x15)
+
+### Architecture (finitions du split)
+
+- [ ] **Extraction event handlers** par état (`handle_accueil_event`, `handle_validation_event`, `handle_fin_event`) — items 9 non terminés. Demande de refactor les nombreux `continue` en retour de signal
+- [ ] **Extraction render_accueil** — idem, complexité slideshow `continue` à gérer
+
+### Robustesse & infra
+
 - [ ] **Watchdog `systemd`** — unit file `photobooth.service` qui relance si crash
-- [ ] **Kiosk mode** — désactiver Alt+Tab, souris, raccourcis système ; plein écran forcé
-- [ ] **Auto-upload nightly** vers NAS / Dropbox / Nextcloud après l'événement (cron job)
+- [ ] **Kiosk mode** — désactiver Alt+Tab, souris, raccourcis système, plein écran forcé
+- [ ] **Auto-upload nightly** vers NAS / Dropbox / Nextcloud (cron job rsync)
+- [ ] **Monitoring température Raspberry** — alerte écran si > 75°C
 
 ---
 
@@ -51,46 +68,47 @@ Dernière mise à jour : 2026-04-20
 
 ### Event Network (feature signature)
 
-> Combine point WiFi partagé + QR code partage + admin web. Le photobooth devient une
-> attraction réseau intégrée à l'événement. **À faire en dernier**, une fois tout le
-> reste stabilisé.
+> Combine point WiFi partagé + QR code partage + admin web. Transforme le
+> photobooth en attraction réseau intégrée. **À faire en dernier**, après
+> stabilisation complète.
 
 **Architecture cible** :
 1. Raspberry en **mode Access Point** (`hostapd` + `dnsmasq`) : SSID public `Mariage-Wifi` sans mot de passe
 2. **Captive portal** (`nodogsplash`) : redirection auto vers la galerie web
 3. **Mini-serveur FastAPI** sur port 80 : galerie temps réel, téléchargement direct
-4. **QR code à l'écran après impression** → URL directe de leur montage
-5. **Admin dashboard web** : stats live, toggle imprimante on/off, maintenance, config live
+4. **QR code à l'écran** après impression → URL directe du montage
+5. **Admin dashboard web** : stats live, toggle imprimante, maintenance, config live
 
 **Sous-tâches** :
-- [ ] Installer/configurer `hostapd` + `dnsmasq` avec SSID event + DHCP local
-- [ ] FastAPI app `server.py` : `/` galerie session, `/photo/<id>` télécharger, `/qr/<id>` générer QR
-- [ ] Intégrer `qrcode` Python : affiche QR après impression
-- [ ] Captive portal via `nodogsplash` ou redirection DNS catchall
+- [ ] Install / config `hostapd` + `dnsmasq` avec SSID + DHCP local
+- [ ] FastAPI app `server.py` : `/` galerie, `/photo/<id>`, `/qr/<id>`
+- [ ] `qrcode` Python : affiche QR après impression (nouvel écran)
+- [ ] Captive portal `nodogsplash` ou redirection DNS catchall
 - [ ] Certificat self-signed HTTPS (éviter warnings iOS)
-- [ ] Admin dashboard : config live, stats temps réel, queue imprimante, déclencher maintenance
+- [ ] Admin dashboard : config live, stats, queue imprimante, maintenance
 - [ ] Auth basique admin (PIN ou mot de passe simple)
 
-**Effort total** : ~1 semaine de travail dédié.
+**Effort total** : ~1 semaine dédiée.
 **Inspirations** : voir [IDEAS.md § Références open-source](IDEAS.md#références-open-source-à-étudier) — `photobooth-app` et `RaspAP` notamment.
 
 ### Autres gros chantiers
-- [ ] **Email / SMS delivery** — après impression, écran "Entrez votre email/numéro" (clavier virtuel tactile) → photo envoyée en PJ. Nécessite SMTP + formulaire
+
+- [ ] **Email / SMS delivery** — après impression, écran "Entrez votre email/numéro" (clavier virtuel tactile) → photo envoyée en PJ. SMTP + formulaire
 - [ ] **Multi-langue** (EN/FR/ES) — toutes les strings extraites dans `i18n/*.json`, toggle sur l'accueil
-- [ ] **3.1 Capture HQ async** — subprocess.Popen + polling, UI fluide pendant les 2-3s de capture. Restructuration machine d'état DECOMPTE
-- [ ] **Customisation branding par événement** — dossier `events/mariage-smith-2026/` qui surcharge assets + overlays + textes
+- [ ] **3.1 Capture HQ async** — `subprocess.Popen` + polling, UI fluide pendant les 2-3 s de capture. Restructure la machine d'état DECOMPTE
+- [ ] **Branding par événement** — dossier `events/mariage-smith-2026/` qui surcharge assets + overlays + textes + config
 
 ---
 
 ## Principe général
 
-**Toujours valider sur matos cible avant de continuer** — `py_compile` ne détecte pas les régressions visuelles ou les bugs d'intégration.
+**Toujours valider sur matos cible avant de continuer** — `py_compile` ne détecte pas les régressions visuelles ni les bugs d'intégration (caméra USB qui ne revient pas, imprimante qui bugge sur un papier, etc.).
 
 **Commits fréquents avec tags** pour bisect facile en cas de régression entre deux événements.
 
 **Une idée ne monte en roadmap qu'une fois** :
-1. Un cas d'usage réel identifié (pas juste "ce serait cool")
-2. Un effort estimé crédible (<1 journée pour court/moyen terme)
-3. Un chemin d'implémentation clair
+1. Cas d'usage réel identifié (pas juste "ce serait cool")
+2. Effort estimé crédible (<1 jour pour court/moyen terme)
+3. Chemin d'implémentation clair
 
 Sinon elle reste dans [IDEAS.md](IDEAS.md).
