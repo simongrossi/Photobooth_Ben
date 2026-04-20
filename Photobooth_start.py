@@ -1241,6 +1241,21 @@ while running:
     elif etat is Etat.VALIDATION:
         inserer_background(screen, fond_accueil)
 
+        # --- Mode burst strip : auto-validation des photos 1 et 2 ---
+        # Comportement : après STRIP_BURST_DELAI_S d'aperçu, on simule le bouton valider.
+        # Seulement actif si STRIP_MODE_BURST = True dans config, et seulement en mode strips
+        # avec < 3 photos (la 3e reste manuelle car elle ouvre l'écran FIN).
+        if (STRIP_MODE_BURST and mode_actuel == "strips"
+                and len(photos_validees) < 3):
+            ecoule_valid = time.time() - dernier_clic_time
+            restant = STRIP_BURST_DELAI_S - ecoule_valid
+            if restant <= 0:
+                # Auto-validation : même logique que le bouton milieu
+                img_preview_cache = None
+                etat = Etat.DECOMPTE
+                dernier_clic_time = time.time()
+                continue
+
         # 1. Gestion de l'aperçu (Image seule)
         if not img_preview_cache and len(photos_validees) > 0:
             derniere_photo = photos_validees[-1]
@@ -1314,6 +1329,25 @@ while running:
         if mode_actuel == "strips":
             txt_c = f"{config.TEXTE_PHOTO_COUNT} {len(photos_validees)} / 3"
             draw_text_shadow_soft(screen, txt_c, font_bandeau, (255, 215, 0), WIDTH//2 - font_bandeau.size(txt_c)[0]//2, 10)
+
+        # --- Compteur burst "Photo suivante dans Xs" ---
+        # Visible uniquement si mode burst actif, en strip, avant la 3e photo.
+        if (STRIP_MODE_BURST and mode_actuel == "strips"
+                and len(photos_validees) < 3):
+            restant = STRIP_BURST_DELAI_S - (time.time() - dernier_clic_time)
+            if restant > 0:
+                txt_burst = f"{TXT_BURST_COUNTDOWN} {restant:.0f}s"
+                burst_surf = font_bandeau.render(txt_burst, True, (255, 255, 255))
+                bx = WIDTH // 2 - burst_surf.get_width() // 2
+                by = 70  # juste sous le compteur Photo N/3
+                # Bandeau semi-transparent derrière pour lisibilité
+                burst_bg = pygame.Surface(
+                    (burst_surf.get_width() + 40, burst_surf.get_height() + 12),
+                    pygame.SRCALPHA,
+                )
+                burst_bg.fill((0, 0, 0, 160))
+                screen.blit(burst_bg, (bx - 20, by - 6))
+                screen.blit(burst_surf, (bx, by))
 
     elif etat is Etat.FIN:
         inserer_background(screen, fond_accueil)

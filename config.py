@@ -265,6 +265,14 @@ DUREE_ECRAN_ERREUR = 4.0   # Timeout auto des écrans d'erreur (secondes)
 DUREE_CONFIRM_ABANDON = 3.0  # Fenêtre de confirmation abandon (secondes)
 TIMEOUT_SPLASH_CAMERA = 10.0  # Timeout max splash connexion caméra (secondes)
 
+# --- Mode burst strip : auto-validation entre photos en mode bandelettes ---
+# Si activé, les photos 1 et 2 d'un strip s'auto-valident après STRIP_BURST_DELAI_S
+# secondes d'aperçu (pas besoin d'appuyer sur valider entre chaque). La 3e photo reste
+# validable manuellement car elle envoie à l'écran FIN.
+STRIP_MODE_BURST     = False  # False = comportement historique (validation manuelle)
+STRIP_BURST_DELAI_S  = 2.5    # durée d'aperçu avant auto-advance (secondes)
+TXT_BURST_COUNTDOWN  = "Photo suivante dans"
+
 # --- Monitoring espace disque continu (Sprint 5.6) ---
 SEUIL_DISQUE_CRITIQUE_MB   = 500    # alerte si < 500 Mo libres pendant un événement
 INTERVALLE_CHECK_DISQUE_S  = 30.0   # fréquence de check (en secondes) pendant l'accueil
