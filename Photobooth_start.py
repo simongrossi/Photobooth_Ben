@@ -465,6 +465,230 @@ splash_connexion_camera(camera_mgr)
 # Flag de fenêtre de confirmation d'abandon en état FIN (Sprint 2.8)
 session.abandon_confirm_until = 0.0
 
+
+# ========================================================================================================
+# --- RENDER FUNCTIONS (Sprint item 11) ---
+# Chaque état a sa fonction de rendu. Accèdent aux globals du module (screen, fontes,
+# assets, caches). `session` est passé explicitement pour rendre la dépendance visible.
+# ========================================================================================================
+
+def render_decompte(session):
+    """DECOMPTE : preview caméra + compteur + capture HQ + transition d'état.
+    C'est plus qu'un simple rendu — cette fonction orchestre la capture + la transition
+    vers VALIDATION ou l'erreur."""
+    # LOGIQUE DE RATIO ET MASQUE SELON LE MODE
+    if session.mode_actuel == "strips":
+        p_ratio = config.STRIP_PHOTO_RATIO
+        alpha_masque = config.MASQUE
+    else:
+        p_ratio = 0.66
+        alpha_masque = 0
+
+    # Init id session si première photo
+    if len(session.photos_validees) == 0:
+        session.id_session_timestamp = datetime.now().strftime(FORMAT_TIMESTAMP)
+        session.session_start_ts = time.time()
+        log_info(f"🚀 NOUVELLE SESSION : {session.id_session_timestamp}")
+
+    # Boucle du décompte visuel
+    for i in range(TEMPS_DECOMPTE, 0, -1):
+        jouer_son("beep")
+        t_start = time.time()
+        while time.time() - t_start < 1:
+            surf = get_canon_frame()
+            if surf:
+                screen.blit(pygame.transform.scale(surf, (WIDTH, HEIGHT)), (0, 0))
+
+                if alpha_masque > 0:
+                    largeur_visible = HEIGHT / p_ratio
+                    bande_w = int((WIDTH - largeur_visible) // 2)
+                    if bande_w > 0:
+                        masque_surf = pygame.Surface((bande_w, HEIGHT))
+                        masque_surf.set_alpha(alpha_masque)
+                        masque_surf.fill((0, 0, 0))
+                        screen.blit(masque_surf, (0, 0))
+                        screen.blit(masque_surf, (WIDTH - bande_w, 0))
+
+                if session.mode_actuel == "strips":
+                    txt_label = f"{TEXTE_PHOTO_COUNT} {len(session.photos_validees) + 1} / 3"
+                    label_surf = font_boutons.render(txt_label, True, COULEUR_DECOMPTE)
+                    label_x = WIDTH // 2 - label_surf.get_width() // 2
+                    draw_text_shadow_soft(
+                        screen, txt_label, font_boutons, COULEUR_DECOMPTE,
+                        label_x, 30, shadow_alpha=180, offset=3,
+                    )
+
+                num_surf = font_decompte.render(str(i), True, COULEUR_DECOMPTE)
+                screen.blit(num_surf, (WIDTH // 2 - num_surf.get_width() // 2, HEIGHT // 2 - num_surf.get_height() // 2))
+
+            pygame.display.flip()
+            pygame.event.pump()
+
+    # CAPTURE HQ + transition
+    index_photo = len(session.photos_validees) + 1
+    chemin_photo = capturer_hq(session.id_session_timestamp, index_photo)
+
+    if chemin_photo:
+        session.photos_validees.append(chemin_photo)
+        session.etat = Etat.VALIDATION
+    else:
+        log_error("Erreur capture : retour à l'accueil")
+        ecran_erreur(TXT_ERREUR_CAPTURE)
+        terminer_session_et_revenir_accueil("capture_failed")
+
+    session.dernier_clic_time = time.time()
+
+
+def render_validation(session):
+    """VALIDATION : aperçu de la dernière photo + bandeau boutons + burst countdown.
+    Retourne True si une auto-validation burst a eu lieu (caller doit continue)."""
+    inserer_background(screen, fond_accueil)
+
+    # Mode burst strip : auto-validation après STRIP_BURST_DELAI_S
+    if (STRIP_MODE_BURST and session.mode_actuel == "strips"
+            and len(session.photos_validees) < 3):
+        ecoule_valid = time.time() - session.dernier_clic_time
+        if ecoule_valid >= STRIP_BURST_DELAI_S:
+            session.img_preview_cache = None
+            session.etat = Etat.DECOMPTE
+            session.dernier_clic_time = time.time()
+            return True
+
+    # 1. Gestion de l'aperçu (Image seule)
+    if not session.img_preview_cache and len(session.photos_validees) > 0:
+        derniere_photo = session.photos_validees[-1]
+
+        if session.mode_actuel == "strips":
+            hauteur_cible = getattr(config, 'PREVISU_H_STRIP', 600)
+            r_v = float(getattr(config, 'STRIP_PHOTO_RATIO', 1.0))
+        else:
+            hauteur_cible = getattr(config, 'PREVISU_H', 533)
+            r_v = 0.66
+
+        largeur_cible = int(hauteur_cible / r_v)
+
+        # `with` garantit la fermeture du handle fichier (sinon fuite mémoire 30 FPS)
+        with Image.open(derniere_photo) as raw_img:
+            oriented = ImageOps.exif_transpose(raw_img)
+        pil_img = ImageOps.fit(oriented, (largeur_cible, hauteur_cible), Image.Resampling.LANCZOS)
+        session.img_preview_cache = pygame.image.fromstring(
+            pil_img.tobytes(), pil_img.size, pil_img.mode
+        ).convert()
+
+    # 2. Affichage de l'aperçu centré
+    if session.img_preview_cache:
+        m_t = str(session.mode_actuel).lower().strip()
+        dec = (getattr(config, 'DECALAGE_Y_PREVISU_10X15', 0) if m_t == "10x15"
+               else getattr(config, 'DECALAGE_Y_PREVISU_STRIPS', 0))
+        x_p = (WIDTH // 2) - (session.img_preview_cache.get_width() // 2)
+        y_p = (HEIGHT // 2) - (session.img_preview_cache.get_height() // 2) + dec
+        pygame.draw.rect(screen, (255, 255, 255),
+                         (x_p - 10, y_p - 10, session.img_preview_cache.get_width() + 20, session.img_preview_cache.get_height() + 20))
+        screen.blit(session.img_preview_cache, (x_p, y_p))
+
+    # 3. Bandeau + boutons
+    y_b = HEIGHT - BANDEAU_HAUTEUR
+    screen.blit(BANDEAU_CACHE, (0, y_b))
+    y_t = y_b + (BANDEAU_HAUTEUR // 2) - (font_bandeau.get_height() // 2)
+
+    if session.mode_actuel == "strips":
+        txt_g = config.TXT_VALID_REPRENDRE_STRIP
+        txt_m = config.TXT_VALID_VALIDER_STRIP
+        txt_d = config.TXT_VALID_ACCUEIL_STRIP
+    else:
+        txt_g = config.TXT_VALID_REPRENDRE_10X15
+        txt_m = config.TXT_VALID_VALIDER_10X15
+        txt_d = config.TXT_VALID_ACCUEIL_10X15
+
+    screen.blit(font_bandeau.render(txt_g, True, config.COULEUR_TEXTE_G), (80, y_t))
+    t_m = font_bandeau.render(txt_m, True, config.COULEUR_TEXTE_M)
+    screen.blit(t_m, (WIDTH // 2 - t_m.get_width() // 2, y_t))
+    t_d = font_bandeau.render(txt_d, True, config.COULEUR_TEXTE_D)
+    screen.blit(t_d, (WIDTH - 80 - t_d.get_width(), y_t))
+
+    # Compteur PHOTO N/3 (strips)
+    if session.mode_actuel == "strips":
+        txt_c = f"{config.TEXTE_PHOTO_COUNT} {len(session.photos_validees)} / 3"
+        draw_text_shadow_soft(screen, txt_c, font_bandeau, (255, 215, 0),
+                              WIDTH // 2 - font_bandeau.size(txt_c)[0] // 2, 10)
+
+    # Countdown burst "Photo suivante dans Xs" si actif
+    if (STRIP_MODE_BURST and session.mode_actuel == "strips"
+            and len(session.photos_validees) < 3):
+        restant = STRIP_BURST_DELAI_S - (time.time() - session.dernier_clic_time)
+        if restant > 0:
+            txt_burst = f"{TXT_BURST_COUNTDOWN} {restant:.0f}s"
+            burst_surf = font_bandeau.render(txt_burst, True, (255, 255, 255))
+            bx = WIDTH // 2 - burst_surf.get_width() // 2
+            by = 70
+            burst_bg = pygame.Surface(
+                (burst_surf.get_width() + 40, burst_surf.get_height() + 12),
+                pygame.SRCALPHA,
+            )
+            burst_bg.fill((0, 0, 0, 160))
+            screen.blit(burst_bg, (bx - 20, by - 6))
+            screen.blit(burst_surf, (bx, by))
+    return False
+
+
+def render_fin(session):
+    """FIN : aperçu du montage final + bandeau 3 boutons + overlay confirmation abandon."""
+    inserer_background(screen, fond_accueil)
+
+    # Récupération de l'image
+    p_prev = session.path_montage if session.path_montage else os.path.join(
+        getattr(config, 'PATH_TEMP', 'temp'), "montage_prev.jpg"
+    )
+
+    if session.img_preview_cache is None:
+        if os.path.exists(p_prev):
+            try:
+                raw_m = pygame.image.load(p_prev).convert_alpha()
+                h_max_fin = 600 if session.mode_actuel == "strips" else 520
+                ratio_m = raw_m.get_width() / raw_m.get_height()
+                session.img_preview_cache = pygame.transform.smoothscale(raw_m, (int(h_max_fin * ratio_m), h_max_fin))
+            except Exception as e:
+                log_error(f"Erreur chargement aperçu FIN : {e}")
+
+    # Application des décalages spécifiques
+    if session.img_preview_cache:
+        if session.mode_actuel == "strips":
+            dec_y = getattr(config, 'DECALAGE_Y_MONTAGE_FINAL_STRIP', 0)
+        else:
+            dec_y = getattr(config, 'DECALAGE_Y_PREVISU_10X15', 0)
+
+        x_m = (WIDTH - session.img_preview_cache.get_width()) // 2
+        y_m = (HEIGHT // 2 - session.img_preview_cache.get_height() // 2) + dec_y
+
+        pygame.draw.rect(screen, (255, 255, 255),
+                         (x_m - 10, y_m - 10, session.img_preview_cache.get_width() + 20, session.img_preview_cache.get_height() + 20))
+        screen.blit(session.img_preview_cache, (x_m, y_m))
+
+    # Bandeau de boutons
+    y_b = HEIGHT - BANDEAU_HAUTEUR
+    screen.blit(BANDEAU_CACHE, (0, y_b))
+    y_t = y_b + (BANDEAU_HAUTEUR // 2) - (font_bandeau.get_height() // 2)
+    txt_g = config.TXT_BOUTON_REPRENDRE if session.mode_actuel == "10x15" else config.TXT_BOUTON_ACCUEIL
+    screen.blit(font_bandeau.render(txt_g, True, config.COULEUR_TEXTE_G), (80, y_t))
+    t_m = font_bandeau.render(config.TXT_BOUTON_IMPRIMER, True, config.COULEUR_TEXTE_M)
+    screen.blit(t_m, (WIDTH // 2 - t_m.get_width() // 2, y_t))
+    t_d = font_bandeau.render(config.TXT_BOUTON_SUPPRIMER, True, config.COULEUR_TEXTE_D)
+    screen.blit(t_d, (WIDTH - 80 - t_d.get_width(), y_t))
+
+    # Overlay de confirmation d'abandon (Sprint 2.8)
+    if session.abandon_confirm_until:
+        if time.time() < session.abandon_confirm_until:
+            overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 170))
+            screen.blit(overlay, (0, 0))
+            t1 = font_titre.render(TXT_CONFIRM_ABANDON_1, True, (255, 120, 120))
+            screen.blit(t1, (WIDTH // 2 - t1.get_width() // 2, HEIGHT // 2 - 120))
+            t2 = font_bandeau.render(TXT_CONFIRM_ABANDON_2, True, (255, 255, 255))
+            screen.blit(t2, (WIDTH // 2 - t2.get_width() // 2, HEIGHT // 2 + 20))
+        else:
+            session.abandon_confirm_until = 0.0
+
+
 # ========================================================================================================
 # --- BOUCLE PRINCIPALE --- ##############################################################################
 # ========================================================================================================
@@ -893,243 +1117,16 @@ while running:
             )
 
     elif session.etat is Etat.DECOMPTE:
-        # --- LOGIQUE DE RATIO ET MASQUE SELON LE MODE ---
-        if session.mode_actuel == "strips":
-            p_ratio = config.STRIP_PHOTO_RATIO
-            alpha_masque = config.MASQUE 
-        else:
-            p_ratio = 0.66  
-            alpha_masque = 0 
-
-        # --- INITIALISATION DE L'ID DE SESSION (Si première photo) ---
-        if len(session.photos_validees) == 0:
-            session.id_session_timestamp = datetime.now().strftime(FORMAT_TIMESTAMP)
-            session.session_start_ts = time.time()  # Sprint 5.4 : durée de session
-            log_info(f"🚀 NOUVELLE SESSION : {session.id_session_timestamp}")
-
-        # Boucle du décompte visuel
-        for i in range(TEMPS_DECOMPTE, 0, -1):
-            jouer_son("beep")  # Sprint 2.3 : tick audio à chaque seconde
-            t_start = time.time()
-            while time.time() - t_start < 1:
-                surf = get_canon_frame()
-                if surf:
-                    screen.blit(pygame.transform.scale(surf, (WIDTH, HEIGHT)), (0, 0))
-                    
-                    if alpha_masque > 0:
-                        largeur_visible = HEIGHT / p_ratio
-                        bande_w = int((WIDTH - largeur_visible) // 2)
-                        if bande_w > 0:
-                            masque_surf = pygame.Surface((bande_w, HEIGHT))
-                            masque_surf.set_alpha(alpha_masque) 
-                            masque_surf.fill((0, 0, 0))
-                            screen.blit(masque_surf, (0, 0))
-                            screen.blit(masque_surf, (WIDTH - bande_w, 0))
-
-                    if session.mode_actuel == "strips":
-                        # Sprint 6.3 : compteur grand + shadow pour être lisible par dessus le preview
-                        txt_label = f"{TEXTE_PHOTO_COUNT} {len(session.photos_validees) + 1} / 3"
-                        label_surf = font_boutons.render(txt_label, True, COULEUR_DECOMPTE)
-                        label_x = WIDTH // 2 - label_surf.get_width() // 2
-                        draw_text_shadow_soft(
-                            screen, txt_label, font_boutons, COULEUR_DECOMPTE,
-                            label_x, 30, shadow_alpha=180, offset=3,
-                        )
-
-                    num_surf = font_decompte.render(str(i), True, COULEUR_DECOMPTE)
-                    screen.blit(num_surf, (WIDTH//2 - num_surf.get_width()//2, HEIGHT//2 - num_surf.get_height()//2))
-                
-                pygame.display.flip()
-                pygame.event.pump()
-                
-        # --- CAPTURE HQ ---
-        # On calcule l'index de la photo (1, 2 ou 3)
-        index_photo = len(session.photos_validees) + 1
-
-        # On appelle la fonction HQ qui utilise maintenant le config.py
-        chemin_photo = capturer_hq(session.id_session_timestamp, index_photo)
-
-        if chemin_photo:
-            session.photos_validees.append(chemin_photo)
-            session.etat = Etat.VALIDATION
-        else:
-            log_error("Erreur capture : retour à l'accueil")
-            ecran_erreur(TXT_ERREUR_CAPTURE)  # Sprint 2.5
-            terminer_session_et_revenir_accueil("capture_failed")  # Sprint 4.4
-
-        session.dernier_clic_time = time.time()
+        render_decompte(session)
         continue
 
 
     elif session.etat is Etat.VALIDATION:
-        inserer_background(screen, fond_accueil)
-
-        # --- Mode burst strip : auto-validation des photos 1 et 2 ---
-        # Comportement : après STRIP_BURST_DELAI_S d'aperçu, on simule le bouton valider.
-        # Seulement actif si STRIP_MODE_BURST = True dans config, et seulement en mode strips
-        # avec < 3 photos (la 3e reste manuelle car elle ouvre l'écran FIN).
-        if (STRIP_MODE_BURST and session.mode_actuel == "strips"
-                and len(session.photos_validees) < 3):
-            ecoule_valid = time.time() - session.dernier_clic_time
-            restant = STRIP_BURST_DELAI_S - ecoule_valid
-            if restant <= 0:
-                # Auto-validation : même logique que le bouton milieu
-                session.img_preview_cache = None
-                session.etat = Etat.DECOMPTE
-                session.dernier_clic_time = time.time()
-                continue
-
-        # 1. Gestion de l'aperçu (Image seule)
-        if not session.img_preview_cache and len(session.photos_validees) > 0:
-            derniere_photo = session.photos_validees[-1]
-
-            # --- SELECTION DE LA HAUTEUR SELON LE MODE ---
-            if session.mode_actuel == "strips":
-                hauteur_cible = getattr(config, 'PREVISU_H_STRIP', 600)
-                r_v = float(getattr(config, 'STRIP_PHOTO_RATIO', 1.0))
-            else:
-                hauteur_cible = getattr(config, 'PREVISU_H', 533)
-                r_v = 0.66  # Ratio standard 2:3 (3:2 couché)
-
-            # Calcul de la largeur automatique pour respecter le ratio
-            largeur_cible = int(hauteur_cible / r_v)
-
-            # --- TRAITEMENT IMAGE ---
-            # `with` garantit la fermeture du handle fichier (sinon fuite mémoire 30 FPS)
-            with Image.open(derniere_photo) as raw_img:
-                oriented = ImageOps.exif_transpose(raw_img)
-
-            # fit() découpe proprement sans étirer
-            pil_img = ImageOps.fit(oriented, (largeur_cible, hauteur_cible), Image.Resampling.LANCZOS)
-
-            # Conversion vers Pygame
-            session.img_preview_cache = pygame.image.fromstring(
-                pil_img.tobytes(), pil_img.size, pil_img.mode
-            ).convert()
-
-        # 2. AFFICHAGE (Centrage automatique)
-        if session.img_preview_cache:
-            m_t = str(session.mode_actuel).lower().strip()
-            dec = getattr(config, 'DECALAGE_Y_PREVISU_10X15', 0) if m_t == "10x15" else getattr(config, 'DECALAGE_Y_PREVISU_STRIPS', 0)
-            
-            # On centre par rapport à la largeur réelle de l'image générée
-            x_p = (WIDTH // 2) - (session.img_preview_cache.get_width() // 2)
-            y_p = (HEIGHT // 2) - (session.img_preview_cache.get_height() // 2) + dec
-            
-            # Cadre blanc
-            pygame.draw.rect(screen, (255, 255, 255), (x_p - 10, y_p - 10, session.img_preview_cache.get_width() + 20, session.img_preview_cache.get_height() + 20))
-            screen.blit(session.img_preview_cache, (x_p, y_p))
-
-        # 3. Bandeau et Boutons (Sprint 3.4 : surface cachée)
-        y_b = HEIGHT - BANDEAU_HAUTEUR
-        screen.blit(BANDEAU_CACHE, (0, y_b))
-        y_t = y_b + (BANDEAU_HAUTEUR // 2) - (font_bandeau.get_height() // 2)
-
-        # --- SÉLECTION DES TEXTES SELON LE MODE ---
-        if session.mode_actuel == "strips":
-            txt_g = config.TXT_VALID_REPRENDRE_STRIP
-            txt_m = config.TXT_VALID_VALIDER_STRIP
-            txt_d = config.TXT_VALID_ACCUEIL_STRIP
-        else:
-            # Mode 10x15
-            txt_g = config.TXT_VALID_REPRENDRE_10X15
-            txt_m = config.TXT_VALID_VALIDER_10X15
-            txt_d = config.TXT_VALID_ACCUEIL_10X15
-
-        # --- AFFICHAGE DES TEXTES ---
-        # Bouton Gauche
-        screen.blit(font_bandeau.render(txt_g, True, config.COULEUR_TEXTE_G), (80, y_t))
-        
-        # Bouton Milieu (Centré)
-        t_m = font_bandeau.render(txt_m, True, config.COULEUR_TEXTE_M)
-        screen.blit(t_m, (WIDTH // 2 - t_m.get_width() // 2, y_t))
-        
-        # Bouton Droit
-        t_d = font_bandeau.render(txt_d, True, config.COULEUR_TEXTE_D)
-        screen.blit(t_d, (WIDTH - 80 - t_d.get_width(), y_t))
-
-        # Compteur (Uniquement pour le mode strips)
-        if session.mode_actuel == "strips":
-            txt_c = f"{config.TEXTE_PHOTO_COUNT} {len(session.photos_validees)} / 3"
-            draw_text_shadow_soft(screen, txt_c, font_bandeau, (255, 215, 0), WIDTH//2 - font_bandeau.size(txt_c)[0]//2, 10)
-
-        # --- Compteur burst "Photo suivante dans Xs" ---
-        # Visible uniquement si mode burst actif, en strip, avant la 3e photo.
-        if (STRIP_MODE_BURST and session.mode_actuel == "strips"
-                and len(session.photos_validees) < 3):
-            restant = STRIP_BURST_DELAI_S - (time.time() - session.dernier_clic_time)
-            if restant > 0:
-                txt_burst = f"{TXT_BURST_COUNTDOWN} {restant:.0f}s"
-                burst_surf = font_bandeau.render(txt_burst, True, (255, 255, 255))
-                bx = WIDTH // 2 - burst_surf.get_width() // 2
-                by = 70  # juste sous le compteur Photo N/3
-                # Bandeau semi-transparent derrière pour lisibilité
-                burst_bg = pygame.Surface(
-                    (burst_surf.get_width() + 40, burst_surf.get_height() + 12),
-                    pygame.SRCALPHA,
-                )
-                burst_bg.fill((0, 0, 0, 160))
-                screen.blit(burst_bg, (bx - 20, by - 6))
-                screen.blit(burst_surf, (bx, by))
+        if render_validation(session):
+            continue  # auto-advance burst → on saute au prochain tour
 
     elif session.etat is Etat.FIN:
-        inserer_background(screen, fond_accueil)
-
-        # 1. Récupération de l'image
-        p_prev = session.path_montage if session.path_montage else os.path.join(getattr(config, 'PATH_TEMP', 'temp'), "montage_prev.jpg")
-
-        if session.img_preview_cache is None:
-            if os.path.exists(p_prev):
-                try:
-                    raw_m = pygame.image.load(p_prev).convert_alpha()
-                    h_max_fin = 600 if session.mode_actuel == "strips" else 520
-                    ratio_m = raw_m.get_width() / raw_m.get_height()
-                    session.img_preview_cache = pygame.transform.smoothscale(raw_m, (int(h_max_fin * ratio_m), h_max_fin))
-                except Exception as e:
-                    log_error(f"Erreur chargement aperçu FIN : {e}")
-
-        # 2. APPLICATION DES DÉCALAGES SPÉCIFIQUES
-        if session.img_preview_cache:
-            if session.mode_actuel == "strips":
-                # On utilise ta variable exacte :
-                dec_y = getattr(config, 'DECALAGE_Y_MONTAGE_FINAL_STRIP', 0)
-            else:
-                # Pour le 10x15, on utilise ta variable de prévisu (comme tu l'avais fait au début)
-                dec_y = getattr(config, 'DECALAGE_Y_PREVISU_10X15', 0)
-            
-            x_m = (WIDTH - session.img_preview_cache.get_width()) // 2
-            y_m = (HEIGHT // 2 - session.img_preview_cache.get_height() // 2) + dec_y
-            
-            # Cadre blanc + Image
-            pygame.draw.rect(screen, (255, 255, 255), (x_m - 10, y_m - 10, session.img_preview_cache.get_width() + 20, session.img_preview_cache.get_height() + 20))
-            screen.blit(session.img_preview_cache, (x_m, y_m))
-            
-        # 3. Bandeau de boutons (Sprint 3.4 : surface cachée)
-        y_b = HEIGHT - BANDEAU_HAUTEUR
-        screen.blit(BANDEAU_CACHE, (0, y_b))
-
-        y_t = y_b + (BANDEAU_HAUTEUR // 2) - (font_bandeau.get_height() // 2)
-        txt_g = config.TXT_BOUTON_REPRENDRE if session.mode_actuel == "10x15" else config.TXT_BOUTON_ACCUEIL
-        screen.blit(font_bandeau.render(txt_g, True, config.COULEUR_TEXTE_G), (80, y_t))
-        t_m = font_bandeau.render(config.TXT_BOUTON_IMPRIMER, True, config.COULEUR_TEXTE_M)
-        screen.blit(t_m, (WIDTH // 2 - t_m.get_width() // 2, y_t))
-        t_d = font_bandeau.render(config.TXT_BOUTON_SUPPRIMER, True, config.COULEUR_TEXTE_D)
-        screen.blit(t_d, (WIDTH - 80 - t_d.get_width(), y_t))
-
-        # --- OVERLAY CONFIRMATION ABANDON (Sprint 2.8) ---
-        # Si le flag est armé et encore dans la fenêtre, on montre un avertissement visible.
-        # Passée la fenêtre, on l'efface silencieusement pour revenir à l'affichage normal.
-        if session.abandon_confirm_until:
-            if time.time() < session.abandon_confirm_until:
-                overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-                overlay.fill((0, 0, 0, 170))
-                screen.blit(overlay, (0, 0))
-                t1 = font_titre.render(TXT_CONFIRM_ABANDON_1, True, (255, 120, 120))
-                screen.blit(t1, (WIDTH // 2 - t1.get_width() // 2, HEIGHT // 2 - 120))
-                t2 = font_bandeau.render(TXT_CONFIRM_ABANDON_2, True, (255, 255, 255))
-                screen.blit(t2, (WIDTH // 2 - t2.get_width() // 2, HEIGHT // 2 + 20))
-            else:
-                session.abandon_confirm_until = 0.0
+        render_fin(session)
     pygame.display.flip()
     clock.tick(30)
 
