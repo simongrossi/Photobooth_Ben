@@ -32,6 +32,11 @@ de données. Document à mettre à jour lors des refactors structurels majeurs.
      │      │  ┌─────────────────┐   │
      │      │  │ printer (CUPS)  │   │
      │      │  └─────────────────┘   │
+     │      │                        │
+     │      │  ┌─────────────────┐   │
+     │      │  │ arduino         │   │  ◄── pyserial + thread → injecte des KEYDOWN
+     │      │  │ (3 btns + LEDs) │   │       pilote les LEDs selon Etat
+     │      │  └─────────────────┘   │
      │      └────────────────────────┘
      │
      │  (pygame: screen, clock, fontes)

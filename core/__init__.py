@@ -5,4 +5,5 @@ Contient :
 - camera : CameraManager (gphoto2 + threading.Lock + retry)
 - montage : MontageGenerator (génération PIL des montages)
 - printer : PrinterManager (files CUPS via lpstat/lp)
+- arduino : ArduinoController (pyserial + thread : 3 boutons + 3 LEDs)
 """

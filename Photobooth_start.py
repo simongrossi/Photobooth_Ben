@@ -3,7 +3,8 @@ from __future__ import annotations
 # Imports explicites depuis config (plus de `import *` pour dépendances visibles).
 # Liste triée alphabétiquement, mise à jour en ajoutant de nouvelles constantes.
 from config import (
-    ALPHA_TEXTE_REPOS, BANDEAU_10X15, BANDEAU_ACCUEIL, BANDEAU_ALPHA,
+    ALPHA_TEXTE_REPOS, ARDUINO_BAUDRATE, ARDUINO_ENABLED, ARDUINO_PORT,
+    BANDEAU_10X15, BANDEAU_ACCUEIL, BANDEAU_ALPHA,
     BANDEAU_COULEUR, BANDEAU_HAUTEUR, BANDEAU_STRIP, COULEUR_DECOMPTE,
     COULEUR_FLASH, COULEUR_SOURIEZ, COULEUR_TEXTE_OFF, COULEUR_TEXTE_ON, COULEUR_TEXTE_REPOS,
     DELAI_SECURITE,
@@ -321,6 +322,25 @@ from ui import (  # noqa: E402
 
 UIContext.setup(screen, clock, font_titre, font_boutons, font_bandeau, font_decompte)
 setup_sounds()
+
+
+# ========================================================================================================
+# --- ARDUINO NANO (3 boutons-poussoirs à LED intégrée) ---
+# Le contrôleur ouvre le port série, injecte des pygame.KEYDOWN pour chaque bouton
+# pressé et pilote les LEDs selon la machine d'état via `arduino_ctrl.tick(...)`.
+# Inerte (no-op) si ARDUINO_ENABLED=False, port absent ou pyserial manquant —
+# le photobooth reste utilisable au clavier.
+# ========================================================================================================
+from core.arduino import ArduinoController  # noqa: E402
+
+arduino_ctrl = ArduinoController(
+    port=ARDUINO_PORT if ARDUINO_ENABLED else None,
+    baudrate=ARDUINO_BAUDRATE,
+    key_left=TOUCHE_GAUCHE,
+    key_mid=TOUCHE_MILIEU,
+    key_right=TOUCHE_DROITE,
+)
+arduino_ctrl.start()
 
 
 _dernier_check_disque_ts = 0.0
@@ -1134,8 +1154,19 @@ while running:
 
     elif session.etat is Etat.FIN:
         render_fin(session)
+
+    # --- Synchronisation des LEDs Arduino avec l'état courant ---
+    # Les messages série ne sont émis que lors des transitions (mémorisation interne),
+    # donc l'appel est quasi-gratuit à 30 FPS.
+    arduino_ctrl.tick(
+        etat_name=session.etat.value,
+        mode_actuel=session.mode_actuel,
+        abandon_armed=(session.abandon_confirm_until and time.time() < session.abandon_confirm_until),
+    )
+
     pygame.display.flip()
     clock.tick(30)
 
+arduino_ctrl.close()
 pygame.quit()
 
