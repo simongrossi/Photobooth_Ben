@@ -27,6 +27,7 @@ from config import (
 import config  # accès qualifié `config.X` dans les render functions
 import pygame
 import os
+import sys
 import time
 import json
 import shutil
@@ -179,7 +180,11 @@ def get_canon_frame() -> Optional[pygame.Surface]:
 # ========================================================================================================
 
 def capturer_hq(id_session: str, index_photo: int) -> Optional[str]:
-    """Procédure de capture : UI (flash + SOURIEZ) + appel CameraManager.capture_hq().
+    """Procédure de capture : UI (flash + SOURIEZ animé) + appel CameraManager.capture_hq().
+
+    La capture subprocess (2-3 s) tourne dans un thread daemon pendant qu'on anime
+    "SOURIEZ ..." en plein écran sur le thread principal. L'UI reste donc réactive
+    (QUIT pris en compte) et le texte anime des points pour signaler que ça travaille.
 
     Args:
         id_session: timestamp de la session (FORMAT_TIMESTAMP).
@@ -188,28 +193,58 @@ def capturer_hq(id_session: str, index_photo: int) -> Optional[str]:
     Returns:
         Chemin complet du fichier JPEG si capture OK, None si échec.
     """
+    import threading
+
     nom_final = f"{PREFIXE_RAW}_{id_session}_{index_photo}.jpg"
     chemin_complet = os.path.join(PATH_RAW, nom_final)
 
-    # 1. FLASH BLANC pur (Sprint 2.2) — effet "shutter" bref
+    # 1. FLASH BLANC pur (effet "shutter" bref)
     screen.fill(COULEUR_FLASH)
     pygame.display.flip()
-    jouer_son("shutter")  # Sprint 2.3
+    jouer_son("shutter")
     time.sleep(DUREE_FLASH_BLANC)
 
-    # 2. Flash blanc avec "SOURIEZ !" pendant la capture subprocess (bloquante côté caméra)
-    screen.fill(COULEUR_FLASH)
-    try:
-        txt_flash = font_titre.render("SOURIEZ !", True, COULEUR_SOURIEZ)
-        text_x = (WIDTH // 2) - (txt_flash.get_width() // 2)
-        text_y = (HEIGHT // 2) - (txt_flash.get_height() // 2)
-        screen.blit(txt_flash, (text_x, text_y))
-    except Exception as e:
-        log_warning(f"Affichage SOURIEZ échoué : {e}")
-    pygame.display.flip()
+    # 2. Capture en thread + animation SOURIEZ pendant
+    resultat: dict = {}
 
-    # 3. Capture réelle via le CameraManager (gère retry, reset session, relance LiveView)
-    success = camera_mgr.capture_hq(chemin_complet)
+    def _worker():
+        try:
+            resultat["success"] = camera_mgr.capture_hq(chemin_complet)
+        except BaseException as exc:
+            resultat["error"] = exc
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+
+    # Boucle d'animation : SOURIEZ avec 3 points qui défilent, tant que le thread tourne
+    frame = 0
+    while t.is_alive():
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+
+        screen.fill(COULEUR_FLASH)
+        try:
+            dots = "." * (1 + (frame // 10) % 3)
+            txt_flash = font_titre.render(f"SOURIEZ {dots}", True, COULEUR_SOURIEZ)
+            text_x = (WIDTH // 2) - (txt_flash.get_width() // 2)
+            text_y = (HEIGHT // 2) - (txt_flash.get_height() // 2)
+            screen.blit(txt_flash, (text_x, text_y))
+        except Exception as e:
+            log_warning(f"Affichage SOURIEZ échoué : {e}")
+        pygame.display.flip()
+        clock.tick(30)
+        frame += 1
+
+    t.join(timeout=1.0)
+
+    # Propager une éventuelle exception du thread
+    if "error" in resultat:
+        log_critical(f"Erreur capture worker : {resultat['error']}")
+        return None
+
+    success = resultat.get("success", False)
 
     if success:
         log_info(f"✅ Photo sauvegardée : {nom_final}")
