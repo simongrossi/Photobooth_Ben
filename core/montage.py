@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 
-from PIL import Image, ImageOps
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from config import (
     PATH_TEMP,
@@ -27,6 +27,10 @@ from config import (
     STRIP_PREVIEW_PHOTO_LARGEUR, STRIP_PREVIEW_ESPACEMENT, STRIP_PREVIEW_MARGE_HB,
     STRIP_PREVIEW_CANVAS_LARGEUR, STRIP_PREVIEW_THUMBNAIL_MAX, STRIP_PREVIEW_QUALITY,
     STRIP_FINAL_QUALITY,
+    POLICE_FICHIER,
+    WATERMARK_ENABLED, WATERMARK_TEXT, WATERMARK_COULEUR, WATERMARK_ALPHA,
+    WATERMARK_TAILLE_10X15, WATERMARK_TAILLE_STRIP,
+    WATERMARK_POSITION_10X15, WATERMARK_POSITION_STRIP, WATERMARK_MARGE_PX,
 )
 
 
@@ -80,6 +84,41 @@ class MontageBase:
     def _chemin_prev() -> str:
         return os.path.join(PATH_TEMP, "montage_prev.jpg")
 
+    @staticmethod
+    def _appliquer_watermark(canvas: Image.Image, taille: int, position: str) -> None:
+        """Ajoute un texte semi-transparent à `canvas` (in-place) selon `position`.
+        No-op si `WATERMARK_ENABLED=False` ou `WATERMARK_TEXT` vide."""
+        if not WATERMARK_ENABLED or not WATERMARK_TEXT:
+            return
+
+        try:
+            font = ImageFont.truetype(POLICE_FICHIER, taille)
+        except (OSError, IOError):
+            font = ImageFont.load_default()
+
+        # Calque RGBA temporaire pour gérer l'alpha proprement
+        layer = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(layer)
+
+        bbox = draw.textbbox((0, 0), WATERMARK_TEXT, font=font)
+        txt_w = bbox[2] - bbox[0]
+        txt_h = bbox[3] - bbox[1]
+        marge = WATERMARK_MARGE_PX
+
+        if position == "bottom-left":
+            x = marge
+        elif position == "bottom-center":
+            x = (canvas.width - txt_w) // 2
+        else:  # bottom-right (défaut)
+            x = canvas.width - txt_w - marge
+        y = canvas.height - txt_h - marge - bbox[1]
+
+        r, g, b = WATERMARK_COULEUR[:3]
+        draw.text((x, y), WATERMARK_TEXT, font=font, fill=(r, g, b, WATERMARK_ALPHA))
+
+        composite = Image.alpha_composite(canvas.convert("RGBA"), layer)
+        canvas.paste(composite.convert("RGB"))
+
 
 class MontageGenerator10x15(MontageBase):
     """Montage grand format 10x15. Preview = 900×600 simple ; final = 1800×1200 avec BG+overlay.
@@ -113,6 +152,7 @@ class MontageGenerator10x15(MontageBase):
         photo_fit = ImageOps.fit(img_brute, cls.FINAL_PHOTO_FIT, Image.Resampling.LANCZOS)
         canvas.paste(photo_fit, cls.FINAL_PHOTO_OFFSET)
         cls._coller_overlay(canvas, OVERLAY_10X15, cls.FINAL_SIZE)
+        cls._appliquer_watermark(canvas, WATERMARK_TAILLE_10X15, WATERMARK_POSITION_10X15)
         canvas.save(path_hd, quality=cls.FINAL_QUALITY)
         return path_hd
 
@@ -183,6 +223,7 @@ class MontageGeneratorStrip(MontageBase):
             canvas, OVERLAY_STRIPS, cls.FINAL_SIZE,
             rotation=cls.FINAL_ROTATION, redresser_si_horizontal=True,
         )
+        cls._appliquer_watermark(canvas, WATERMARK_TAILLE_STRIP, WATERMARK_POSITION_STRIP)
 
         canvas.save(path_hd, "JPEG", quality=cls.FINAL_QUALITY)
         return path_hd

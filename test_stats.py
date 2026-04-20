@@ -103,6 +103,66 @@ class TestCalculerStats:
         assert s["heure_pointe"] == (14, 3)
 
 
+# --- Tests in-process (pour la couverture) ---
+
+class TestCalculerStatsTsMalforme:
+    def test_ts_malforme_ignore(self):
+        """Ts invalide (pas de date ou pas d'heure) doit être skippé sans crash."""
+        sessions = [
+            {"mode": "10x15", "issue": "printed", "nb_photos": 1,
+             "duree_s": 40.0, "ts": ""},  # ts vide
+            {"mode": "10x15", "issue": "printed", "nb_photos": 1,
+             "duree_s": 40.0, "ts": "pas_une_date"},  # ts sans espace
+            {"mode": "10x15", "issue": "printed", "nb_photos": 1,
+             "duree_s": 40.0, "ts": "2026-04-20 xx:yy:zz"},  # heure non-num
+        ]
+        s = stats.calculer_stats(sessions)
+        assert s["total"] == 3
+        assert s["heures"] == {}
+        assert s["heure_pointe"] is None
+
+
+class TestAfficherTexte:
+    def test_vide_ne_crashe_pas(self, capsys):
+        stats.afficher_texte({"total": 0, "printed": 0, "abandoned": 0,
+                              "capture_failed": 0, "modes": {},
+                              "duree_moyenne_s": 0, "duree_max_s": 0,
+                              "heures": {}, "heure_pointe": None,
+                              "nb_photos_total": 0})
+        captured = capsys.readouterr()
+        assert "Aucune session" in captured.out
+
+    def test_complet_imprime_tout(self, capsys, jsonl_factice):
+        sessions = stats.load_sessions(jsonl_factice)
+        s = stats.calculer_stats(sessions)
+        stats.afficher_texte(s, date_filter="2026-04-20")
+        out = capsys.readouterr().out
+        assert "RAPPORT PHOTOBOOTH" in out
+        assert "2026-04-20" in out
+        assert "Heure de pointe" in out
+        assert "Répartition horaire" in out
+
+
+class TestMainInProcess:
+    def test_main_fichier_absent(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setattr(sys, "argv",
+                            ["stats.py", "--file", str(tmp_path / "absent.jsonl")])
+        assert stats.main() == 1
+
+    def test_main_json_ok(self, jsonl_factice, monkeypatch, capsys):
+        monkeypatch.setattr(sys, "argv",
+                            ["stats.py", "--json", "--file", jsonl_factice])
+        assert stats.main() == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["total"] == 6
+
+    def test_main_texte_ok(self, jsonl_factice, monkeypatch, capsys):
+        monkeypatch.setattr(sys, "argv",
+                            ["stats.py", "--date", "2026-04-20", "--file", jsonl_factice])
+        assert stats.main() == 0
+        assert "RAPPORT PHOTOBOOTH" in capsys.readouterr().out
+
+
 # --- Tests d'intégration du CLI ---
 
 class TestCLI:

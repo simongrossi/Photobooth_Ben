@@ -32,7 +32,8 @@ PATH_OVERLAYS   = os.path.join(PATH_ASSETS, "overlays")
 PATH_SOUNDS     = os.path.join(PATH_ASSETS, "sounds")
 
 # --- Fichiers sons (chargés si présents, sinon ignorés silencieusement) ---
-SON_BEEP        = os.path.join(PATH_SOUNDS, "beep.wav")      # Tick décompte
+SON_BEEP        = os.path.join(PATH_SOUNDS, "beep.wav")      # Tick décompte (sauf dernière seconde)
+SON_BEEP_FINAL  = os.path.join(PATH_SOUNDS, "beep_final.wav") # Tick dernière seconde (tension) - fallback sur SON_BEEP si absent
 SON_SHUTTER     = os.path.join(PATH_SOUNDS, "shutter.wav")   # Déclenchement photo
 SON_SUCCESS     = os.path.join(PATH_SOUNDS, "success.wav")   # Impression lancée
 
@@ -279,6 +280,14 @@ DUREE_ECRAN_ERREUR = 4.0   # Timeout auto des écrans d'erreur (secondes)
 DUREE_CONFIRM_ABANDON = 3.0  # Fenêtre de confirmation abandon (secondes)
 TIMEOUT_SPLASH_CAMERA = 10.0  # Timeout max splash connexion caméra (secondes)
 
+# --- Filigrane "photos restantes" en mode strip ---
+# Grand chiffre semi-transparent en fond pendant le décompte : indique combien
+# de photos restent à prendre (3 → 2 → 1). Utile aux invités pour situer leur
+# position dans la bandelette. Désactivable.
+STRIP_FILIGRANE_ENABLED = True
+STRIP_FILIGRANE_ALPHA   = 50    # Transparence 0–255 (50 = très discret)
+STRIP_FILIGRANE_TAILLE  = 600   # Taille de la police (gros caractère fond)
+
 # --- Mode burst strip : auto-validation entre photos en mode bandelettes ---
 # Si activé, les photos 1 et 2 d'un strip s'auto-valident après STRIP_BURST_DELAI_S
 # secondes d'aperçu (pas besoin d'appuyer sur valider entre chaque). La 3e photo reste
@@ -299,6 +308,23 @@ DUREE_PAR_IMAGE_SLIDESHOW = 3.5    # Durée d'affichage de chaque image
 NB_MAX_IMAGES_SLIDESHOW   = 40     # Plus récentes uniquement, pour éviter de scanner trop
 TXT_SLIDESHOW_INVITATION  = "Approchez pour commencer !"
 
+
+
+# --- Watermark événement sur montages finaux ---
+# Petit texte discret ajouté en bas à droite des impressions (10x15 et strip).
+# Désactivé par défaut : laisser à False si pas d'événement ciblé.
+# Note strip : la bande est pré-rotée 180° pour l'imprimante tête-bêche,
+# donc le "bas-droite" du canvas = "haut-gauche" de l'impression. Ajuster
+# WATERMARK_POSITION_STRIP si besoin (voir docs/CONFIG.md).
+WATERMARK_ENABLED          = False
+WATERMARK_TEXT             = "Événement — 20/04/2026"
+WATERMARK_COULEUR          = (255, 255, 255)   # Blanc
+WATERMARK_ALPHA            = 180               # 0–255 (180 = lisible mais discret)
+WATERMARK_TAILLE_10X15     = 28
+WATERMARK_TAILLE_STRIP     = 20
+WATERMARK_POSITION_10X15   = "bottom-right"    # "bottom-right" / "bottom-left" / "bottom-center"
+WATERMARK_POSITION_STRIP   = "bottom-right"
+WATERMARK_MARGE_PX         = 20                # Distance en px depuis le bord
 
 
 # ==========================================

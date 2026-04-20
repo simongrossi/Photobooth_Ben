@@ -32,7 +32,7 @@ from config import (
     TIMEOUT_SPLASH_CAMERA,
     DUREE_ECRAN_ERREUR,
     TEMPS_ATTENTE_IMP,
-    SON_BEEP, SON_SHUTTER, SON_SUCCESS,
+    SON_BEEP, SON_BEEP_FINAL, SON_SHUTTER, SON_SUCCESS,
 )
 from core.logger import log_warning
 
@@ -160,7 +160,12 @@ def setup_sounds():
     except Exception as e:
         log_warning(f"pygame.mixer non disponible : {e}")
         return
-    for nom, path in [("beep", SON_BEEP), ("shutter", SON_SHUTTER), ("success", SON_SUCCESS)]:
+    for nom, path in [
+        ("beep", SON_BEEP),
+        ("beep_final", SON_BEEP_FINAL),
+        ("shutter", SON_SHUTTER),
+        ("success", SON_SUCCESS),
+    ]:
         if not os.path.exists(path):
             continue
         try:
@@ -169,9 +174,14 @@ def setup_sounds():
             log_warning(f"Son {nom} non chargé ({path}) : {e}")
 
 
+_SON_FALLBACK = {"beep_final": "beep"}
+
+
 def jouer_son(nom):
-    """Joue un son si disponible, sinon silencieux."""
+    """Joue un son si disponible, sinon fallback ou silencieux."""
     s = SONS.get(nom)
+    if s is None and nom in _SON_FALLBACK:
+        s = SONS.get(_SON_FALLBACK[nom])
     if s is None:
         return
     try:

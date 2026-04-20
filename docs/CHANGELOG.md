@@ -5,7 +5,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
 ---
 
-## `WIP` — Boîtier Arduino : 3 boutons-poussoirs à LED intégrée
+## `19973c3` (PR #1) — Boîtier Arduino : 3 boutons-poussoirs à LED intégrée
 
 ### Added
 - `core/arduino.py` : `ArduinoController` (thread pyserial → `pygame.KEYDOWN`,

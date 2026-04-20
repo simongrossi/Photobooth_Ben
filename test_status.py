@@ -119,3 +119,26 @@ class TestCLI:
         assert result.returncode in (0, 1)
         # Au minimum, le header doit apparaître
         assert "Photobooth" in result.stdout
+
+
+# --- Tests in-process pour la couverture ---
+
+
+class TestCheckPythonDeps:
+    def test_module_present(self, capsys):
+        """PIL est dans les deps dev — doit être trouvé."""
+        # check_python_deps vérifie ["pygame", "cv2", "gphoto2", "PIL", "numpy"]
+        # En CI, certains manquent → on accepte True ou False mais la fonction
+        # ne doit pas crasher.
+        result = status.check_python_deps()
+        assert isinstance(result, bool)
+        assert "Module Python : PIL" in capsys.readouterr().out
+
+
+class TestMainInProcess:
+    def test_main_retourne_0_ou_1(self, capsys):
+        """Exécute main() en process : couvre les branches non-CLI restantes."""
+        rc = status.main()
+        assert rc in (0, 1)
+        out = capsys.readouterr().out
+        assert "diagnostic" in out

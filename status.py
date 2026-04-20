@@ -23,7 +23,7 @@ from config import (
     NOM_IMPRIMANTE_10X15, NOM_IMPRIMANTE_STRIP,
     OVERLAY_10X15, OVERLAY_STRIPS,
     PATH_DATA, PATH_IMG_10X15, PATH_IMG_STRIP,
-    POLICE_FICHIER, SON_BEEP, SON_SHUTTER, SON_SUCCESS,
+    POLICE_FICHIER, SON_BEEP, SON_BEEP_FINAL, SON_SHUTTER, SON_SUCCESS,
 )
 
 # --- Sortie ANSI (pas de dépendance externe) ---
@@ -161,6 +161,7 @@ def main():
 
     print_section("Sons (optionnels — silencieux si absents)")
     check_optional_file(SON_BEEP, "Beep décompte")
+    check_optional_file(SON_BEEP_FINAL, "Beep dernière seconde (fallback SON_BEEP)")
     check_optional_file(SON_SHUTTER, "Shutter")
     check_optional_file(SON_SUCCESS, "Success impression")
 

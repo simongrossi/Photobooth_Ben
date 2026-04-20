@@ -40,7 +40,7 @@ Dernière mise à jour : 2026-04-20 (post-merge Arduino + CI)
 
 ### Tests & qualité
 
-- [ ] **Coverage cible 80%** — actuellement ~60%, manque les modules `ui/*` et render functions
+- [ ] **Coverage `core/camera.py`** — à 0 % car cv2/gphoto2 absents en CI. Mocks complexes ou tests Pi-only (voir [TESTING.md](TESTING.md)). Global actuellement à 78 %, tout le reste ≥ 87 %.
 
 ---
 

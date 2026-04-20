@@ -28,8 +28,9 @@ pytest --cov --cov-report=html
 open htmlcov/index.html
 ```
 
-Le seuil de couverture minimum est fixé à **30 %** dans `pyproject.toml`
-(`fail_under`). Cible court terme : **60 %**. Cible moyen terme : **80 %**.
+Le seuil de couverture minimum est fixé à **75 %** dans `pyproject.toml`
+(`fail_under`). Mesure actuelle : **78 %** globale, avec tous les modules
+hors `core/camera.py` au-dessus de **87 %**.
 
 ---
 
@@ -37,9 +38,12 @@ Le seuil de couverture minimum est fixé à **30 %** dans `pyproject.toml`
 
 | Fichier | Tests | Couvre | Stratégie |
 |---|---|---|---|
-| [test_montage.py](../test_montage.py) | 18 | `core/montage.py` (PIL, MontageGenerator10x15/Strip) | monkeypatch des `PATH_*` + fixtures PIL synthétiques |
-| [test_status.py](../test_status.py) | 13 | `status.py` (diagnostic hardware/assets) | fixtures assets factices dans `tmp_path` |
-| [test_stats.py](../test_stats.py) | 11 | `stats.py` (parsing `sessions.jsonl`, histogramme horaire) | fixtures JSONL synthétiques |
+| [test_montage.py](../test_montage.py) | 22 | `core/montage.py` (PIL, MontageGenerator10x15/Strip, watermark) | monkeypatch des `PATH_*` + fixtures PIL synthétiques |
+| [test_arduino.py](../test_arduino.py) | 19 | `core/arduino.py` (ArduinoController, LEDs, tick, read loop) | FakeSerial + FakePygame mocks |
+| [test_printer.py](../test_printer.py) | 13 | `core/printer.py` (PrinterManager, lpstat/lp) | mock `subprocess.run`/`Popen` |
+| [test_logger.py](../test_logger.py) | 4 | `core/logger.py` (log_error wrapper legacy) | `caplog` pytest |
+| [test_status.py](../test_status.py) | 15 | `status.py` (diagnostic hardware/assets) | fixtures assets factices dans `tmp_path` |
+| [test_stats.py](../test_stats.py) | 15 | `stats.py` (parsing `sessions.jsonl`, histogramme horaire, CLI) | fixtures JSONL synthétiques |
 | [test_integration.py](../test_integration.py) | 6 | chaîne `CameraManager` → `MontageGenerator` → `PrinterManager` | mocks gphoto2/CUPS, réels PIL |
 
 **Non couvert en CI** (nécessite pygame/gphoto2/caméra réelle) :
@@ -112,15 +116,15 @@ qui permet de charger la config sans pygame — utile pour les tests.
 
 Modules mesurés (voir `[tool.coverage.run] source` dans `pyproject.toml`) :
 
-| Module | Couverture estimée | Commentaire |
+| Module | Couverture | Commentaire |
 |---|---|---|
-| `core/montage.py` | ~85 % | 18 tests dédiés |
-| `core/camera.py` | ~20 % | mocks partiels via `test_integration` |
-| `core/printer.py` | ~15 % | idem |
-| `core/logger.py` | ~40 % | utilisé transitivement par autres tests |
-| `core/arduino.py` | ~0 % | non testé (pyserial non mocké) |
-| `stats.py` | ~90 % | 11 tests dédiés |
-| `status.py` | ~80 % | 13 tests dédiés |
+| `core/montage.py` | 92 % | 22 tests dédiés |
+| `core/camera.py` | 0 % | cv2/gphoto2 absents en CI — cf. plus bas |
+| `core/printer.py` | 100 % | mocks subprocess |
+| `core/logger.py` | 94 % | log_error + usage transitif |
+| `core/arduino.py` | 87 % | FakeSerial + FakePygame |
+| `stats.py` | 100 % | tests in-process + CLI |
+| `status.py` | 93 % | fixtures + main() en process |
 
 Pour voir le détail réel :
 

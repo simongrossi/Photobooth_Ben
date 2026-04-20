@@ -52,6 +52,7 @@ Pour les modifier en production voir [RUNBOOK.md](RUNBOOK.md).
 | Constante | Rôle |
 |---|---|
 | `SON_BEEP`, `SON_SHUTTER`, `SON_SUCCESS` | WAV pour tick, shutter, impression — absents = silencieux |
+| `SON_BEEP_FINAL` | WAV joué à la **dernière seconde** du décompte — fallback sur `SON_BEEP` si absent |
 | `PATH_IMG_10X15`, `PATH_IMG_STRIP` | Icônes du menu accueil |
 | `FILE_BG_ACCUEIL` | Fond de l'accueil |
 | `BG_10X15_FILE`, `BG_STRIPS_FILE` | Fonds des impressions |
@@ -258,6 +259,37 @@ en i18n/FR.json si on ajoute le multi-langue (voir ROADMAP.md).
 | `DUREE_ECRAN_ERREUR` | `4.0` | Timeout auto des écrans d'erreur (s) |
 | `DUREE_CONFIRM_ABANDON` | `3.0` | Fenêtre confirmation abandon (s) |
 | `TIMEOUT_SPLASH_CAMERA` | `10.0` | Timeout max connexion caméra (s) |
+
+### Watermark événement (montages finaux)
+
+Petit texte discret ajouté sur les impressions (10×15 et strip). Désactivé
+par défaut.
+
+| Constante | Défaut | Effet |
+|---|---|---|
+| `WATERMARK_ENABLED` | `False` | Activer/désactiver globalement |
+| `WATERMARK_TEXT` | `"Événement — 20/04/2026"` | Texte affiché (vide = no-op) |
+| `WATERMARK_COULEUR` | `(255, 255, 255)` | Couleur du texte (blanc) |
+| `WATERMARK_ALPHA` | `180` | Transparence 0–255 (180 = discret mais lisible) |
+| `WATERMARK_TAILLE_10X15` | `28` | Taille en px sur canvas 1800×1200 |
+| `WATERMARK_TAILLE_STRIP` | `20` | Taille en px sur canvas 600×1800 |
+| `WATERMARK_POSITION_10X15` | `"bottom-right"` | `"bottom-left"`, `"bottom-center"`, ou `"bottom-right"` |
+| `WATERMARK_POSITION_STRIP` | `"bottom-right"` | Idem |
+| `WATERMARK_MARGE_PX` | `20` | Distance depuis le bord du canvas |
+
+> ⚠️ **Strip et rotation** : le canvas strip est pré-roté 180° pour compenser
+> l'orientation tête-bêche de l'imprimante. Le "bottom-right" du canvas
+> correspond donc au "top-left" de l'impression réelle. Faire un tirage test
+> et ajuster `WATERMARK_POSITION_STRIP` si la position visible n'est pas celle
+> voulue.
+
+### Filigrane photos restantes (mode strip)
+
+| Constante | Défaut | Effet |
+|---|---|---|
+| `STRIP_FILIGRANE_ENABLED` | `True` | Gros chiffre semi-transparent en fond pendant le décompte strip (photos restantes : 3 → 2 → 1) |
+| `STRIP_FILIGRANE_ALPHA` | `50` | Transparence 0–255 (50 = très discret) |
+| `STRIP_FILIGRANE_TAILLE` | `600` | Taille de la police du filigrane |
 
 ### Mode burst strip
 

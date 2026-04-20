@@ -296,6 +296,7 @@ try:
         font_boutons    = pygame.font.Font(POLICE_FICHIER, TAILLE_TEXTE_BOUTON)  # <--- Nouveau
         font_bandeau    = pygame.font.Font(POLICE_FICHIER, TAILLE_TEXTE_BANDEAU) # <--- Nouveau
         font_decompte   = pygame.font.Font(POLICE_FICHIER, TAILLE_DECOMPTE)
+        font_filigrane  = pygame.font.Font(POLICE_FICHIER, config.STRIP_FILIGRANE_TAILLE)
     else:
         raise FileNotFoundError
 except Exception:
@@ -304,6 +305,7 @@ except Exception:
     font_boutons    = pygame.font.SysFont("Arial", TAILLE_TEXTE_BOUTON)
     font_bandeau    = pygame.font.SysFont("Arial", TAILLE_TEXTE_BANDEAU, bold=True)
     font_decompte   = pygame.font.SysFont("Arial", TAILLE_DECOMPTE, bold=True)
+    font_filigrane  = pygame.font.SysFont("Arial", config.STRIP_FILIGRANE_TAILLE, bold=True)
 
 
 # ========================================================================================================
@@ -659,7 +661,7 @@ def render_decompte(session: SessionState) -> None:
 
     # Boucle du décompte visuel
     for i in range(TEMPS_DECOMPTE, 0, -1):
-        jouer_son("beep")
+        jouer_son("beep_final" if i == 1 else "beep")
         t_start = time.time()
         while time.time() - t_start < 1:
             surf = get_canon_frame()
@@ -684,6 +686,15 @@ def render_decompte(session: SessionState) -> None:
                         screen, txt_label, font_boutons, COULEUR_DECOMPTE,
                         label_x, 30, shadow_alpha=180, offset=3,
                     )
+
+                    if config.STRIP_FILIGRANE_ENABLED:
+                        photos_restantes = 3 - len(session.photos_validees)
+                        fili_surf = font_filigrane.render(str(photos_restantes), True, COULEUR_DECOMPTE)
+                        fili_surf.set_alpha(config.STRIP_FILIGRANE_ALPHA)
+                        screen.blit(fili_surf, (
+                            WIDTH // 2 - fili_surf.get_width() // 2,
+                            HEIGHT // 2 - fili_surf.get_height() // 2,
+                        ))
 
                 num_surf = font_decompte.render(str(i), True, COULEUR_DECOMPTE)
                 screen.blit(num_surf, (WIDTH // 2 - num_surf.get_width() // 2, HEIGHT // 2 - num_surf.get_height() // 2))
