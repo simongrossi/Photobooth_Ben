@@ -6,12 +6,22 @@ Application photobooth événementiel en **Pygame + gphoto2 + PIL**, conçue pou
 
 ## Démarrage rapide
 
+**Installation complète Raspberry Pi** : voir le guide pas-à-pas détaillé
+👉 **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** (apt, CUPS, systemd autostart, kiosk mode, troubleshooting)
+
+Une fois installé, le cycle quotidien :
+
 ```bash
+cd ~/Photobooth_Ben
+source .venv/bin/activate
+
 # 1. Diagnostic du matériel et des assets (avant chaque événement)
 python3 status.py
 
-# 2. Si tout est vert, lancer le photobooth
+# 2. Si tout est vert, lancer le photobooth manuellement
 python3 Photobooth_start.py
+# OU si systemd configuré :
+sudo systemctl start photobooth.service
 
 # 3. Après l'événement : rapport stats
 python3 stats.py
@@ -157,10 +167,11 @@ Validation automatique au chargement — un `AssertionError` explicite au démar
 
 ## Documentation
 
+- 🚀 **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** — **installation Raspberry Pi** (apt, CUPS, systemd, kiosk, troubleshooting)
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — diagramme des modules + machine d'état + flow de données
 - [docs/ROADMAP.md](docs/ROADMAP.md) — items dev à faire, priorisés court/moyen/long terme
 - [docs/IDEAS.md](docs/IDEAS.md) — pool d'idées + références open-source (PIBOOTH, photobooth-app, RaspAP)
 - [docs/CHANGELOG.md](docs/CHANGELOG.md) — historique des commits par sprint
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — diagramme des modules + machine d'état + flow de données
 
 ---
 
