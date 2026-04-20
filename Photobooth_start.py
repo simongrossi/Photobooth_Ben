@@ -7,7 +7,6 @@ import sys
 import time
 import json
 import subprocess
-import threading
 import numpy as np
 import gphoto2 as gp
 import shutil
@@ -213,33 +212,7 @@ def capturer_hq(id_session, index_photo):
     return None
 
 
-def obtenir_couleur_pulse(c1, c2, vitesse):
-    """ Calcule une couleur oscillant entre c1 et c2 """
-    # Calcul d'un facteur entre 0.0 et 1.0 avec le temps
-    f = (math.sin(time.time() * vitesse) + 1) / 2
-    
-    # Mélange des composantes R, G, B
-    r = int(c1[0] + (c2[0] - c1[0]) * f)
-    g = int(c1[1] + (c2[1] - c1[1]) * f)
-    b = int(c1[2] + (c2[2] - c1[2]) * f)
-    return (r, g, b)
-
-def draw_text_shadow_soft(surface, text, font, color, x, y, shadow_alpha=100, offset=2):
-    """Dessine un texte avec une ombre noire transparente"""
-    # 1. Créer une surface pour l'ombre (Noire)
-    shadow_surf = font.render(text, True, (0, 0, 0))
-    
-    # 2. Créer une surface de la même taille capable de gérer la transparence
-    temp_surf = pygame.Surface(shadow_surf.get_size(), pygame.SRCALPHA)
-    temp_surf.blit(shadow_surf, (0, 0))
-    
-    # 3. Appliquer l'opacité (0 = invisible, 255 = noir total)
-    # 120 est un bon compromis pour une ombre élégante
-    temp_surf.set_alpha(shadow_alpha)
-    
-    # 4. Dessiner l'ombre puis le texte
-    surface.blit(temp_surf, (x + offset, y + offset))
-    surface.blit(font.render(text, True, color), (x, y))
+# Helpers de dessin (obtenir_couleur_pulse, draw_text_shadow_soft) : extraits dans ui.py (item 7)
 
 # ========================================================================================================
 # --- 3. TRAITEMENT IMAGE (Sprint 4.6 : extrait dans montage.py) ---
@@ -270,102 +243,10 @@ def generer_montage_impression_strip(photos, id_session):
     return MontageGeneratorStrip.final(photos, id_session)
 
 
-def get_pygame_surf_cropped(path, size_target, ratio_voulu):
-    if not os.path.exists(path):
-        return None
-    try:
-        # On ouvre l'image brute, sans laisser PIL décider du sens via l'EXIF
-        with Image.open(path) as src:
-            img = src.convert("RGB")
-
-        # Le montage_prev est déjà au bon ratio, on le redimensionne juste pour l'écran
-        img_fit = img.resize(size_target, Image.Resampling.LANCZOS)
-
-        mode = img_fit.mode
-        size = img_fit.size
-        data = img_fit.tobytes()
-        return pygame.image.fromstring(data, size, mode)
-    except Exception as e:
-        log_error(f"Erreur affichage : {e}")
-        return None
+# get_pygame_surf_cropped / get_pygame_surf / inserer_background : extraits dans ui.py (item 7)
 
 
-def get_pygame_surf(path_or_img, size):
-    if isinstance(path_or_img, str):
-        if not os.path.exists(path_or_img): return None
-        img = charger_et_corriger(path_or_img)
-    else:
-        img = path_or_img
-    img = img.resize(size, Image.Resampling.LANCZOS)
-    return pygame.image.fromstring(img.tobytes(), img.size, img.mode)
-
-def inserer_background(screen, fond_image):
-    """Dessine le fond d'écran (Image ou Bleu de secours)"""
-    if fond_image:
-        screen.blit(fond_image, (0, 0))
-    else:
-        # Le fameux bleu de secours de l'accueil
-        screen.fill((155, 211, 242))
-        
-# ========================================================================================================
-# --- 5. FONCTIONS IMPRESSION--- ##########################################################
-# ========================================================================================================
-
-
-# --- CLASSE POUR LA ROUE DE CHARGEMENT PENDANT IMPRESSION
-class LoaderAnimation:
-    def __init__(self):
-        self.reset() # On utilise reset pour l'initialisation aussi
-
-    def reset(self):
-        """ Remet l'animation à son état initial 'calme' """
-        self.angle_tete = 0
-        self.longueur_actuelle = 30 # Longueur minimale de départ
-        self.dernier_temps = time.time()
-
-    def interpoler_couleur(self, c1, c2, facteur):
-        return tuple(int(c1[j] + (c2[j] - c1[j]) * (1 - facteur)) for j in range(3))
-
-    def update_and_draw(self, screen):
-        maintenant = time.time()
-        dt = maintenant - self.dernier_temps
-        self.dernier_temps = maintenant
-
-        # Utilisation directe des variables de ton config.py (via l'import *)
-        cycle = (math.sin(maintenant * ANIM_FREQ) + 1) / 2
-        boost = math.pow(cycle, 4)
-        
-        vitesse_actuelle = ANIM_V_BASE + (boost * ANIM_V_MAX_ADD)
-        self.angle_tete += vitesse_actuelle * dt * 50 
-
-        longueur_cible = 30 + (boost * 210)
-        self.longueur_actuelle += (longueur_cible - self.longueur_actuelle) * ANIM_V_ELASTIQUE * dt
-
-        # Sprint 3.3 : une seule Surface réutilisée (buffer) au lieu d'en allouer 300/frame.
-        # Elle vit sur l'instance : alloc une seule fois pour toute la durée de vie du loader.
-        if not hasattr(self, '_point_buffer'):
-            diametre = ANIM_RAYON_POINT * 2
-            self._point_buffer = pygame.Surface((diametre, diametre), pygame.SRCALPHA)
-
-        buf = self._point_buffer
-        for i in reversed(range(ANIM_NB_POINTS)):
-            progression = i / (ANIM_NB_POINTS - 1)
-            fading = 1.0 - progression
-            angle_point = math.radians(self.angle_tete - (progression * self.longueur_actuelle))
-
-            x = WIDTH // 2 + math.cos(angle_point) * ANIM_TAILLE_ROUE
-            y = HEIGHT // 2 + math.sin(angle_point) * ANIM_TAILLE_ROUE
-
-            couleur = self.interpoler_couleur(ANIM_COULEUR_TETE, ANIM_COULEUR_QUEUE, fading)
-            alpha = int(255 * (fading ** 0.6))
-
-            buf.fill((0, 0, 0, 0))  # clear (la Surface SRCALPHA se vide proprement)
-            pygame.draw.circle(buf, (*couleur, alpha), (ANIM_RAYON_POINT, ANIM_RAYON_POINT), ANIM_RAYON_POINT)
-            screen.blit(buf, (x - ANIM_RAYON_POINT, y - ANIM_RAYON_POINT))
-
-# --- INITIALISATION DE L'OBJET ---
-# On le crée une seule fois ici
-mon_loader = LoaderAnimation()
+# LoaderAnimation + ecran_attente_impression : extraits dans ui.py (item 7)
 
 
 # --- PrinterManager (Sprint 4.3) : extrait dans printer.py (Sprint 4.6) ---
@@ -386,48 +267,6 @@ def imprimante_prete(nom):
 
 def imprimer_fichier_auto(chemin, mode):
     return printer_mgr.send(chemin, mode)
-
-
-def ecran_attente_impression():
-    """ Affiche la roue magique selon la durée définie dans config.py """
-    # On force Python à utiliser les objets créés dans le script principal
-    global screen, mon_loader, clock, font_bandeau
-    
-    temps_debut = time.time()
-    
-    # Boucle de verrouillage pendant l'impression
-    while time.time() - temps_debut < TEMPS_ATTENTE_IMP:
-        
-        # 1. On écoute quand même le système (pour pouvoir quitter avec Echap ou la croix)
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-
-        # 2. Rendu de l'animation
-        screen.fill(COULEUR_FOND_LOADER) # Fond bleu nuit
-        
-        # On appelle l'objet loader
-        mon_loader.update_and_draw(screen)
-        
-        # 3. Affichage du texte
-        try:
-            # On utilise les variables de config.py (WIDTH, HEIGHT)
-            txt = font_bandeau.render("Impression en cours...", True, (255, 255, 255))
-            tx = (WIDTH // 2) - (txt.get_width() // 2)
-            ty = HEIGHT - 120
-            screen.blit(txt, (tx, ty))
-        except Exception as e:
-            # Si la police n'est pas chargée, on ne bloque pas le programme
-            pass
-
-        # 4. Mise à jour de l'écran
-        pygame.display.flip()
-        
-        # 5. On bride à 60 FPS (config.FPS) pour ne pas faire chauffer le processeur
-        clock.tick(FPS)
-
-
 
 
 # ========================================================================================================
@@ -458,51 +297,24 @@ except Exception as e:
 
 
 # ========================================================================================================
-# --- SONS & HELPERS UI --- ##############################################################################
+# --- UI : extrait dans ui.py (item 7) ---
+# Le contexte UI (screen, clock, fontes) est injecté dans UIContext après l'init pygame.
+# Les helpers (jouer_son, afficher_message_plein_ecran, executer_avec_spinner, ecran_erreur,
+# splash_connexion_camera, ecran_attente_impression) sont importés depuis ui.py.
 # ========================================================================================================
 
-# --- Initialisation du mixer audio (fallback silencieux si pas de carte son) ---
-try:
-    pygame.mixer.init()
-    _mixer_ok = True
-except Exception as e:
-    log_error(f"⚠️ pygame.mixer non disponible : {e}")
-    _mixer_ok = False
+from ui import (  # noqa: E402
+    UIContext, setup_sounds, jouer_son,
+    draw_text_shadow_soft, inserer_background, obtenir_couleur_pulse,
+    get_pygame_surf, get_pygame_surf_cropped,
+    LoaderAnimation,
+    afficher_message_plein_ecran, executer_avec_spinner,
+    ecran_erreur, ecran_attente_impression,
+    splash_connexion_camera,
+)
 
-SONS = {}
-if _mixer_ok:
-    for _nom, _path in [("beep", SON_BEEP), ("shutter", SON_SHUTTER), ("success", SON_SUCCESS)]:
-        if os.path.exists(_path):
-            try:
-                SONS[_nom] = pygame.mixer.Sound(_path)
-            except Exception as e:
-                log_error(f"⚠️ Son {_nom} non chargé ({_path}) : {e}")
-        else:
-            log_error(f"ℹ️ Son {_nom} absent (optionnel) : {_path}")
-
-
-def jouer_son(nom):
-    """Joue un son si disponible, sinon ne fait rien (fallback silencieux)."""
-    s = SONS.get(nom)
-    if s is not None:
-        try:
-            s.play()
-        except Exception as e:
-            log_error(f"⚠️ Lecture son {nom} échouée : {e}")
-
-
-def afficher_message_plein_ecran(message, couleur=(255, 215, 0), fond=COULEUR_FOND_LOADER):
-    """Affiche un message centré plein écran et flip. Utilisé pour les transitions courtes."""
-    screen.fill(fond)
-    try:
-        txt = font_bandeau.render(message, True, couleur)
-        screen.blit(
-            txt,
-            (WIDTH // 2 - txt.get_width() // 2, HEIGHT // 2 - txt.get_height() // 2),
-        )
-    except Exception as e:
-        log_error(f"Affichage message échoué : {e}")
-    pygame.display.flip()
+UIContext.setup(screen, clock, font_titre, font_boutons, font_bandeau, font_decompte)
+setup_sounds()
 
 
 _dernier_check_disque_ts = 0.0
@@ -559,114 +371,6 @@ def ecrire_metadata_session(issue, nb_photos, duree_s):
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except Exception as e:
         log_error(f"⚠️ Écriture metadata session échouée : {e}")
-
-
-def executer_avec_spinner(fonction_longue, message):
-    """Sprint 3.2 : exécute une fonction bloquante (génération montage PIL)
-    dans un thread, tout en animant le loader + message pendant l'attente.
-    Retourne la valeur de retour, ou re-lève l'exception capturée dans le thread.
-    L'UI reste fluide au lieu de figer 1-2 s sur un écran statique."""
-    resultat = {}
-
-    def _wrapper():
-        try:
-            resultat["value"] = fonction_longue()
-        except BaseException as exc:
-            resultat["error"] = exc
-
-    t = threading.Thread(target=_wrapper, daemon=True)
-    t.start()
-
-    local_loader = LoaderAnimation()
-    while t.is_alive():
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-
-        screen.fill(COULEUR_FOND_LOADER)
-        local_loader.update_and_draw(screen)
-        try:
-            txt = font_bandeau.render(message, True, (255, 255, 255))
-            screen.blit(txt, (WIDTH // 2 - txt.get_width() // 2, HEIGHT - 120))
-        except Exception as e:
-            log_error(f"Rendu message spinner : {e}")
-        pygame.display.flip()
-        clock.tick(30)
-
-    t.join(timeout=1.0)
-    if "error" in resultat:
-        raise resultat["error"]
-    return resultat.get("value")
-
-
-def ecran_erreur(message, timeout=None):
-    """Écran d'erreur explicite visible par l'utilisateur, avec timeout auto.
-    Une touche clavier permet aussi de skipper."""
-    if timeout is None:
-        timeout = DUREE_ECRAN_ERREUR
-    t_start = time.time()
-    while time.time() - t_start < timeout:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            if event.type == pygame.KEYDOWN:
-                return  # l'utilisateur skippe
-
-        screen.fill((40, 10, 10))
-        try:
-            titre = font_titre.render("ERREUR", True, (255, 100, 100))
-            screen.blit(titre, (WIDTH // 2 - titre.get_width() // 2, HEIGHT // 2 - 220))
-            msg = font_bandeau.render(message, True, (255, 255, 255))
-            screen.blit(msg, (WIDTH // 2 - msg.get_width() // 2, HEIGHT // 2))
-            hint = font_bandeau.render(
-                "Appuyez sur une touche ou patientez...", True, (170, 170, 170)
-            )
-            screen.blit(hint, (WIDTH // 2 - hint.get_width() // 2, HEIGHT - 100))
-        except Exception as e:
-            log_error(f"Rendu écran erreur échoué : {e}")
-        pygame.display.flip()
-        clock.tick(30)
-
-
-def splash_connexion_camera(timeout=None):
-    """Tente de connecter la caméra avec un écran visible + retry jusqu'à timeout.
-    Retourne True si connecté, False sinon (on laisse tourner en mode dégradé).
-    Sprint 4.1 : délègue au CameraManager (plus de global `camera` à gérer)."""
-    if timeout is None:
-        timeout = TIMEOUT_SPLASH_CAMERA
-    t_start = time.time()
-    frame_count = 0
-    while time.time() - t_start < timeout:
-        # On écoute QUIT pour ne pas figer l'app
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-
-        # Si la caméra est absente, on tente une reconnexion (1× / seconde)
-        if not camera_mgr.is_connected and frame_count % 30 == 0:
-            if camera_mgr.init():
-                camera_mgr.set_liveview(1)
-
-        if camera_mgr.is_connected:
-            afficher_message_plein_ecran(TXT_SPLASH_CAMERA_OK, couleur=(100, 255, 100))
-            time.sleep(0.6)
-            return True
-
-        # Animation simple : 3 points qui défilent
-        dots = "." * (1 + (frame_count // 15) % 3)
-        afficher_message_plein_ecran(
-            f"{TXT_SPLASH_CAMERA}{dots}", couleur=(255, 215, 0)
-        )
-        clock.tick(30)
-        frame_count += 1
-
-    # Timeout : on montre un avertissement et on continue en mode dégradé
-    afficher_message_plein_ecran(TXT_SPLASH_CAMERA_FAIL, couleur=(255, 150, 150))
-    time.sleep(1.5)
-    return False
 
 
 # --- CACHE DES SURFACES STATIQUES (Sprint 3.4) ---
@@ -756,7 +460,7 @@ except Exception as e:
 # --- Splash de connexion caméra (Sprint 2.1) ---
 # Si `camera` a été obtenue à l'init top du fichier, le splash se ferme immédiatement.
 # Sinon on montre un écran visible avec retry jusqu'à TIMEOUT_SPLASH_CAMERA.
-splash_connexion_camera()
+splash_connexion_camera(camera_mgr)
 
 # Flag de fenêtre de confirmation d'abandon en état FIN (Sprint 2.8)
 session.abandon_confirm_until = 0.0
