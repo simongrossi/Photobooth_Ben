@@ -34,7 +34,7 @@ from config import (
     TEMPS_ATTENTE_IMP,
     SON_BEEP, SON_SHUTTER, SON_SUCCESS,
 )
-from logger import log_warning
+from core.logger import log_warning
 
 
 # ========================================================================================================
@@ -142,7 +142,7 @@ def get_pygame_surf_cropped(path, size_target, ratio_voulu=None):
 
 def get_pygame_surf(path_or_img, size):
     """Accepte un path ou une Image PIL, retourne une Surface pygame."""
-    from montage import charger_et_corriger  # lazy import pour éviter cycle potentiel
+    from core.montage import charger_et_corriger  # lazy import pour éviter cycle potentiel
     if isinstance(path_or_img, str):
         if not os.path.exists(path_or_img):
             return None

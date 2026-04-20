@@ -7,7 +7,7 @@ Sprint 4.3 + 4.6 : extrait de Photobooth_start.py.
 """
 import subprocess
 
-from logger import log_info, log_warning, log_critical
+from core.logger import log_info, log_warning, log_critical
 
 
 class PrinterManager:

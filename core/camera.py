@@ -18,7 +18,7 @@ import gphoto2 as gp
 import numpy as np
 import pygame
 
-from logger import log_error, log_info, log_warning, log_critical
+from core.logger import log_error, log_info, log_warning, log_critical
 
 
 class CameraManager:

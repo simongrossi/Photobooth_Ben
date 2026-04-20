@@ -86,7 +86,7 @@ for d in dossiers_requis:
         print(f"📁 Dossier créé : {d}")
 
 # Logging : extrait dans logger.py (Sprint 4.6). On importe les 4 helpers.
-from logger import log_error, log_info, log_warning, log_critical, log_file  # noqa: E402
+from core.logger import log_error, log_info, log_warning, log_critical, log_file  # noqa: E402
 
 
 def _purger_temp_et_verifier_disque():
@@ -133,7 +133,7 @@ log_info("====================================================")
 # La classe CameraManager vit désormais dans camera.py. Import + wrappers de compat.
 # ========================================================================================================
 
-from camera import CameraManager  # noqa: E402
+from core.camera import CameraManager  # noqa: E402
 
 
 # Singleton global
@@ -221,7 +221,7 @@ def capturer_hq(id_session, index_photo):
 # pygame, pas de globals UI), testable isolément. Import + wrappers de compat ci-dessous.
 # ========================================================================================================
 
-from montage import (
+from core.montage import (
     MontageBase,
     MontageGenerator10x15,
     MontageGeneratorStrip,
@@ -250,7 +250,7 @@ def generer_montage_impression_strip(photos, id_session):
 
 
 # --- PrinterManager (Sprint 4.3) : extrait dans printer.py (Sprint 4.6) ---
-from printer import PrinterManager  # noqa: E402
+from core.printer import PrinterManager  # noqa: E402
 
 # Singleton global utilisé par les wrappers et — pour du nouveau code — à appeler directement.
 printer_mgr = PrinterManager(NOM_IMPRIMANTE_10X15, NOM_IMPRIMANTE_STRIP)

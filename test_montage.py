@@ -11,8 +11,8 @@ import os
 import pytest
 from PIL import Image
 
-import montage
-from montage import (
+from core import montage
+from core.montage import (
     MontageBase, MontageGenerator10x15, MontageGeneratorStrip,
     charger_et_corriger,
 )
