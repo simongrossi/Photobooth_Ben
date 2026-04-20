@@ -75,10 +75,16 @@ Photobooth_Ben/
 ├── test_montage.py       # 18 tests pytest (isolation via monkeypatch)
 ├── README.md
 ├── docs/
-│   ├── ROADMAP.md
-│   ├── IDEAS.md
-│   ├── CHANGELOG.md
-│   └── ARCHITECTURE.md
+│   ├── ROADMAP.md          # items actionnables priorisés
+│   ├── IDEAS.md            # idées en vrac
+│   ├── CHANGELOG.md        # historique des sprints
+│   ├── ARCHITECTURE.md     # graphe de dépendances + machine d'état
+│   ├── DEPLOYMENT.md       # install Raspberry Pi pas-à-pas
+│   ├── ARDUINO.md          # câblage, flash firmware, protocole
+│   ├── DEVELOPMENT.md      # setup dev local, CI, conventions
+│   ├── TESTING.md          # lancer et écrire les tests
+│   ├── CONFIG.md           # référence des constantes de config.py
+│   └── RUNBOOK.md          # checklist événementiel J-1 / J / J+1
 └── .gitignore
 ```
 

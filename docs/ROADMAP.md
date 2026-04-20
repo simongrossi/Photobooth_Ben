@@ -4,7 +4,7 @@
 > effets exotiques, hardware, brainstorm), voir [IDEAS.md](IDEAS.md).
 > Pour l'historique de ce qui a été fait, voir [CHANGELOG.md](CHANGELOG.md).
 
-Dernière mise à jour : 2026-04-20
+Dernière mise à jour : 2026-04-20 (post-merge Arduino + CI)
 
 ---
 
@@ -14,30 +14,33 @@ Dernière mise à jour : 2026-04-20
 
 **UX événementiel** : splash caméra, flash + shutter sound, beep décompte, écran "Préparation...", confirmation abandon, slideshow d'attente, compteur photo strip, mode burst.
 
-**Architecture modulaire** : SessionState dataclass, UIContext singleton, split en `core/` + `ui/`, 4 render functions extraites (DECOMPTE/VALIDATION/FIN), MontageGenerator/CameraManager/PrinterManager encapsulés.
+**Architecture modulaire** : SessionState dataclass, UIContext singleton, split en `core/` + `ui/`, render functions extraites (DECOMPTE/VALIDATION/FIN/ACCUEIL), event handlers par état, MontageGenerator/CameraManager/PrinterManager encapsulés.
 
-**Performance** : threading spinner génération montage, cache des surfaces statiques, loader GC optim, purge temp + check disque continu.
+**Hardware** : contrôleur Arduino Nano (`core/arduino.py`) — 3 boutons-poussoirs à LED intégrée via pyserial, pilotage LED selon `Etat`, fallback clavier si pyserial absent. Firmware `arduino/photobooth_buttons/`.
+
+**Performance** : threading spinner génération montage, cache des surfaces statiques + ASSETS cache, capture HQ async (subprocess.Popen + polling), loader GC optim, purge temp + check disque continu, profiling mémoire (`profile_mem.py`, `profile.py`).
 
 **Observabilité** : logging rotatif, `sessions.jsonl` metadata, `status.py` (diagnostic), `stats.py` (rapport avec histogramme horaire), monitoring disque avec bandeau rouge.
 
-**Code quality** : `from config import *` → imports explicites (96 noms), dead code nettoyé, ruff clean, type hints sur classes publiques, log_error → log_info/warning/critical, tests pytest 18/18.
+**Code quality** : `from config import *` → imports explicites (96 noms), dead code nettoyé, ruff clean, type hints sur classes publiques + docstrings, log_error → log_info/warning/critical.
+
+**Tests & CI** : pytest (tests unitaires + intégration, `test_status.py`, `test_stats.py`, `test_integration.py`), GitHub Actions CI (`.github/workflows/ci.yml`), coverage (`pyproject.toml`), pre-commit hook (`.pre-commit-config.yaml`).
+
+**Déploiement** : guide Raspberry Pi complet (`docs/DEPLOYMENT.md`), doc architecture (`docs/ARCHITECTURE.md`), doc Arduino (`docs/ARDUINO.md`), changelog (`docs/CHANGELOG.md`).
 
 ---
 
 ## Court terme — 30 min à 1 h chacun
-
-### Tests & CI
-
-- [ ] **Tests status.py + stats.py** — fixtures JSONL synthétiques, vérif retour codes
-- [ ] **GitHub Actions CI** — `pytest` + `ruff check` à chaque push sur main
-- [ ] **Coverage report** — `pytest --cov=core`, cible 60% puis 80%
-- [ ] **pre-commit hook** — ruff auto-fix + pytest avant chaque commit
 
 ### UX micro
 
 - [ ] Bip sonore **différent** pour la dernière seconde du décompte (tension)
 - [ ] Countdown en **filigrane** pendant la capture en mode strip (3 → 2 → 1)
 - [ ] **Watermark** discret configurable "Événement XYZ — 20/04/2026"
+
+### Tests & qualité
+
+- [ ] **Coverage cible 80%** — actuellement ~60%, manque les modules `ui/*` et render functions
 
 ---
 
@@ -49,11 +52,6 @@ Dernière mise à jour : 2026-04-20
 - [ ] **6.4 Galerie admin** — touche cachée (F1) → grille des montages du jour, navigation flèches, retour Échap. Nouvel état `Etat.GALERIE`
 - [ ] **6.5 Overlays thématiques** sélectionnables (mariage, anniversaire, Noël, Halloween...) — scan `assets/overlays/<theme>/`, écran choix avant décompte
 - [ ] Mode **timer 10s** — compte à rebours sans appui clavier pour groupes (3e mode accueil ou toggle depuis strip/10x15)
-
-### Architecture (finitions du split)
-
-- [ ] **Extraction event handlers** par état (`handle_accueil_event`, `handle_validation_event`, `handle_fin_event`) — items 9 non terminés. Demande de refactor les nombreux `continue` en retour de signal
-- [ ] **Extraction render_accueil** — idem, complexité slideshow `continue` à gérer
 
 ### Robustesse & infra
 
@@ -95,7 +93,6 @@ Dernière mise à jour : 2026-04-20
 
 - [ ] **Email / SMS delivery** — après impression, écran "Entrez votre email/numéro" (clavier virtuel tactile) → photo envoyée en PJ. SMTP + formulaire
 - [ ] **Multi-langue** (EN/FR/ES) — toutes les strings extraites dans `i18n/*.json`, toggle sur l'accueil
-- [ ] **3.1 Capture HQ async** — `subprocess.Popen` + polling, UI fluide pendant les 2-3 s de capture. Restructure la machine d'état DECOMPTE
 - [ ] **Branding par événement** — dossier `events/mariage-smith-2026/` qui surcharge assets + overlays + textes + config
 
 ---
