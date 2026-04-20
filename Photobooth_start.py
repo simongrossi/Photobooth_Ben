@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 # Imports explicites depuis config (plus de `import *` pour dépendances visibles).
 # Liste triée alphabétiquement, mise à jour en ajoutant de nouvelles constantes.
 from config import (
@@ -31,6 +33,8 @@ import shutil
 import math
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Optional
+
 from PIL import Image, ImageOps
 from datetime import datetime
 
@@ -107,9 +111,12 @@ for d in dossiers_requis:
 from core.logger import log_info, log_warning, log_critical  # noqa: E402
 
 
-def _purger_temp_et_verifier_disque():
-    """Sprint 3.6 : nettoie PATH_TEMP (fichiers résiduels d'une session crashée)
-    et log l'espace disque disponible. Avertit si < 1 Go."""
+def _purger_temp_et_verifier_disque() -> None:
+    """Nettoie PATH_TEMP (fichiers résiduels d'une session crashée) au boot,
+    et log l'espace disque disponible. Avertit si < 1 Go.
+
+    Appelé une seule fois au démarrage. Pour le monitoring continu pendant
+    l'événement, voir `verifier_disque_periodiquement()`."""
     # Purge des fichiers temporaires résiduels
     nb_supprimes = 0
     try:
@@ -162,7 +169,8 @@ if camera_mgr.is_connected:
 
 
 # Wrapper de compat — seul `get_canon_frame` est encore appelé (dans render_decompte).
-def get_canon_frame():
+def get_canon_frame() -> Optional[pygame.Surface]:
+    """Retourne la frame preview caméra courante sous forme de pygame.Surface, ou None."""
     return camera_mgr.get_preview_frame()
 
 
@@ -170,9 +178,16 @@ def get_canon_frame():
 # --- 2. FONCTIONS TECHNIQUES --- ########################################################################
 # ========================================================================================================
 
-def capturer_hq(id_session, index_photo):
+def capturer_hq(id_session: str, index_photo: int) -> Optional[str]:
     """Procédure de capture : UI (flash + SOURIEZ) + appel CameraManager.capture_hq().
-    Retourne le chemin complet si OK, None sinon."""
+
+    Args:
+        id_session: timestamp de la session (FORMAT_TIMESTAMP).
+        index_photo: numéro de la photo dans la session (1, 2 ou 3 en strip).
+
+    Returns:
+        Chemin complet du fichier JPEG si capture OK, None si échec.
+    """
     nom_final = f"{PREFIXE_RAW}_{id_session}_{index_photo}.jpg"
     chemin_complet = os.path.join(PATH_RAW, nom_final)
 
@@ -278,11 +293,13 @@ _disque_critique = False
 _disque_libre_mb = None
 
 
-def verifier_disque_periodiquement():
-    """Sprint 5.6 : check périodique (INTERVALLE_CHECK_DISQUE_S) de l'espace disque libre.
-    Met à jour les flags globaux pour que le rendu ACCUEIL puisse afficher un bandeau
-    rouge si on descend sous SEUIL_DISQUE_CRITIQUE_MB. Non-bloquant, silencieux sauf
-    transition OK→critique où on log un warning."""
+def verifier_disque_periodiquement() -> None:
+    """Check périodique (INTERVALLE_CHECK_DISQUE_S) de l'espace disque libre.
+
+    Met à jour les flags module-level `_disque_critique` et `_disque_libre_mb`
+    lus par le rendu ACCUEIL pour afficher un bandeau rouge si on descend sous
+    SEUIL_DISQUE_CRITIQUE_MB. Non-bloquant, silencieux sauf sur la transition
+    OK→critique où on log un warning."""
     global _dernier_check_disque_ts, _disque_critique, _disque_libre_mb
     maintenant = time.time()
     if maintenant - _dernier_check_disque_ts < INTERVALLE_CHECK_DISQUE_S:
@@ -302,17 +319,23 @@ def verifier_disque_periodiquement():
         log_warning(f"Check disque périodique échoué : {e}")
 
 
-def terminer_session_et_revenir_accueil(issue):
-    """Sprint 4.4 : centralise la fin de session (5 sites historiques).
-    Écrit la metadata + reset du SessionState. Le caller reste responsable
-    de `session.dernier_clic_time = maintenant`."""
+def terminer_session_et_revenir_accueil(issue: str) -> None:
+    """Centralise la fin de session : écrit la metadata + reset du SessionState.
+
+    Args:
+        issue: "printed" | "abandoned" | "capture_failed" (consommé par stats.py).
+
+    Le caller reste responsable de `session.dernier_clic_time = maintenant`."""
     ecrire_metadata_session(issue, len(session.photos_validees), time.time() - session.session_start_ts)
     session.reset_pour_accueil()
 
 
-def ecrire_metadata_session(issue, nb_photos, duree_s):
-    """Sprint 5.4 : ajoute une ligne JSON dans data/sessions.jsonl pour chaque session
-    terminée. Format append-only : facile à scanner post-événement pour stats."""
+def ecrire_metadata_session(issue: str, nb_photos: int, duree_s: float) -> None:
+    """Ajoute une ligne JSON dans data/sessions.jsonl.
+
+    Format append-only : une ligne par session terminée. Facile à scanner
+    post-événement via `stats.py`. Non-bloquant — toute erreur est loggée
+    en warning."""
     try:
         entry = {
             "session_id": session.id_session_timestamp or None,
@@ -337,9 +360,10 @@ BANDEAU_CACHE.set_alpha(BANDEAU_ALPHA)
 BANDEAU_CACHE.fill(BANDEAU_COULEUR)
 
 
-def lister_images_slideshow():
-    """Sprint 6.2 : scan les dossiers d'impression pour alimenter le slideshow.
-    Retourne les NB_MAX_IMAGES_SLIDESHOW fichiers les plus récents, tous formats confondus."""
+def lister_images_slideshow() -> list[str]:
+    """Scan les dossiers d'impression (PATH_PRINT_10X15 + PATH_PRINT_STRIP) pour
+    alimenter le slideshow d'attente. Retourne les NB_MAX_IMAGES_SLIDESHOW fichiers
+    les plus récents, tri mtime décroissant."""
     fichiers = []
     for dossier in (PATH_PRINT_10X15, PATH_PRINT_STRIP):
         try:
@@ -404,9 +428,12 @@ session.abandon_confirm_until = 0.0
 # assets, caches). `session` est passé explicitement pour rendre la dépendance visible.
 # ========================================================================================================
 
-def _render_accueil_slideshow(session, idle_seconds):
+def _render_accueil_slideshow(session: SessionState, idle_seconds: float) -> None:
     """Rendu du slideshow plein écran avec invitation pulsée.
-    Extrait du rendu accueil pour clarté (Sprint item 11)."""
+
+    Scan les images toutes les 30 s (évite l'I/O disque par frame). Affiche chaque
+    image pendant `DUREE_PAR_IMAGE_SLIDESHOW` secondes. Si `PATH_PRINT_*` est vide,
+    on garde le fond d'accueil avec juste l'invitation par-dessus."""
     global slideshow_images, slideshow_last_refresh, slideshow_cached_for_idx, slideshow_cached_surface
 
     # Rafraîchit la liste tous les 30 s pour inclure les nouvelles impressions
@@ -450,8 +477,12 @@ def _render_accueil_slideshow(session, idle_seconds):
     screen.blit(inv_surf, (inv_x, HEIGHT - inv_surf.get_height() - 45))
 
 
-def _render_accueil_normal(session):
-    """Rendu de l'accueil standard : 2 icônes (10x15/strip) + bandeau de conseil."""
+def _render_accueil_normal(session: SessionState) -> None:
+    """Rendu de l'accueil standard : 2 icônes (10x15/strip) cliquables + bandeau de conseil.
+
+    L'icône sélectionnée (session.mode_actuel) est zoomée et pulse. Le bandeau
+    indique le bouton à presser pour démarrer. Si l'espace disque est critique
+    (_disque_critique), on superpose un bandeau rouge d'alerte en haut."""
     inserer_background(screen, fond_accueil)
     marge_centrale = MARGE_ACCUEIL
     axe_y_centre = (HEIGHT // 2) - 60
@@ -533,9 +564,12 @@ def _render_accueil_normal(session):
         )
 
 
-def render_accueil(session):
+def render_accueil(session: SessionState) -> None:
     """ACCUEIL : slideshow d'attente si idle > seuil ET mode_actuel is None,
-    sinon rendu normal (icônes + bandeau + alerte disque)."""
+    sinon rendu normal (icônes + bandeau + alerte disque).
+
+    Dispatcher entre `_render_accueil_slideshow` et `_render_accueil_normal`.
+    Déclenche aussi le check disque périodique (rate-limité)."""
     verifier_disque_periodiquement()
 
     idle_seconds = time.time() - session.last_activity_ts
@@ -545,10 +579,15 @@ def render_accueil(session):
         _render_accueil_normal(session)
 
 
-def render_decompte(session):
+def render_decompte(session: SessionState) -> None:
     """DECOMPTE : preview caméra + compteur + capture HQ + transition d'état.
-    C'est plus qu'un simple rendu — cette fonction orchestre la capture + la transition
-    vers VALIDATION ou l'erreur."""
+
+    C'est plus qu'un simple rendu — cette fonction orchestre :
+    1. Initialisation de l'id_session si première photo.
+    2. Boucle de décompte visuel (N...1) avec preview caméra LiveView.
+    3. Appel bloquant à `capturer_hq()` (flash + SOURIEZ + subprocess gphoto2).
+    4. Transition d'état : VALIDATION si OK, ACCUEIL + metadata "capture_failed"
+       si échec."""
     # LOGIQUE DE RATIO ET MASQUE SELON LE MODE
     if session.mode_actuel == "strips":
         p_ratio = config.STRIP_PHOTO_RATIO
@@ -612,9 +651,13 @@ def render_decompte(session):
     session.dernier_clic_time = time.time()
 
 
-def render_validation(session):
+def render_validation(session: SessionState) -> bool:
     """VALIDATION : aperçu de la dernière photo + bandeau boutons + burst countdown.
-    Retourne True si une auto-validation burst a eu lieu (caller doit continue)."""
+
+    Returns:
+        True si une auto-validation burst a eu lieu (caller doit `continue` pour
+        éviter le flip d'un frame de transition), False sinon.
+    """
     inserer_background(screen, fond_accueil)
 
     # Mode burst strip : auto-validation après STRIP_BURST_DELAI_S
@@ -704,8 +747,12 @@ def render_validation(session):
     return False
 
 
-def render_fin(session):
-    """FIN : aperçu du montage final + bandeau 3 boutons + overlay confirmation abandon."""
+def render_fin(session: SessionState) -> None:
+    """FIN : aperçu du montage final + bandeau 3 boutons + overlay confirmation abandon.
+
+    En mode strip, le montage est lu depuis `session.path_montage` (produit par
+    `MontageGeneratorStrip.preview()` à la transition VALIDATION→FIN). En mode
+    10x15, l'aperçu est chargé depuis PATH_TEMP/montage_prev.jpg."""
     inserer_background(screen, fond_accueil)
 
     # Récupération de l'image
@@ -770,9 +817,10 @@ def render_fin(session):
 # DECOMPTE n'a pas de handler car l'état est non-interactif (géré par render_decompte).
 # ========================================================================================================
 
-def handle_accueil_event(event, session, maintenant, ecoule):
+def handle_accueil_event(event: pygame.event.Event, session: SessionState,
+                         maintenant: float, ecoule: float) -> None:
     """ACCUEIL : G/D sélectionnent le mode, M valide et passe à DECOMPTE.
-    Debounce via DELAI_SECURITE."""
+    Debounce via DELAI_SECURITE. Mute session en place."""
     if ecoule < DELAI_SECURITE:
         return
     if event.key == TOUCHE_GAUCHE:
@@ -788,7 +836,8 @@ def handle_accueil_event(event, session, maintenant, ecoule):
         session.etat = Etat.DECOMPTE
 
 
-def _handle_validation_10x15(event, session, maintenant):
+def _handle_validation_10x15(event: pygame.event.Event, session: SessionState,
+                             maintenant: float) -> None:
     """VALIDATION mode 10x15 : retake / imprimer / abandon (debounce géré par caller)."""
     if event.key == TOUCHE_GAUCHE:
         # Retake : archive en RETAKE puis retourne au décompte
@@ -845,7 +894,8 @@ def _handle_validation_10x15(event, session, maintenant):
         session.dernier_clic_time = maintenant
 
 
-def _handle_validation_strips(event, session, maintenant):
+def _handle_validation_strips(event: pygame.event.Event, session: SessionState,
+                              maintenant: float) -> None:
     """VALIDATION mode strips : retake dernière / valider-continue / annuler."""
     if event.key == TOUCHE_GAUCHE:
         print("LOG: [Strips] -> Refaire la dernière photo")
@@ -871,7 +921,8 @@ def _handle_validation_strips(event, session, maintenant):
         session.dernier_clic_time = maintenant
 
 
-def handle_validation_event(event, session, maintenant, ecoule):
+def handle_validation_event(event: pygame.event.Event, session: SessionState,
+                            maintenant: float, ecoule: float) -> None:
     """VALIDATION : dispatch selon mode (10x15 vs strips). Debounce 0.5 s."""
     if ecoule < 0.5:
         return
@@ -881,8 +932,12 @@ def handle_validation_event(event, session, maintenant, ecoule):
         _handle_validation_strips(event, session, maintenant)
 
 
-def handle_fin_event(event, session, maintenant, ecoule):
-    """FIN : recommencer / imprimer / abandon (double-press confirm). Debounce 1 s."""
+def handle_fin_event(event: pygame.event.Event, session: SessionState,
+                     maintenant: float, ecoule: float) -> None:
+    """FIN : recommencer / imprimer / abandon (double-press confirm). Debounce 1 s.
+
+    Le bouton droit (abandon) utilise une fenêtre de confirmation de
+    DUREE_CONFIRM_ABANDON secondes : 1er appui arme, 2e appui confirme."""
     if ecoule < 1.0:
         return
 

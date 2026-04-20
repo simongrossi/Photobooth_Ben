@@ -1,0 +1,45 @@
+# pyproject.toml — config pour ruff, pytest, coverage
+# (métadonnées package minimales — le projet n'est pas publié sur PyPI)
+
+[tool.ruff]
+# Règles par défaut de ruff (E, F, W).
+line-length = 110
+target-version = "py39"
+
+[tool.ruff.lint]
+# Pas de sélection explicite → défauts (E, F, W).
+# Exclusions spécifiques :
+ignore = [
+    "E501",  # ligne trop longue (on accepte jusqu'à line-length = 110)
+]
+
+[tool.pytest.ini_options]
+testpaths = ["."]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-q",
+    "--strict-markers",
+]
+
+[tool.coverage.run]
+# On mesure seulement les modules métier (core/) + les scripts standalone.
+# Photobooth_start.py demande pygame/gphoto2 — pas couvrable en CI sans runtime.
+source = ["core", "stats", "status"]
+omit = [
+    "*/test_*.py",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+# Seuil minimum — actuellement 30% (monter à 50+ après ajout tests status/stats).
+fail_under = 30
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "if sys.platform",
+]

@@ -19,12 +19,16 @@ jobs:
           cache: "pip"
 
       - name: Install deps (pure Python modules)
-        # Les tests isolent montage.py (pur PIL) ; inutile d'installer pygame/gphoto2/cv2
-        # qui demandent des bindings système.
-        run: pip install Pillow pytest ruff
+        # Les tests isolent les modules purs (montage, stats, status) ; inutile
+        # d'installer pygame/gphoto2/cv2 qui demandent des bindings système.
+        run: pip install Pillow pytest pytest-cov ruff
 
       - name: Ruff check
         run: python -m ruff check .
 
-      - name: Pytest
-        run: python -m pytest test_montage.py -v
+      - name: Pytest + coverage
+        run: python -m pytest --cov --cov-report=term
+
+      - name: Coverage summary
+        if: always()
+        run: python -m coverage report
