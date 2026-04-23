@@ -5,6 +5,34 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
 ---
 
+## `WIP` — Grain de pellicule sur montages finaux
+
+### Added
+- `core/montage.py::MontageBase._appliquer_grain()` : bruit gaussien superposé
+  via `Image.effect_noise` + `Image.blend`, niveaux de gris projetés sur les
+  3 canaux (pas de dérive de teinte)
+- `config.py` : `GRAIN_ENABLED=False`, `GRAIN_INTENSITE=8` (% mélange),
+  `GRAIN_SIGMA=30.0`, avec validation assert au chargement
+- Tests : 5 nouveaux tests `TestGrain` (disabled no-op, enabled altère canvas,
+  intensité 0 ≡ disabled, strip accepte grain, preview jamais altérée)
+- `docs/CONFIG.md` : section « Grain de pellicule » à côté du watermark
+
+### Changed
+- `MontageGenerator10x15.final()` et `MontageGeneratorStrip.final()` appellent
+  `_appliquer_grain()` après le watermark (le grain couvre aussi le texte)
+
+### Pourquoi
+- Effet argentique discret demandé dans [IDEAS.md](IDEAS.md#effets-image--expérimentaux),
+  activable selon l'ambiance de l'événement (mariage rétro, etc.)
+- Isolé au rendu final : pas d'impact CPU sur les previews pendant la session,
+  pas de régression visible quand désactivé
+
+### Stats
+- Tests : 131 → **136** (+5)
+- Coverage : 80.6 % → **80.9 %** ; `core/montage.py` : 88 % → **93 %**
+
+---
+
 ## `WIP` — Watchdog systemd + mode kiosque
 
 ### Added
