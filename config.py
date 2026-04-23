@@ -340,6 +340,16 @@ WATERMARK_POSITION_STRIP   = "bottom-right"
 WATERMARK_MARGE_PX         = 20                # Distance en px depuis le bord
 
 
+# --- Grain de pellicule (film grain) sur montages finaux ---
+# Bruit gaussien superposé à l'image finale pour un effet argentique discret.
+# Ne s'applique qu'au rendu FINAL (pas aux previews écran) : le grain n'est
+# pertinent qu'à la résolution d'impression, et économise le CPU en kiosque.
+# Désactivé par défaut — à activer pour les événements à ambiance rétro.
+GRAIN_ENABLED      = False
+GRAIN_INTENSITE    = 8       # Force du mélange en % (0–100). 5–15 reste subtil.
+GRAIN_SIGMA        = 30.0    # Écart-type du bruit gaussien (bas = uniforme, haut = tacheté)
+
+
 # ==========================================
 # 8. CONFIGURATION IMPRESSION
 # ==========================================
@@ -404,6 +414,10 @@ def _valider_config():
     # Monitoring température
     assert SEUIL_TEMP_CRITIQUE_C > 0, f"SEUIL_TEMP_CRITIQUE_C invalide : {SEUIL_TEMP_CRITIQUE_C}"
     assert INTERVALLE_CHECK_TEMP_S > 0
+
+    # Grain de pellicule
+    assert 0 <= GRAIN_INTENSITE <= 100, f"GRAIN_INTENSITE hors [0,100] : {GRAIN_INTENSITE}"
+    assert GRAIN_SIGMA > 0, f"GRAIN_SIGMA invalide : {GRAIN_SIGMA}"
 
     # Strip dimensions cohérentes
     assert 0.3 <= STRIP_PHOTO_RATIO <= 1.2, f"STRIP_PHOTO_RATIO suspect : {STRIP_PHOTO_RATIO}"

@@ -59,7 +59,7 @@ Une idée passe en roadmap uniquement quand :
 - [ ] **Auto-correction exposition** (CLAHE) — `cv2.createCLAHE` ou PIL
 - [ ] **Remplacement de fond** (greenscreen) — nécessite tissu vert + OpenCV color keying
 - [ ] **Effet miroir / kaléidoscope** pour mode fun
-- [ ] **Grain / texture film** ajouté à la passe finale
+- [x] **Grain / texture film** ajouté à la passe finale — livré, voir [CHANGELOG.md](CHANGELOG.md) et [CONFIG.md](CONFIG.md#grain-de-pellicule-montages-finaux)
 - [ ] **Colorisation sélective** (N&B sauf rouge, par exemple)
 - [ ] **Cartoonify / paint effect** via ImageMagick (`convert -paint 4` ou `-charcoal`)
 

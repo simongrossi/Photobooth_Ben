@@ -210,6 +210,62 @@ class TestWatermark:
             assert img.size == (600, 1800)
 
 
+# --- Tests grain de pellicule ---
+
+class TestGrain:
+    def test_disabled_par_defaut_no_op(self, isoler_paths, photo_factice, monkeypatch):
+        """GRAIN_ENABLED=False → sortie identique à une génération sans grain."""
+        monkeypatch.setattr(montage, "GRAIN_ENABLED", False)
+        path = MontageGenerator10x15.final([photo_factice], "sans_grain")
+        assert os.path.exists(path)
+        with Image.open(path) as img:
+            assert img.size == (1800, 1200)
+
+    def test_enabled_altere_canvas(self, isoler_paths, photo_factice, monkeypatch):
+        """GRAIN_ENABLED=True → les pixels diffèrent (bruit gaussien superposé)."""
+        monkeypatch.setattr(montage, "GRAIN_ENABLED", False)
+        path_sans = MontageGenerator10x15.final([photo_factice], "sans")
+        with Image.open(path_sans) as img_sans:
+            img_sans_copy = img_sans.copy()
+
+        monkeypatch.setattr(montage, "GRAIN_ENABLED", True)
+        monkeypatch.setattr(montage, "GRAIN_INTENSITE", 20)
+        path_avec = MontageGenerator10x15.final([photo_factice], "avec")
+        with Image.open(path_avec) as img_avec:
+            # Le bruit est global : au moins un pixel doit différer
+            assert list(img_sans_copy.getdata()) != list(img_avec.getdata())
+
+    def test_intensite_zero_equivaut_disabled(self, isoler_paths, photo_factice, monkeypatch):
+        """GRAIN_INTENSITE=0 est un no-op même si ENABLED=True."""
+        monkeypatch.setattr(montage, "GRAIN_ENABLED", True)
+        monkeypatch.setattr(montage, "GRAIN_INTENSITE", 0)
+        path = MontageGenerator10x15.final([photo_factice], "grain_nul")
+        assert os.path.exists(path)
+        with Image.open(path) as img:
+            assert img.size == (1800, 1200)
+
+    def test_strip_accepte_grain(self, isoler_paths, trois_photos, monkeypatch):
+        """Le grain s'applique aussi sur les strips sans crash."""
+        monkeypatch.setattr(montage, "GRAIN_ENABLED", True)
+        monkeypatch.setattr(montage, "GRAIN_INTENSITE", 15)
+        path = MontageGeneratorStrip.final(trois_photos, "strip_grain")
+        with Image.open(path) as img:
+            assert img.size == (600, 1800)
+
+    def test_preview_jamais_altere_par_grain(self, isoler_paths, photo_factice, monkeypatch):
+        """Le grain ne s'applique qu'au FINAL, pas à la preview écran."""
+        monkeypatch.setattr(montage, "GRAIN_ENABLED", False)
+        path_sans = MontageGenerator10x15.preview([photo_factice])
+        with Image.open(path_sans) as img_sans:
+            pixels_sans = list(img_sans.getdata())
+
+        monkeypatch.setattr(montage, "GRAIN_ENABLED", True)
+        monkeypatch.setattr(montage, "GRAIN_INTENSITE", 50)
+        path_avec = MontageGenerator10x15.preview([photo_factice])
+        with Image.open(path_avec) as img_avec:
+            assert list(img_avec.getdata()) == pixels_sans
+
+
 # --- Test de régression : dimensions config = dimensions générées ---
 
 class TestCoherenceConfig:

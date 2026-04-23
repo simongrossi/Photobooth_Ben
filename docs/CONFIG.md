@@ -284,6 +284,19 @@ par défaut.
 > et ajuster `WATERMARK_POSITION_STRIP` si la position visible n'est pas celle
 > voulue.
 
+### Grain de pellicule (montages finaux)
+
+Bruit gaussien superposé aux montages 10×15 et strip pour un effet argentique
+discret. Appliqué uniquement au rendu FINAL (jamais aux previews écran) — le
+grain ne se voit qu'à résolution d'impression et évite de charger le CPU en
+kiosque. Désactivé par défaut.
+
+| Constante | Défaut | Effet |
+|---|---|---|
+| `GRAIN_ENABLED` | `False` | Activer/désactiver globalement |
+| `GRAIN_INTENSITE` | `8` | Force du mélange en % (0–100). 5–15 reste subtil, au-delà de 25 ça mange la photo |
+| `GRAIN_SIGMA` | `30.0` | Écart-type du bruit gaussien (bas = uniforme, haut = tacheté) |
+
 ### Filigrane photos restantes (mode strip)
 
 | Constante | Défaut | Effet |

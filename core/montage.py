@@ -31,6 +31,7 @@ from config import (
     WATERMARK_ENABLED, WATERMARK_TEXT, WATERMARK_COULEUR, WATERMARK_ALPHA,
     WATERMARK_TAILLE_10X15, WATERMARK_TAILLE_STRIP,
     WATERMARK_POSITION_10X15, WATERMARK_POSITION_STRIP, WATERMARK_MARGE_PX,
+    GRAIN_ENABLED, GRAIN_INTENSITE, GRAIN_SIGMA,
 )
 
 
@@ -119,6 +120,22 @@ class MontageBase:
         composite = Image.alpha_composite(canvas.convert("RGBA"), layer)
         canvas.paste(composite.convert("RGB"))
 
+    @staticmethod
+    def _appliquer_grain(canvas: Image.Image) -> None:
+        """Superpose un bruit gaussien (film grain) sur `canvas` (in-place).
+        No-op si `GRAIN_ENABLED=False` ou `GRAIN_INTENSITE <= 0`.
+
+        Le bruit est généré en niveaux de gris puis projeté sur les 3 canaux,
+        ce qui donne une texture argentique neutre (pas de dérive de teinte).
+        Appelé après watermark pour que le grain s'applique aussi au texte."""
+        if not GRAIN_ENABLED or GRAIN_INTENSITE <= 0:
+            return
+        alpha = min(GRAIN_INTENSITE, 100) / 100.0
+        noise_l = Image.effect_noise(canvas.size, GRAIN_SIGMA)
+        noise_rgb = Image.merge("RGB", (noise_l, noise_l, noise_l))
+        blended = Image.blend(canvas, noise_rgb, alpha)
+        canvas.paste(blended)
+
 
 class MontageGenerator10x15(MontageBase):
     """Montage grand format 10x15. Preview = 900×600 simple ; final = 1800×1200 avec BG+overlay.
@@ -153,6 +170,7 @@ class MontageGenerator10x15(MontageBase):
         canvas.paste(photo_fit, cls.FINAL_PHOTO_OFFSET)
         cls._coller_overlay(canvas, OVERLAY_10X15, cls.FINAL_SIZE)
         cls._appliquer_watermark(canvas, WATERMARK_TAILLE_10X15, WATERMARK_POSITION_10X15)
+        cls._appliquer_grain(canvas)
         canvas.save(path_hd, quality=cls.FINAL_QUALITY)
         return path_hd
 
@@ -224,6 +242,7 @@ class MontageGeneratorStrip(MontageBase):
             rotation=cls.FINAL_ROTATION, redresser_si_horizontal=True,
         )
         cls._appliquer_watermark(canvas, WATERMARK_TAILLE_STRIP, WATERMARK_POSITION_STRIP)
+        cls._appliquer_grain(canvas)
 
         canvas.save(path_hd, "JPEG", quality=cls.FINAL_QUALITY)
         return path_hd
