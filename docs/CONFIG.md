@@ -17,6 +17,12 @@ Pour les modifier en production voir [RUNBOOK.md](RUNBOOK.md).
   `status.py`), grâce au `try/except ImportError` en haut.
 - La validation au chargement lève `AssertionError` en cas d'incohérence —
   bien plus clair qu'un bug visuel à mi-événement.
+- **Overrides optionnels** via `data/config_overrides.json` : un sous-ensemble
+  de constantes peut être surchargé depuis l'interface admin web sans éditer
+  le code. Seules les clés de la whitelist `_CONFIG_OVERRIDES_WHITELIST` sont
+  prises en compte (voir `docs/ADMIN.md`) ; les résolutions, tailles de
+  montage et autres invariants restent figés. Tout override est validé par
+  `_valider_config()` après fusion.
 
 ---
 

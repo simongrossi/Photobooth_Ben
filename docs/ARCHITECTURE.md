@@ -63,6 +63,11 @@ de données. Document à mettre à jour lors des refactors structurels majeurs.
   hardware/UI sont initialisés uniquement dans `main()`.
 - `config.py` n'importe rien (sauf `pygame` en tolérant pour `status.py`).
 - Scripts standalone (`status.py`, `stats.py`) n'importent que `config`.
+- `web/*` (admin web optionnelle) importe `core/*`, `config`, `stats` — mais
+  **jamais** `Photobooth_start` ni `ui/*`. Tourne dans un process systemd
+  séparé ; la communication avec le kiosque passe uniquement par le
+  filesystem (`data/sessions.jsonl` en lecture, `assets/overlays/` et
+  `data/config_overrides.json` en écriture). Voir `docs/ADMIN.md`.
 
 ---
 

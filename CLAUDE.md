@@ -40,7 +40,7 @@ python3 profile_mem.py    # tracemalloc
 python3 bench_spinner.py  # LoaderAnimation microbench (--points N to override)
 ```
 
-CI (`.github/workflows/ci.yml`) installs only `Pillow pytest pytest-cov ruff` — `pygame`/`gphoto2`/`cv2`/`pyserial` are **never** installed in CI.
+CI (`.github/workflows/ci.yml`) installs only `Pillow flask pytest pytest-cov ruff` — `pygame`/`gphoto2`/`cv2`/`pyserial` are **never** installed in CI.
 
 ## Architecture
 
@@ -56,6 +56,9 @@ Photobooth_start.py  ──► imports everything
         └──► core/*         (pure business logic; no ui/, no Photobooth_start)
                │
                └──► config  (shared constants; validated at import time)
+
+web/*                ──► OPTIONAL admin web (separate systemd service)
+   └──► core/*, config, stats  (never Photobooth_start or ui/)
 ```
 
 - `core/*` must never import `ui.*` or `Photobooth_start`.
@@ -63,10 +66,11 @@ Photobooth_start.py  ──► imports everything
 - `config.py` imports nothing from the project; it wraps `import pygame` in try/except so `status.py` can load it on machines without pygame.
 - `core/montage.py` is **lazy-imported** inside `ui.get_pygame_surf` to avoid loading PIL at startup.
 - Standalone scripts (`status.py`, `stats.py`) import only `config`.
+- `web/*` (Flask admin UI) is an **optional** companion process — separate systemd unit, no shared memory with the kiosk. Communication is filesystem-only: reads `data/sessions.jsonl`, reads/writes `assets/overlays/` and `data/admin.db`, writes `data/config_overrides.json` that `config.py` reads at import (whitelist-guarded). See `docs/ADMIN.md`.
 
 ### Pure vs hardware-bound modules
 
-Tested in CI (pure Python + PIL): `core/montage.py`, `core/printer.py` (subprocess-mocked), `core/logger.py`, `core/session.py`, `core/monitoring.py`, `core/arduino.py` (FakeSerial/FakePygame), `stats.py`, `status.py`.
+Tested in CI (pure Python + PIL + Flask): `core/montage.py`, `core/printer.py` (subprocess-mocked), `core/logger.py`, `core/session.py`, `core/monitoring.py`, `core/arduino.py` (FakeSerial/FakePygame), `web/*`, `stats.py`, `status.py`.
 
 **Not testable in CI** (require real hardware or pygame): `Photobooth_start.py`, `ui/helpers.py`, `core/camera.py`. The `[tool.coverage.run] source` in `pyproject.toml` deliberately excludes `Photobooth_start.py`/`ui/` since they need a runtime.
 

@@ -1,0 +1,42 @@
+# Unit systemd de l'interface admin web (optionnel).
+#
+# Les placeholders @USER@ et @HOME@ sont remplacés par deploy/install-admin.sh.
+# Indépendant du service principal photobooth.service : peut être start/stop
+# sans impact sur le kiosque.
+#
+# Écoute par défaut sur 0.0.0.0:8080 (LAN). Protégé par Basic Auth — le mot de
+# passe DOIT être défini dans /etc/photobooth-admin.env (voir install-admin.sh).
+# Sans mot de passe, les routes répondent 503 (fail closed).
+
+[Unit]
+Description=Photobooth Ben — interface admin web
+Documentation=file://@HOME@/Photobooth_Ben/docs/ADMIN.md
+After=network.target
+
+[Service]
+Type=simple
+User=@USER@
+Group=@USER@
+
+WorkingDirectory=@HOME@/Photobooth_Ben
+
+# Fichier d'env avec PHOTOBOOTH_ADMIN_PASS=... et (optionnel) PHOTOBOOTH_ADMIN_PORT
+EnvironmentFile=/etc/photobooth-admin.env
+
+ExecStart=/usr/bin/python3 -m web.app
+
+Restart=on-failure
+RestartSec=5
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+StandardOutput=append:@HOME@/Photobooth_Ben/logs/admin.log
+StandardError=append:@HOME@/Photobooth_Ben/logs/admin.log
+
+# Limite mémoire défensive (l'admin doit rester léger)
+MemoryMax=256M
+
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target
