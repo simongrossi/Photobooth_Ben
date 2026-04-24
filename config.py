@@ -371,9 +371,13 @@ ANIM_V_MAX_ADD     = 8
 ANIM_FREQ          = 1.5           
 
 # Structure
-ANIM_NB_POINTS     = 300           
-ANIM_RAYON_POINT   = 28            
+ANIM_NB_POINTS     = 120           # Nombre de points composant la roue (baissé de 300 : overkill visuel pour le CPU Pi)
+ANIM_RAYON_POINT   = 28
 ANIM_V_ELASTIQUE   = 5.0
+
+# Framerate de rafraîchissement du spinner (écrans loader / attente impression).
+# Distinct de FPS (boucle principale) pour réduire la charge CPU sur Pi.
+SPINNER_FPS        = 30
 
 FPS = 60
 
@@ -393,6 +397,8 @@ def _valider_config():
     assert TEMPS_DECOMPTE >= 1, f"TEMPS_DECOMPTE doit être >= 1 (actuel : {TEMPS_DECOMPTE})"
     assert DELAI_SECURITE >= 0.5, f"DELAI_SECURITE trop court : {DELAI_SECURITE}"
     assert FPS > 0, f"FPS invalide : {FPS}"
+    assert SPINNER_FPS > 0, f"SPINNER_FPS invalide : {SPINNER_FPS}"
+    assert ANIM_NB_POINTS >= 1, f"ANIM_NB_POINTS invalide : {ANIM_NB_POINTS}"
     assert TEMPS_ATTENTE_IMP > 0, f"TEMPS_ATTENTE_IMP invalide : {TEMPS_ATTENTE_IMP}"
 
     # Alpha channels

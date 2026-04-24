@@ -34,9 +34,10 @@ python3 stats.py
 python3 stats.py --date 2026-04-20
 python3 stats.py --json
 
-# Profiling
+# Profiling (see docs/PROFILING.md for the full Pi protocol)
 python3 profile.py        # cProfile → profile.stats (open with snakeviz)
 python3 profile_mem.py    # tracemalloc
+python3 bench_spinner.py  # LoaderAnimation microbench (--points N to override)
 ```
 
 CI (`.github/workflows/ci.yml`) installs only `Pillow pytest pytest-cov ruff` — `pygame`/`gphoto2`/`cv2`/`pyserial` are **never** installed in CI.
@@ -107,4 +108,4 @@ The app degrades gracefully when `gphoto2`, `cups`, or `pyserial` is missing —
 
 ## Reference docs
 
-`docs/ARCHITECTURE.md`, `docs/DEVELOPMENT.md`, `docs/TESTING.md`, `docs/CONFIG.md`, `docs/DEPLOYMENT.md`, `docs/ARDUINO.md`, `docs/RUNBOOK.md`, `docs/ROADMAP.md`, `docs/CHANGELOG.md`, `docs/IDEAS.md`.
+`docs/ARCHITECTURE.md`, `docs/DEVELOPMENT.md`, `docs/TESTING.md`, `docs/CONFIG.md`, `docs/DEPLOYMENT.md`, `docs/ARDUINO.md`, `docs/RUNBOOK.md`, `docs/PROFILING.md`, `docs/ROADMAP.md`, `docs/CHANGELOG.md`, `docs/IDEAS.md`.

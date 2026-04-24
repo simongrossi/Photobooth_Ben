@@ -89,6 +89,7 @@ Photobooth_Ben/
 │   ├── DEVELOPMENT.md      # setup dev local, CI, conventions
 │   ├── TESTING.md          # lancer et écrire les tests
 │   ├── CONFIG.md           # référence des constantes de config.py
+│   ├── PROFILING.md        # protocole de profiling Pi + microbench spinner
 │   └── RUNBOOK.md          # checklist événementiel J-1 / J / J+1
 └── .gitignore
 ```
@@ -187,6 +188,7 @@ Validation automatique au chargement — un `AssertionError` explicite au démar
 - 🚀 **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** — **installation Raspberry Pi** (apt, CUPS, systemd, kiosk, troubleshooting)
 - 🎛 **[docs/ARDUINO.md](docs/ARDUINO.md)** — boîtier 3 boutons + LEDs (câblage, flash firmware, protocole)
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — diagramme des modules + machine d'état + flow de données
+- [docs/PROFILING.md](docs/PROFILING.md) — protocole de profiling sur Pi (cProfile, tracemalloc, `bench_spinner.py`)
 - [docs/ROADMAP.md](docs/ROADMAP.md) — items dev à faire, priorisés court/moyen/long terme
 - [docs/IDEAS.md](docs/IDEAS.md) — pool d'idées + références open-source (PIBOOTH, photobooth-app, RaspAP)
 - [docs/CHANGELOG.md](docs/CHANGELOG.md) — historique des commits par sprint

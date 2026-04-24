@@ -23,7 +23,7 @@ import pygame
 from PIL import Image
 
 from config import (
-    WIDTH, HEIGHT, FPS,
+    WIDTH, HEIGHT, SPINNER_FPS,
     ANIM_COULEUR_TETE, ANIM_COULEUR_QUEUE, ANIM_TAILLE_ROUE,
     ANIM_V_BASE, ANIM_V_MAX_ADD, ANIM_FREQ,
     ANIM_NB_POINTS, ANIM_RAYON_POINT, ANIM_V_ELASTIQUE,
@@ -250,23 +250,52 @@ def get_pygame_surf(path_or_img, size):
 # ========================================================================================================
 
 class LoaderAnimation:
-    """Spinner animé (roue à queue) pour les écrans d'attente + spinner de génération."""
+    """Spinner animé (roue à queue) pour les écrans d'attente + spinner de génération.
+
+    Les sprites de points sont précalculés à l'init : couleur et alpha ne dépendent
+    que de l'index, pas du temps. Chaque frame ne fait plus qu'un blit par point."""
+
+    _sprites_cache: list["pygame.Surface"] | None = None
+    _sprites_cache_key: tuple[int, int, tuple, tuple] | None = None
 
     def __init__(self):
         self.reset()
-        # Buffer de Surface pré-alloué (Sprint 3.3 : évite 300 allocs/frame)
+        self._sprites = self._build_sprites()
+
+    @classmethod
+    def _build_sprites(cls) -> list["pygame.Surface"]:
+        """Pré-rend `ANIM_NB_POINTS` cercles à couleur+alpha finales.
+        Cache partagé entre instances — la config ne change pas à l'exécution."""
+        key = (ANIM_NB_POINTS, ANIM_RAYON_POINT, ANIM_COULEUR_TETE, ANIM_COULEUR_QUEUE)
+        if cls._sprites_cache is not None and cls._sprites_cache_key == key:
+            return cls._sprites_cache
+
         diametre = ANIM_RAYON_POINT * 2
-        self._point_buffer = pygame.Surface((diametre, diametre), pygame.SRCALPHA)
+        sprites: list[pygame.Surface] = []
+        denom = max(ANIM_NB_POINTS - 1, 1)
+        for i in range(ANIM_NB_POINTS):
+            progression = i / denom
+            fading = 1.0 - progression
+            couleur = tuple(
+                int(ANIM_COULEUR_TETE[j] + (ANIM_COULEUR_QUEUE[j] - ANIM_COULEUR_TETE[j]) * (1 - fading))
+                for j in range(3)
+            )
+            alpha = int(255 * (fading ** 0.6))
+            sprite = pygame.Surface((diametre, diametre), pygame.SRCALPHA)
+            pygame.draw.circle(
+                sprite, (*couleur, alpha),
+                (ANIM_RAYON_POINT, ANIM_RAYON_POINT), ANIM_RAYON_POINT,
+            )
+            sprites.append(sprite)
+        cls._sprites_cache = sprites
+        cls._sprites_cache_key = key
+        return sprites
 
     def reset(self) -> None:
         """Remet l'animation à son état initial (début de roue, longueur minimale)."""
         self.angle_tete = 0
         self.longueur_actuelle = 30
         self.dernier_temps = time.time()
-
-    def _interpoler_couleur(self, c1, c2, facteur):
-        """Mélange linéaire entre deux couleurs RGB selon un facteur [0..1]."""
-        return tuple(int(c1[j] + (c2[j] - c1[j]) * (1 - facteur)) for j in range(3))
 
     def update_and_draw(self, screen) -> None:
         """Fait tourner la roue d'une frame et la blite sur `screen`."""
@@ -283,18 +312,18 @@ class LoaderAnimation:
         longueur_cible = 30 + (boost * 210)
         self.longueur_actuelle += (longueur_cible - self.longueur_actuelle) * ANIM_V_ELASTIQUE * dt
 
-        buf = self._point_buffer
+        cx = WIDTH // 2
+        cy = HEIGHT // 2
+        angle_tete = self.angle_tete
+        longueur = self.longueur_actuelle
+        denom = max(ANIM_NB_POINTS - 1, 1)
+        sprites = self._sprites
         for i in reversed(range(ANIM_NB_POINTS)):
-            progression = i / (ANIM_NB_POINTS - 1)
-            fading = 1.0 - progression
-            angle_point = math.radians(self.angle_tete - (progression * self.longueur_actuelle))
-            x = WIDTH // 2 + math.cos(angle_point) * ANIM_TAILLE_ROUE
-            y = HEIGHT // 2 + math.sin(angle_point) * ANIM_TAILLE_ROUE
-            couleur = self._interpoler_couleur(ANIM_COULEUR_TETE, ANIM_COULEUR_QUEUE, fading)
-            alpha = int(255 * (fading ** 0.6))
-            buf.fill((0, 0, 0, 0))
-            pygame.draw.circle(buf, (*couleur, alpha), (ANIM_RAYON_POINT, ANIM_RAYON_POINT), ANIM_RAYON_POINT)
-            screen.blit(buf, (x - ANIM_RAYON_POINT, y - ANIM_RAYON_POINT))
+            progression = i / denom
+            angle_point = math.radians(angle_tete - (progression * longueur))
+            x = cx + math.cos(angle_point) * ANIM_TAILLE_ROUE
+            y = cy + math.sin(angle_point) * ANIM_TAILLE_ROUE
+            screen.blit(sprites[i], (x - ANIM_RAYON_POINT, y - ANIM_RAYON_POINT))
 
 
 # ========================================================================================================
@@ -345,7 +374,7 @@ def executer_avec_spinner(fonction_longue, message):
         except Exception as e:
             log_warning(f"Rendu spinner : {e}")
         pygame.display.flip()
-        ctx.clock.tick(30)
+        ctx.clock.tick(SPINNER_FPS)
 
     t.join(timeout=1.0)
     if "error" in resultat:
@@ -407,7 +436,7 @@ def ecran_attente_impression():
         except Exception as e:
             log_warning(f"Rendu attente impression : {e}")
         pygame.display.flip()
-        ctx.clock.tick(FPS)
+        ctx.clock.tick(SPINNER_FPS)
 
 
 def splash_connexion_camera(camera_mgr, timeout=None):

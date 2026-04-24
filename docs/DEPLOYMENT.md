@@ -323,6 +323,14 @@ python3 profile_mem.py 120      # 2 minutes avec multiples sessions
 # Lire le top 30 des CROISSANCES (révèle les fuites)
 ```
 
+Pour isoler le coût du spinner (roue de chargement) :
+```bash
+python3 bench_spinner.py --duree 10                  # config courante
+python3 bench_spinner.py --duree 10 --points 300     # comparaison ancienne config
+```
+
+Protocole complet de profiling sur Pi : [docs/PROFILING.md](PROFILING.md).
+
 ---
 
 ## 12. Avant chaque événement — checklist pré-vol

@@ -74,6 +74,7 @@ Photobooth_Ben/
 ├── stats.py              # rapport post-événement (sessions.jsonl)
 ├── profile.py            # profiling CPU (cProfile)
 ├── profile_mem.py        # profiling mémoire (tracemalloc)
+├── bench_spinner.py      # microbench LoaderAnimation
 ├── test_*.py             # tests pytest
 ├── arduino/              # firmware Nano (.ino)
 ├── deploy/               # infra Pi : systemd unit, kiosk.sh, installer
@@ -124,7 +125,10 @@ pytest --cov              # avec couverture
 ```bash
 python3 profile.py        # cProfile → profile.stats (ouvrir avec snakeviz)
 python3 profile_mem.py    # tracemalloc top-N allocations
+python3 bench_spinner.py  # microbench isolé du LoaderAnimation
 ```
+
+Protocole complet pour le Pi : [PROFILING.md](PROFILING.md).
 
 Ignorés par `.gitignore` (voir `.coverage`, `htmlcov/`, `profile.stats`).
 

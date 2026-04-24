@@ -671,6 +671,23 @@ def render_accueil(session: SessionState) -> None:
         _render_accueil_normal(session)
 
 
+_masque_decompte_cache: dict[tuple[int, int], "pygame.Surface"] = {}
+
+
+def _get_masque_decompte(bande_w: int, alpha: int) -> "pygame.Surface":
+    """Retourne la bande noire latérale du décompte, mise en cache par (largeur, alpha).
+
+    Évite une allocation pygame.Surface par frame (≈60/s pendant le décompte)."""
+    key = (bande_w, alpha)
+    surf = _masque_decompte_cache.get(key)
+    if surf is None:
+        surf = pygame.Surface((bande_w, HEIGHT))
+        surf.fill((0, 0, 0))
+        surf.set_alpha(alpha)
+        _masque_decompte_cache[key] = surf
+    return surf
+
+
 def render_decompte(session: SessionState) -> None:
     """DECOMPTE : preview caméra + compteur + capture HQ + transition d'état.
 
@@ -688,6 +705,15 @@ def render_decompte(session: SessionState) -> None:
         p_ratio = 0.66
         alpha_masque = 0
 
+    # Pré-calcul du masque latéral (indépendant de la frame)
+    masque_surf = None
+    bande_w = 0
+    if alpha_masque > 0:
+        largeur_visible = HEIGHT / p_ratio
+        bande_w = int((WIDTH - largeur_visible) // 2)
+        if bande_w > 0:
+            masque_surf = _get_masque_decompte(bande_w, alpha_masque)
+
     # Init id session si première photo
     if len(session.photos_validees) == 0:
         session.id_session_timestamp = datetime.now().strftime(FORMAT_TIMESTAMP)
@@ -703,15 +729,9 @@ def render_decompte(session: SessionState) -> None:
             if surf:
                 screen.blit(pygame.transform.scale(surf, (WIDTH, HEIGHT)), (0, 0))
 
-                if alpha_masque > 0:
-                    largeur_visible = HEIGHT / p_ratio
-                    bande_w = int((WIDTH - largeur_visible) // 2)
-                    if bande_w > 0:
-                        masque_surf = pygame.Surface((bande_w, HEIGHT))
-                        masque_surf.set_alpha(alpha_masque)
-                        masque_surf.fill((0, 0, 0))
-                        screen.blit(masque_surf, (0, 0))
-                        screen.blit(masque_surf, (WIDTH - bande_w, 0))
+                if masque_surf is not None:
+                    screen.blit(masque_surf, (0, 0))
+                    screen.blit(masque_surf, (WIDTH - bande_w, 0))
 
                 if session.mode_actuel == "strips":
                     txt_label = f"{TEXTE_PHOTO_COUNT} {len(session.photos_validees) + 1} / 3"

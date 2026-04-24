@@ -5,6 +5,35 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
 ---
 
+## `WIP` — Perf court terme : décompte + spinner + profiling Pi
+
+### Added
+- `Photobooth_start.py::_get_masque_decompte(bande_w, alpha)` + cache module
+  `_masque_decompte_cache` : la bande noire latérale du DECOMPTE (mode strips)
+  est allouée une seule fois par (largeur, alpha) au lieu d'une `pygame.Surface`
+  par frame
+- `config.py::SPINNER_FPS=30` : framerate dédié au rafraîchissement du spinner
+  (`executer_avec_spinner`, `ecran_attente_impression`), distinct de `FPS`
+- `bench_spinner.py` : microbench autonome du `LoaderAnimation` (FPS moyen,
+  ms/frame p50/p95/p99), override `--points` pour comparer avant/après optim,
+  fallback SDL dummy si pas de display
+- `docs/PROFILING.md` : protocole de profiling sur Pi (cProfile, tracemalloc,
+  microbench spinner, checklist post-optim, baselines attendues)
+
+### Changed
+- `ui/helpers.py::LoaderAnimation` pré-rend `ANIM_NB_POINTS` sprites au boot
+  (couleur + alpha figés par index) : la boucle de rendu ne fait plus qu'un
+  `blit` par point au lieu de `fill` + `draw.circle` + `blit` → allocations
+  par frame divisées par `ANIM_NB_POINTS`
+- `config.py::ANIM_NB_POINTS` : 300 → **120** par défaut (suffisant visuellement,
+  ~2,5× moins de blits/frame)
+- `docs/CONFIG.md` : nouvelles entrées `ANIM_NB_POINTS` et `SPINNER_FPS` dans
+  le tableau animation
+- `docs/DEVELOPMENT.md` : pointeur vers `docs/PROFILING.md` + `bench_spinner.py`
+  dans l'arbo
+
+---
+
 ## `WIP` — Priorités stabilité exploitation
 
 ### Added

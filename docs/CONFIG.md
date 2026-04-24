@@ -351,10 +351,14 @@ kiosque. Désactivé par défaut.
 ### Animation roue de chargement
 
 `ANIM_COULEUR_TETE`, `ANIM_COULEUR_QUEUE`, `ANIM_TAILLE_ROUE`,
-`ANIM_V_BASE`, `ANIM_V_MAX_ADD`, `ANIM_FREQ`, `ANIM_NB_POINTS`,
+`ANIM_V_BASE`, `ANIM_V_MAX_ADD`, `ANIM_FREQ`,
 `ANIM_RAYON_POINT`, `ANIM_V_ELASTIQUE`.
 
-| `FPS` | `60` | Framerate boucle pygame |
+| Constante | Défaut | Effet |
+|---|---|---|
+| `ANIM_NB_POINTS` | `120` | Nombre de points composant la queue de la roue. Les sprites sont pré-rendus à l'init (couleur+alpha par index), donc seul le blit varie par frame. Baisser pour réduire CPU sur Pi, monter pour une queue plus dense |
+| `SPINNER_FPS` | `30` | Framerate de rafraîchissement du spinner (`executer_avec_spinner`, `ecran_attente_impression`). Distinct de `FPS` pour soulager le CPU pendant les phases d'attente |
+| `FPS` | `60` | Framerate boucle pygame principale |
 
 ---
 

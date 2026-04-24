@@ -4,7 +4,7 @@
 > effets exotiques, hardware, brainstorm), voir [IDEAS.md](IDEAS.md).
 > Pour l'historique de ce qui a été fait, voir [CHANGELOG.md](CHANGELOG.md).
 
-Dernière mise à jour : 2026-04-24 (post-priorité 2)
+Dernière mise à jour : 2026-04-24 (post court terme perf spinner/décompte)
 
 ---
 
@@ -46,9 +46,9 @@ _Coverage `core/camera.py` livré : 90 % via mocks gphoto2/cv2/numpy/pygame,
 
 _Monitoring température CPU livré — voir [CHANGELOG.md](CHANGELOG.md)._
 
-- [ ] **Cache surface masque décompte** — éviter de recréer la surface noire latérale à chaque frame dans `render_decompte`
-- [ ] **Spinner configurable / moins coûteux** — exposer plus clairement les paramètres animation et réduire le coût CPU si besoin
-- [ ] **Profiling Raspberry réel** — valider les gains sur la cible avant d'optimiser davantage
+_Cache masque décompte, spinner pré-rendu + `SPINNER_FPS` configurable,
+microbench `bench_spinner.py` + protocole `docs/PROFILING.md` livrés — voir
+[CHANGELOG.md](CHANGELOG.md). Reste à relever les mesures sur Pi réel._
 
 ---
 
