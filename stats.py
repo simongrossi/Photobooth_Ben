@@ -3,7 +3,7 @@
 
 Parse `data/sessions.jsonl` (produit par Sprint 5.4) et affiche :
   - Nombre total de sessions
-  - Taux d'impression / abandon / capture échouée
+  - Taux d'impression / abandon / capture ou impression échouée
   - Répartition par mode (10x15 vs strips)
   - Durée moyenne et max
   - Heure de pointe
@@ -83,6 +83,8 @@ def calculer_stats(sessions):
         "printed": issues.get("printed", 0),
         "abandoned": issues.get("abandoned", 0),
         "capture_failed": issues.get("capture_failed", 0),
+        "print_failed": issues.get("print_failed", 0),
+        "print_disabled": issues.get("print_disabled", 0),
         "modes": dict(modes),
         "duree_moyenne_s": round(duree_moy, 1),
         "duree_max_s": round(duree_max, 1),
@@ -113,6 +115,10 @@ def afficher_texte(stats, date_filter=None):
     print(f"  {GREEN}Imprimées    : {printed}  ({pct:.0f}%){RESET}")
     print(f"  {YELLOW}Abandonnées  : {stats['abandoned']}{RESET}")
     print(f"  {RED}Capture KO   : {stats['capture_failed']}{RESET}")
+    if stats.get("print_failed"):
+        print(f"  {RED}Impression KO: {stats['print_failed']}{RESET}")
+    if stats.get("print_disabled"):
+        print(f"  {YELLOW}Sans papier  : {stats['print_disabled']}{RESET}")
 
     print(f"\n{BOLD}Modes{RESET}")
     for mode, n in stats["modes"].items():

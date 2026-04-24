@@ -343,7 +343,7 @@ kiosque. Désactivé par défaut.
 
 | Constante | Défaut | Effet |
 |---|---|---|
-| `ACTIVER_IMPRESSION` | `True` | `False` pour tester sans gâcher de papier |
+| `ACTIVER_IMPRESSION` | `True` | `False` pour tester sans gâcher de papier : le montage est archivé dans `data/print/`, aucun job CUPS n'est envoyé, et la session est comptée `print_disabled` |
 | `NOM_IMPRIMANTE_10X15` | `DNP_10x15` | Nom CUPS de la file 10×15 |
 | `NOM_IMPRIMANTE_STRIP` | `DNP_STRIP` | Nom CUPS de la file strip |
 | `TEMPS_ATTENTE_IMP` | `20` | Affichage roue avant retour accueil (s) |

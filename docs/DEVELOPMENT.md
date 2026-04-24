@@ -58,11 +58,11 @@ Voir [`.pre-commit-config.yaml`](../.pre-commit-config.yaml).
 
 ```
 Photobooth_Ben/
-├── Photobooth_start.py   # entrée : bootstrap + renders + event handlers + boucle principale (~1070 L)
+├── Photobooth_start.py   # entrée : main() + bootstrap + renders + handlers + boucle principale
 ├── config.py             # 96 constantes partagées — voir CONFIG.md
 ├── core/                 # modules métier (testables sans pygame)
 │   ├── arduino.py        # pyserial + thread → injecte KEYDOWN, pilote LEDs
-│   ├── camera.py         # gphoto2 + lock + retry
+│   ├── camera.py         # gphoto2 optionnel + lock + retry
 │   ├── logger.py         # logging rotatif + sessions.jsonl
 │   ├── monitoring.py     # DiskMonitor + lister_images_slideshow
 │   ├── montage.py        # PIL : MontageGenerator10x15/Strip
@@ -85,6 +85,8 @@ Voir [ARCHITECTURE.md](ARCHITECTURE.md) pour le graphe de dépendances.
 ### Règles d'importation
 
 - `Photobooth_start.py` peut importer tout.
+- `Photobooth_start.py` ne lance le kiosque que via `main()` / exécution directe ;
+  l'import seul reste sans init pygame/caméra/Arduino.
 - `core/*` n'importe pas de `ui/*`.
 - `ui/*` peut importer `core/*`.
 - Ni `core/` ni `ui/` n'importent `Photobooth_start`.
@@ -113,7 +115,7 @@ Règles actives : défauts (E, F, W). `E501` (ligne trop longue) ignoré —
 Voir [TESTING.md](TESTING.md).
 
 ```bash
-pytest                    # tous les tests, rapide (~2 s)
+pytest                    # tous les tests, rapide (~6 s)
 pytest --cov              # avec couverture
 ```
 
@@ -135,9 +137,9 @@ Config : [`.github/workflows/ci.yml`](../.github/workflows/ci.yml).
 À chaque push ou PR sur `main` :
 1. `ruff check .` — échec bloquant
 2. `pytest --cov --cov-report=term`
-3. `coverage report` — échec si sous `fail_under = 30 %`
+3. `coverage report` — échec si sous `fail_under = 75 %`
 
-Pas de build pygame/gphoto2 en CI : seuls les modules purs sont testés. Voir
+Pas de matériel en CI : les chemins gphoto2/CUPS/pyserial sont mockés. Voir
 [TESTING.md § Pourquoi certains modules ne sont pas testés](TESTING.md#pourquoi-certains-modules-ne-sont-pas-testés).
 
 ---

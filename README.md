@@ -57,7 +57,7 @@ assets/
 
 ```
 Photobooth_Ben/
-├── Photobooth_start.py   # entrée + boucle principale + state + renders + event handlers
+├── Photobooth_start.py   # entrée : main() + boucle principale + state + renders + event handlers
 ├── config.py             # constantes + validation au chargement
 ├── core/                 # logique métier (testable sans pygame display)
 │   ├── logger.py         # logging rotatif + log_info/warning/critical
@@ -72,7 +72,7 @@ Photobooth_Ben/
 │   └── __init__.py       # re-exporte pour `from ui import X`
 ├── status.py             # diagnostic autonome pré-événement
 ├── stats.py              # rapport fin de soirée (sessions.jsonl)
-├── test_montage.py       # 18 tests pytest (isolation via monkeypatch)
+├── test_*.py             # suite pytest à la racine (147 tests)
 ├── README.md
 ├── deploy/                 # infra Pi (systemd + kiosque)
 │   ├── photobooth.service  # unit systemd avec watchdog
@@ -101,9 +101,9 @@ Photobooth_Ben/
 
 ### Modules avec dépendances pygame
 
-- [core/camera.py](core/camera.py) — utilise `pygame.surfarray.make_surface` pour convertir les frames gphoto2
+- [core/camera.py](core/camera.py) — imports optionnels `gphoto2`/`cv2`/`numpy`/`pygame`, fallback sans caméra
 - [ui/helpers.py](ui/helpers.py) — `UIContext`, rendus, animations, sons
-- [Photobooth_start.py](Photobooth_start.py) — boucle principale, fontes, état de session, renders par état
+- [Photobooth_start.py](Photobooth_start.py) — `main()` initialise le runtime ; l'import seul ne lance ni pygame ni le matériel
 
 Voir [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) pour le graphe de dépendances + machine d'état + flow de données.
 
@@ -124,7 +124,8 @@ Chaque fin de session écrit une ligne JSON dans `data/sessions.jsonl` :
  "ts": "2026-04-20 14:30:45"}
 ```
 
-`issue` vaut `printed` / `abandoned` / `capture_failed` — consommé par `stats.py`.
+`issue` vaut `printed` / `abandoned` / `capture_failed` / `print_failed` /
+`print_disabled` — consommé par `stats.py`.
 
 ---
 

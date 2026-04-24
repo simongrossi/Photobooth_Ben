@@ -5,6 +5,30 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
 ---
 
+## `WIP` — Priorités stabilité exploitation
+
+### Added
+- `Photobooth_start.py::main()` : le module est importable sans lancer pygame,
+  caméra ni Arduino ; le runtime n'est initialisé qu'en exécution directe
+- Arrêt propre via Échap, SIGTERM et SIGINT, avec fermeture caméra/Arduino/Pygame
+  dans un `finally`
+- `core/camera.py::CameraManager.close()` pour libérer explicitement la session Canon
+- Tests `test_camera.py` : 9 tests CameraManager avec mocks gphoto2/cv2/numpy/pygame
+- Tests d'intégration : import `Photobooth_start.py` sans runtime + caméra sans dépendances
+
+### Changed
+- `ACTIVER_IMPRESSION=False` devient un vrai mode sans papier : montage archivé
+  dans `data/print/`, aucun job CUPS envoyé, metadata `issue=print_disabled`
+- Échec CUPS/imprimante : metadata `issue=print_failed` au lieu de `printed`
+- `stats.py` affiche et exporte `print_failed` / `print_disabled`
+- `core/camera.py` tolère l'absence de `gphoto2`, `cv2`, `numpy` ou `pygame`
+
+### Stats
+- Tests : 136 → **147** (+11)
+- Coverage : 79,9 % → **92,8 %** ; `core/camera.py` : 0 % → **90 %**
+
+---
+
 ## `WIP` — Grain de pellicule sur montages finaux
 
 ### Added

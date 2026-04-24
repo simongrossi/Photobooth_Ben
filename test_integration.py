@@ -2,6 +2,8 @@
 
 Vérifie que :
 - Les modules core/ s'importent proprement (sans pygame)
+- `core.camera` dégrade proprement si ses dépendances optionnelles manquent
+- `Photobooth_start.py` est importable sans démarrer le kiosque
 - `SessionState` se comporte correctement (reset, mutation)
 - `Etat` enum est bien typé et comparable
 - `terminer_session_et_revenir_accueil` déclenche l'écriture metadata
@@ -39,6 +41,106 @@ class TestImportsCore:
         assert mgr.nom("10x15") == "DNP_10x15"
         assert mgr.nom("strips") == "DNP_STRIP"
         assert mgr.nom("invalide") is None
+
+
+class TestImportsHardwareOptionnel:
+    def test_camera_manager_importe_sans_dependances_camera(self, tmp_path):
+        """Simule une machine sans cv2/gphoto2/numpy/pygame : le module reste importable."""
+        import subprocess
+
+        script = f"""
+import builtins
+import sys
+
+sys.path.insert(0, {str(Path.cwd())!r})
+
+real_import = builtins.__import__
+blocked = {"cv2", "gphoto2", "numpy", "pygame"}
+
+def fake_import(name, *args, **kwargs):
+    if name.split(".")[0] in blocked:
+        raise ImportError(name)
+    return real_import(name, *args, **kwargs)
+
+builtins.__import__ = fake_import
+
+from core.camera import CameraManager
+
+mgr = CameraManager()
+assert mgr.init() is False
+assert mgr.get_preview_frame() is None
+assert mgr.is_connected is False
+mgr.close()
+print("OK")
+"""
+        script_path = tmp_path / "camera_optional.py"
+        script_path.write_text(script, encoding="utf-8")
+        result = subprocess.run(
+            [sys.executable, str(script_path)],
+            capture_output=True, text=True, cwd=Path.cwd(),
+        )
+        assert result.returncode == 0, result.stderr
+        assert "OK" in result.stdout
+
+    def test_photobooth_start_import_ne_lance_pas_runtime(self, tmp_path):
+        """Importe le module avec pygame/ui factices : aucun init écran/caméra ne doit partir."""
+        import subprocess
+
+        script = f"""
+import sys
+import types
+
+sys.path.insert(0, {str(Path.cwd())!r})
+
+pygame = types.ModuleType("pygame")
+pygame.K_g = ord("g")
+pygame.K_m = ord("m")
+pygame.K_d = ord("d")
+pygame.K_ESCAPE = 27
+pygame.QUIT = 256
+pygame.KEYDOWN = 768
+sys.modules["pygame"] = pygame
+
+ui = types.ModuleType("ui")
+class UIContext:
+    @classmethod
+    def setup(cls, *args, **kwargs):
+        raise AssertionError("UIContext.setup ne doit pas être appelé à l'import")
+class AccueilAssets:
+    @classmethod
+    def charger(cls, *args, **kwargs):
+        raise AssertionError("AccueilAssets.charger ne doit pas être appelé à l'import")
+def _no_runtime(*args, **kwargs):
+    raise AssertionError("helper UI runtime appelé à l'import")
+ui.UIContext = UIContext
+ui.AccueilAssets = AccueilAssets
+ui.setup_sounds = _no_runtime
+ui.jouer_son = _no_runtime
+ui.draw_text_shadow_soft = _no_runtime
+ui.inserer_background = _no_runtime
+ui.afficher_message_plein_ecran = _no_runtime
+ui.executer_avec_spinner = _no_runtime
+ui.ecran_erreur = _no_runtime
+ui.ecran_attente_impression = _no_runtime
+ui.splash_connexion_camera = _no_runtime
+sys.modules["ui"] = ui
+
+import Photobooth_start as app
+
+assert callable(app.main)
+assert app.camera_mgr is None
+assert app.screen is None
+assert app.arduino_ctrl is None
+print("OK")
+"""
+        script_path = tmp_path / "import_main.py"
+        script_path.write_text(script, encoding="utf-8")
+        result = subprocess.run(
+            [sys.executable, str(script_path)],
+            capture_output=True, text=True, cwd=Path.cwd(),
+        )
+        assert result.returncode == 0, result.stderr
+        assert "OK" in result.stdout
 
 
 # --- Test du comportement de SessionState (via subprocess pour isoler pygame) ---

@@ -46,7 +46,7 @@ class SessionState:
     last_activity_ts: float = 0.0       # pour déclenchement slideshow idle
 
     def reset_pour_accueil(self) -> None:
-        """Reset complet après fin de session (printed/abandoned/capture_failed).
+        """Reset complet après fin de session (printed/abandoned/capture_failed/print_failed/print_disabled).
         Préserve les compteurs temporels (last_activity_ts, etc.)."""
         self.etat = Etat.ACCUEIL
         self.mode_actuel = None
@@ -66,7 +66,8 @@ def ecrire_metadata_session(
 
     Args:
         session: la session terminée (lit `id_session_timestamp`, `mode_actuel`).
-        issue: "printed" | "abandoned" | "capture_failed" (consommé par stats.py).
+        issue: "printed" | "abandoned" | "capture_failed" | "print_failed" |
+            "print_disabled" (consommé par stats.py).
         nb_photos: nombre de photos effectivement capturées.
         duree_s: durée en secondes depuis `session_start_ts`.
     """
@@ -94,7 +95,8 @@ def terminer_session_et_revenir_accueil(session: SessionState, issue: str) -> No
 
     Args:
         session: la session à terminer (sera reset).
-        issue: "printed" | "abandoned" | "capture_failed".
+        issue: "printed" | "abandoned" | "capture_failed" | "print_failed" |
+            "print_disabled".
     """
     duree_s = time.time() - session.session_start_ts
     ecrire_metadata_session(session, issue, len(session.photos_validees), duree_s)

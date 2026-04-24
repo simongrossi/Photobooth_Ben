@@ -4,7 +4,7 @@
 > effets exotiques, hardware, brainstorm), voir [IDEAS.md](IDEAS.md).
 > Pour l'historique de ce qui a été fait, voir [CHANGELOG.md](CHANGELOG.md).
 
-Dernière mise à jour : 2026-04-21 (post-watchdog/kiosk)
+Dernière mise à jour : 2026-04-24 (post-priorité 2)
 
 ---
 
@@ -14,9 +14,9 @@ Dernière mise à jour : 2026-04-21 (post-watchdog/kiosk)
 
 **UX événementiel** : splash caméra, flash + shutter sound, beep décompte, écran "Préparation...", confirmation abandon, slideshow d'attente, compteur photo strip, mode burst.
 
-**Architecture modulaire** : split en `core/` + `ui/` — `core/session` (Etat+SessionState+metadata), `core/monitoring` (DiskMonitor+slideshow), UIContext singleton, render functions extraites (DECOMPTE/VALIDATION/FIN/ACCUEIL), event handlers par état, MontageGenerator/CameraManager/PrinterManager encapsulés. `Photobooth_start.py` : 1183 → 1071 L.
+**Architecture modulaire** : split en `core/` + `ui/` — `core/session` (Etat+SessionState+metadata), `core/monitoring` (DiskMonitor+slideshow), UIContext singleton, render functions extraites (DECOMPTE/VALIDATION/FIN/ACCUEIL), event handlers par état, MontageGenerator/CameraManager/PrinterManager encapsulés. `Photobooth_start.py` est importable sans lancer le kiosque ; `main()` initialise le runtime.
 
-**Hardware** : contrôleur Arduino Nano (`core/arduino.py`) — 3 boutons-poussoirs à LED intégrée via pyserial, pilotage LED selon `Etat`, fallback clavier si pyserial absent. Firmware `arduino/photobooth_buttons/`.
+**Hardware** : contrôleur Arduino Nano (`core/arduino.py`) — 3 boutons-poussoirs à LED intégrée via pyserial, pilotage LED selon `Etat`, fallback clavier si pyserial absent. `core/camera.py` dégrade proprement si `gphoto2`/`cv2`/`numpy`/`pygame` manque. Firmware `arduino/photobooth_buttons/`.
 
 **Performance** : threading spinner génération montage, cache des surfaces statiques + ASSETS cache, capture HQ async (subprocess.Popen + polling), loader GC optim, purge temp + check disque continu, profiling mémoire (`profile_mem.py`, `profile.py`).
 
@@ -39,11 +39,16 @@ sont livrés — voir [CHANGELOG.md](CHANGELOG.md) et [CONFIG.md](CONFIG.md)._
 
 ### Tests & qualité
 
-- [ ] **Coverage `core/camera.py`** — à 0 % car cv2/gphoto2 absents en CI. Mocks complexes ou tests Pi-only (voir [TESTING.md](TESTING.md)). Global à 80 %, tout le reste ≥ 87 %.
+_Coverage `core/camera.py` livré : 90 % via mocks gphoto2/cv2/numpy/pygame,
+147 tests, couverture globale 92,8 %._
 
 ### Optimisations rapides
 
 _Monitoring température CPU livré — voir [CHANGELOG.md](CHANGELOG.md)._
+
+- [ ] **Cache surface masque décompte** — éviter de recréer la surface noire latérale à chaque frame dans `render_decompte`
+- [ ] **Spinner configurable / moins coûteux** — exposer plus clairement les paramètres animation et réduire le coût CPU si besoin
+- [ ] **Profiling Raspberry réel** — valider les gains sur la cible avant d'optimiser davantage
 
 ---
 

@@ -11,7 +11,7 @@ Voir aussi : [DEVELOPMENT.md](DEVELOPMENT.md) pour le setup local, pre-commit et
 ## Lancer les tests
 
 ```bash
-# Tous les tests (48 tests, ~2 s)
+# Tous les tests (147 tests, ~6 s)
 pytest
 
 # Un fichier précis
@@ -29,8 +29,8 @@ open htmlcov/index.html
 ```
 
 Le seuil de couverture minimum est fixé à **75 %** dans `pyproject.toml`
-(`fail_under`). Mesure actuelle : **80 %** globale, avec tous les modules
-hors `core/camera.py` au-dessus de **87 %**.
+(`fail_under`). Mesure actuelle : **92,8 %** globale, avec tous les modules
+au-dessus de **87 %**.
 
 ---
 
@@ -38,22 +38,27 @@ hors `core/camera.py` au-dessus de **87 %**.
 
 | Fichier | Tests | Couvre | Stratégie |
 |---|---|---|---|
-| [test_montage.py](../test_montage.py) | 22 | `core/montage.py` (PIL, MontageGenerator10x15/Strip, watermark) | monkeypatch des `PATH_*` + fixtures PIL synthétiques |
+| [test_camera.py](../test_camera.py) | 9 | `core/camera.py` (imports optionnels, preview, capture, close) | mocks gphoto2/cv2/numpy/pygame + subprocess |
+| [test_montage.py](../test_montage.py) | 27 | `core/montage.py` (PIL, MontageGenerator10x15/Strip, watermark, grain) | monkeypatch des `PATH_*` + fixtures PIL synthétiques |
 | [test_arduino.py](../test_arduino.py) | 19 | `core/arduino.py` (ArduinoController, LEDs, tick, read loop) | FakeSerial + FakePygame mocks |
 | [test_printer.py](../test_printer.py) | 13 | `core/printer.py` (PrinterManager, lpstat/lp) | mock `subprocess.run`/`Popen` |
 | [test_logger.py](../test_logger.py) | 4 | `core/logger.py` (log_error wrapper legacy) | `caplog` pytest |
 | [test_session.py](../test_session.py) | 11 | `core/session.py` (Etat, SessionState, metadata JSONL) | monkeypatch `PATH_DATA` |
 | [test_monitoring.py](../test_monitoring.py) | 21 | `core/monitoring.py` (DiskMonitor, TempMonitor, lister_images_slideshow) | fixtures `tmp_path` |
-| [test_status.py](../test_status.py) | 15 | `status.py` (diagnostic hardware/assets) | fixtures assets factices dans `tmp_path` |
-| [test_stats.py](../test_stats.py) | 15 | `stats.py` (parsing `sessions.jsonl`, histogramme horaire, CLI) | fixtures JSONL synthétiques |
-| [test_integration.py](../test_integration.py) | 6 | chaîne `CameraManager` → `MontageGenerator` → `PrinterManager` | mocks gphoto2/CUPS, réels PIL |
+| [test_status.py](../test_status.py) | 18 | `status.py` (diagnostic hardware/assets) | fixtures assets factices dans `tmp_path` |
+| [test_stats.py](../test_stats.py) | 17 | `stats.py` (parsing `sessions.jsonl`, histogramme horaire, CLI) | fixtures JSONL synthétiques |
+| [test_integration.py](../test_integration.py) | 8 | chaîne `CameraManager` → `MontageGenerator` → `PrinterManager`, import sans runtime | mocks gphoto2/CUPS/pygame, réels PIL |
 
 **Non couvert en CI** (nécessite pygame/gphoto2/caméra réelle) :
 - `Photobooth_start.py` — boucle principale, render functions, event handlers
 - `ui/helpers.py` — dépend de pygame.Surface
-- `core/camera.py` — dépend du hardware gphoto2
 - `core/printer.py` — dépend de CUPS
 - `core/arduino.py` — dépend de pyserial + Nano physique
+
+Le module [Photobooth_start.py](../Photobooth_start.py) est maintenant
+**importable sans lancer le kiosque** : le runtime pygame/caméra/Arduino ne
+démarre que dans `main()`. Les tests peuvent donc vérifier le contrat d'import
+sans ouvrir de fenêtre ni toucher au matériel.
 
 ---
 
@@ -70,8 +75,9 @@ Pour tester les modules hardware-dépendants, il faut :
 2. Un Canon EOS, une imprimante DNP, ou un Arduino flashé
 3. Lancer `pytest` sur le Pi (pas en CI)
 
-Alternative envisageable : tests d'intégration avec mocks gphoto2/CUPS plus
-poussés — cf. [ROADMAP.md](ROADMAP.md) section Tests & qualité.
+Les chemins hardware critiques sont couverts par mocks quand c'est raisonnable
+(`core/camera.py`, CUPS, pyserial). Les essais avec vrai matériel restent à faire
+sur Raspberry avant événement.
 
 ---
 
@@ -120,15 +126,15 @@ Modules mesurés (voir `[tool.coverage.run] source` dans `pyproject.toml`) :
 
 | Module | Couverture | Commentaire |
 |---|---|---|
-| `core/montage.py` | 92 % | 22 tests dédiés |
-| `core/camera.py` | 0 % | cv2/gphoto2 absents en CI — cf. plus bas |
+| `core/montage.py` | 93 % | 27 tests dédiés |
+| `core/camera.py` | 90 % | mocks gphoto2/cv2/numpy/pygame + subprocess |
 | `core/printer.py` | 100 % | mocks subprocess |
 | `core/logger.py` | 94 % | log_error + usage transitif |
 | `core/arduino.py` | 87 % | FakeSerial + FakePygame |
 | `core/session.py` | 100 % | dataclass + metadata JSONL |
 | `core/monitoring.py` | 96 % | DiskMonitor + TempMonitor + slideshow listing |
 | `stats.py` | 100 % | tests in-process + CLI |
-| `status.py` | 93 % | fixtures + main() en process |
+| `status.py` | 91 % | fixtures + main() en process |
 
 Pour voir le détail réel :
 
