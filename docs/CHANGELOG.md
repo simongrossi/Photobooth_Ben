@@ -5,6 +5,59 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
 ---
 
+## `WIP` — Interface admin web optionnelle (v1)
+
+### Added
+- Module `web/` autonome : app Flask + Jinja2 + HTMX, service systemd séparé
+  (`deploy/photobooth-admin.service`, port 8080, Basic Auth via
+  `PHOTOBOOTH_ADMIN_PASS`). Communication avec le kiosque **uniquement** par
+  filesystem — zéro import de `Photobooth_start` ou `ui/*`.
+- 4 blueprints :
+  - `/dashboard/` — sessions (réemploie `stats.calculer_stats`), disque + temp
+    (réemploie `core/monitoring.DiskMonitor/TempMonitor`), histogramme horaire
+  - `/galerie/` — parcours `data/print/` (10×15 + strips), miniatures PIL à la
+    volée, pagination, protection path-traversal
+  - `/templates/` — upload PNG → `assets/overlays/`, activation exclusive par
+    mode (copie vers `OVERLAY_10X15`/`OVERLAY_STRIPS`), suppression guardée
+  - `/settings/` — éditeur de `data/config_overrides.json` (whitelist stricte)
+- `config.py::_appliquer_overrides()` + `_CONFIG_OVERRIDES_WHITELIST` : 18 clés
+  surchargeables sans éditer le code (timings, imprimantes, slideshow,
+  watermark, grain, Arduino, seuils disque/temp). Les résolutions et géométrie
+  de montage restent figées. Typage strict (bool ≠ int).
+- `web/db.py` : SQLite stdlib (`data/admin.db`) pour métadonnées de templates
+  (id, nom, type, fichier, actif, uploaded_at). Source de vérité des fichiers
+  reste `assets/overlays/`.
+- `deploy/install-admin.sh` : installeur idempotent (apt/pip Flask, génère un
+  mot de passe aléatoire dans `/etc/photobooth-admin.env` chmod 640, crée le
+  service systemd). Indépendant de `deploy/install.sh`.
+- `docs/ADMIN.md` : architecture, installation, variables d'env, liste des
+  réglages whitelistés, sécurité.
+- Tests : `test_web_app.py`, `test_web_gallery.py`, `test_web_templates.py`,
+  `test_web_settings.py`, `test_config_overrides.py` — 32 tests couvrant auth,
+  routing, upload/validation, activation exclusive, path-traversal, fusion
+  d'overrides (whitelist, typage strict, JSON corrompu).
+
+### Changed
+- `.github/workflows/ci.yml` : ajoute `flask` aux deps CI (pas de `pygame` /
+  `gphoto2` / `cv2` / `pyserial` toujours).
+- `pyproject.toml` : `[tool.coverage.run] source` inclut `web/`.
+- `CLAUDE.md`, `docs/ARCHITECTURE.md` : graphe de dépendances mis à jour pour
+  refléter l'isolation de `web/*`.
+- `docs/CONFIG.md` : mention des overrides et de leur whitelist.
+
+### Stats
+- Tests : 147 → **179** (+32)
+- Coverage : `web/*` entre 77 % et 100 %, global 90,74 % (seuil 75 %)
+- Zéro régression sur la suite existante (`ruff check .` propre)
+
+### Sécurité
+- Fail closed : sans `PHOTOBOOTH_ADMIN_PASS`, toutes les routes répondent 503.
+- `hmac.compare_digest` pour la comparaison mdp.
+- Upload PNG uniquement + `Image.verify()` pour rejeter les fichiers malformés.
+- Path-traversal bloqué via `os.path.realpath` avec garde de racine.
+
+---
+
 ## `WIP` — Perf court terme : décompte + spinner + profiling Pi
 
 ### Added

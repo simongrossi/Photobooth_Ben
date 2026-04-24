@@ -4,7 +4,7 @@
 > effets exotiques, hardware, brainstorm), voir [IDEAS.md](IDEAS.md).
 > Pour l'historique de ce qui a été fait, voir [CHANGELOG.md](CHANGELOG.md).
 
-Dernière mise à jour : 2026-04-24 (post court terme perf spinner/décompte)
+Dernière mise à jour : 2026-04-24 (post interface admin web v1)
 
 ---
 
@@ -27,6 +27,8 @@ Dernière mise à jour : 2026-04-24 (post court terme perf spinner/décompte)
 **Tests & CI** : pytest (tests unitaires + intégration, `test_status.py`, `test_stats.py`, `test_integration.py`), GitHub Actions CI (`.github/workflows/ci.yml`), coverage (`pyproject.toml`), pre-commit hook (`.pre-commit-config.yaml`).
 
 **Déploiement** : guide Raspberry Pi complet (`docs/DEPLOYMENT.md`), doc architecture (`docs/ARCHITECTURE.md`), doc Arduino (`docs/ARDUINO.md`), changelog (`docs/CHANGELOG.md`).
+
+**Admin web optionnelle** (v1) : service systemd séparé (`photobooth-admin.service`), Flask + SQLite, Basic Auth. Dashboard stats, galerie `data/print/`, upload/activation de templates overlays, éditeur d'un sous-ensemble whitelisté de `config.py` (18 clés via `data/config_overrides.json`). Isolation stricte — `web/*` n'importe jamais `Photobooth_start` ni `ui/*`. Voir [ADMIN.md](ADMIN.md).
 
 ---
 
@@ -83,25 +85,26 @@ et [CHANGELOG.md](CHANGELOG.md)._
 2. **Captive portal** (`nodogsplash`) : redirection auto vers la galerie web
 3. **Mini-serveur FastAPI** sur port 80 : galerie temps réel, téléchargement direct
 4. **QR code à l'écran** après impression → URL directe du montage
-5. **Admin dashboard web** : stats live, toggle imprimante, maintenance, config live
+5. ✅ **Admin dashboard web** : livré en v1 (voir [ADMIN.md](ADMIN.md)) — stats, galerie, templates, réglages. Reste à câbler : config live sans redémarrage, queue imprimante, QR de partage.
 
 **Sous-tâches** :
+- ✅ Admin dashboard v1 (Flask + SQLite + Basic Auth) — dashboard, galerie, templates, réglages whitelistés
+- [ ] **v2 admin** — configuration WiFi depuis l'UI (edit `wpa_supplicant.conf` ou `nmcli` via sudoers ciblé), bouton "redémarrer service kiosque", export CSV stats, tail `logs/systemd.log` dans l'UI
 - [ ] Install / config `hostapd` + `dnsmasq` avec SSID + DHCP local
-- [ ] FastAPI app `server.py` : `/` galerie, `/photo/<id>`, `/qr/<id>`
-- [ ] `qrcode` Python : affiche QR après impression (nouvel écran)
+- [ ] Extension galerie → mode **LAN public** : route publique sans auth pour téléchargement des montages du jour (à exposer uniquement via l'AP captif)
+- [ ] `qrcode` Python : affiche QR après impression (nouvel écran côté kiosque)
 - [ ] Captive portal `nodogsplash` ou redirection DNS catchall
 - [ ] Certificat self-signed HTTPS (éviter warnings iOS)
-- [ ] Admin dashboard : config live, stats, queue imprimante, maintenance
-- [ ] Auth basique admin (PIN ou mot de passe simple)
+- [ ] Config live reload (file watcher sur `data/config_overrides.json`) — évite le `systemctl restart` après chaque réglage
 
-**Effort total** : ~1 semaine dédiée.
+**Effort restant** : ~3-4 jours (l'admin v1 a défriché le plus gros : auth, serveur, galerie, SQLite).
 **Inspirations** : voir [IDEAS.md § Références open-source](IDEAS.md#références-open-source-à-étudier) — `photobooth-app` et `RaspAP` notamment.
 
 ### Autres gros chantiers
 
-- [ ] **Email / SMS delivery** — après impression, écran "Entrez votre email/numéro" (clavier virtuel tactile) → photo envoyée en PJ. SMTP + formulaire
+- [ ] **Email / SMS delivery** — après impression, écran "Entrez votre email/numéro" (clavier virtuel tactile) → photo envoyée en PJ. SMTP + formulaire. Peut s'implémenter soit côté kiosque (tactile sur place) soit côté admin v2 (envoi différé depuis la galerie).
 - [ ] **Multi-langue** (EN/FR/ES) — toutes les strings extraites dans `i18n/*.json`, toggle sur l'accueil
-- [ ] **Branding par événement** — dossier `events/mariage-smith-2026/` qui surcharge assets + overlays + textes + config
+- [ ] **Branding par événement** — dossier `events/mariage-smith-2026/` qui surcharge assets + overlays + textes + config. Pourrait s'intégrer à l'admin (sélecteur d'événement actif).
 
 ---
 
