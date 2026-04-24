@@ -24,9 +24,9 @@ addopts = [
 ]
 
 [tool.coverage.run]
-# On mesure seulement les modules métier (core/) + les scripts standalone.
+# On mesure seulement les modules métier (core/, web/) + les scripts standalone.
 # Photobooth_start.py demande pygame/gphoto2 — pas couvrable en CI sans runtime.
-source = ["core", "stats", "status"]
+source = ["core", "web", "stats", "status"]
 omit = [
     "*/test_*.py",
     "*/__pycache__/*",

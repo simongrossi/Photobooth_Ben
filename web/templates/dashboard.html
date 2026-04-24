@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block titre %}Dashboard · Photobooth{% endblock %}
+{% block contenu %}
+<h1>Dashboard</h1>
+
+<section class="cards">
+  <div class="card">
+    <div class="card__label">Sessions</div>
+    <div class="card__value">{{ stats.total }}</div>
+  </div>
+  <div class="card card--ok">
+    <div class="card__label">Imprimées</div>
+    <div class="card__value">{{ stats.printed or 0 }}</div>
+  </div>
+  <div class="card card--warn">
+    <div class="card__label">Abandonnées</div>
+    <div class="card__value">{{ stats.abandoned or 0 }}</div>
+  </div>
+  <div class="card card--err">
+    <div class="card__label">Capture KO</div>
+    <div class="card__value">{{ stats.capture_failed or 0 }}</div>
+  </div>
+  <div class="card">
+    <div class="card__label">Photos totales</div>
+    <div class="card__value">{{ stats.nb_photos_total or 0 }}</div>
+  </div>
+  <div class="card">
+    <div class="card__label">Durée moyenne</div>
+    <div class="card__value">{{ stats.duree_moyenne_s or 0 }} s</div>
+  </div>
+</section>
+
+<section class="grid-2">
+  <div class="panel">
+    <h2>Matériel</h2>
+    <ul class="kv">
+      <li>
+        <span>Disque libre</span>
+        <strong class="{% if disk.critique %}alerte{% endif %}">
+          {% if disk.libre_mb is not none %}{{ '%.0f'|format(disk.libre_mb) }} Mo{% else %}—{% endif %}
+        </strong>
+      </li>
+      <li>
+        <span>Température CPU</span>
+        <strong class="{% if temp.critique %}alerte{% endif %}">
+          {% if temp.temp_c is not none %}{{ '%.1f'|format(temp.temp_c) }} °C{% else %}N/A{% endif %}
+        </strong>
+      </li>
+      <li><span>Dossier impressions</span><code>{{ print_path }}</code></li>
+      <li><span>Journal sessions</span><code>{{ sessions_path }}</code></li>
+    </ul>
+  </div>
+
+  <div class="panel">
+    <h2>Modes</h2>
+    {% if stats.modes %}
+      <ul class="kv">
+        {% for mode, n in stats.modes.items() %}
+          <li><span>{{ mode or 'inconnu' }}</span><strong>{{ n }}</strong></li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted">Aucune session enregistrée.</p>
+    {% endif %}
+  </div>
+</section>
+
+{% if stats.heures %}
+<section class="panel">
+  <h2>Répartition horaire</h2>
+  {% set max_n = stats.heures.values() | list | max %}
+  <ul class="histo">
+    {% for h in stats.heures.keys() | sort %}
+      {% set n = stats.heures[h] %}
+      <li>
+        <span class="histo__hour">{{ "%02d"|format(h) }}h</span>
+        <span class="histo__bar" style="width: {{ (n * 100 / max_n) | round }}%"></span>
+        <span class="histo__n">{{ n }}</span>
+      </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endblock %}

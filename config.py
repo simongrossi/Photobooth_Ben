@@ -383,7 +383,89 @@ FPS = 60
 
 
 # ==========================================
-# 9. VALIDATION AU CHARGEMENT (Sprint 4.7)
+# 9. OVERRIDES OPTIONNELS (interface admin web)
+# ==========================================
+# L'interface admin web écrit dans `data/config_overrides.json` un sous-ensemble
+# de réglages modifiables sans édition de code. Seules les clés de la whitelist
+# ci-dessous peuvent être surchargées, avec un contrôle de type strict. Toute
+# valeur incohérente est ignorée (et loggée dans logs/config_overrides.log si
+# le dossier existe) ; la validation finale `_valider_config()` s'exécute
+# ensuite sur le résultat fusionné.
+#
+# Clés hors whitelist (résolutions, géométrie des montages, tailles de preview)
+# restent figées dans ce fichier : les modifier casserait les invariants du
+# pipeline de rendu.
+
+# (clé: type Python attendu)
+_CONFIG_OVERRIDES_WHITELIST = {
+    "TEMPS_DECOMPTE": int,
+    "DELAI_SECURITE": float,
+    "NOM_IMPRIMANTE_10X15": str,
+    "NOM_IMPRIMANTE_STRIP": str,
+    "ACTIVER_IMPRESSION": bool,
+    "TEMPS_ATTENTE_IMP": int,
+    "DUREE_IDLE_SLIDESHOW": float,
+    "DUREE_PAR_IMAGE_SLIDESHOW": float,
+    "NB_MAX_IMAGES_SLIDESHOW": int,
+    "STRIP_MODE_BURST": bool,
+    "STRIP_BURST_DELAI_S": float,
+    "WATERMARK_ENABLED": bool,
+    "WATERMARK_TEXT": str,
+    "GRAIN_ENABLED": bool,
+    "GRAIN_INTENSITE": int,
+    "SEUIL_DISQUE_CRITIQUE_MB": float,
+    "SEUIL_TEMP_CRITIQUE_C": float,
+    "ARDUINO_ENABLED": bool,
+}
+
+CONFIG_OVERRIDES_PATH = os.path.join(PATH_DATA, "config_overrides.json")
+
+
+def _appliquer_overrides():
+    """Lit CONFIG_OVERRIDES_PATH et surcharge les globals autorisés.
+
+    Silencieux si le fichier n'existe pas (cas nominal sans admin web).
+    Une clé non whitelistée ou un type incompatible est ignoré sans faire
+    planter l'import.
+    """
+    import json as _json
+    if not os.path.exists(CONFIG_OVERRIDES_PATH):
+        return
+    try:
+        with open(CONFIG_OVERRIDES_PATH, encoding="utf-8") as f:
+            overrides = _json.load(f)
+    except (OSError, _json.JSONDecodeError):
+        return
+    if not isinstance(overrides, dict):
+        return
+    g = globals()
+    for cle, valeur in overrides.items():
+        type_attendu = _CONFIG_OVERRIDES_WHITELIST.get(cle)
+        if type_attendu is None:
+            continue
+        # bool est un sous-type de int en Python : à tester en premier.
+        if type_attendu is bool:
+            if not isinstance(valeur, bool):
+                continue
+        elif type_attendu is float:
+            # tolérer int pour float
+            if not isinstance(valeur, (int, float)) or isinstance(valeur, bool):
+                continue
+            valeur = float(valeur)
+        elif type_attendu is int:
+            if not isinstance(valeur, int) or isinstance(valeur, bool):
+                continue
+        elif type_attendu is str:
+            if not isinstance(valeur, str) or not valeur:
+                continue
+        g[cle] = valeur
+
+
+_appliquer_overrides()
+
+
+# ==========================================
+# 10. VALIDATION AU CHARGEMENT (Sprint 4.7)
 # ==========================================
 # On vérifie au premier import que la config est cohérente. Un AssertionError
 # au démarrage est bien plus clair qu'un bug visuel à mi-événement.
