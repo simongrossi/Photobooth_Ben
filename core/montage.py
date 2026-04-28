@@ -15,6 +15,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from config import (
     PATH_TEMP,
+    PATH_PRINT_STRIP,
     PREFIXE_PRINT_10X15, PREFIXE_PRINT_STRIP,
     BG_10X15_FILE, OVERLAY_10X15,
     BG_STRIPS_FILE, OVERLAY_STRIPS,
@@ -217,9 +218,7 @@ class MontageGeneratorStrip(MontageBase):
 
     @classmethod
     def final(cls, photos: list, id_session: str) -> str:
-        path_hd = os.path.join(PATH_TEMP, f"{PREFIXE_PRINT_STRIP}_{id_session}.jpg")
-
-        # Fond : redressement si horizontal, puis rotation 180° (imprimante tête-bêche)
+        # --- 1. GÉNÉRATION DE LA BANDELETTE (Ton code d'origine intact) ---
         canvas = cls._canvas_depuis_bg_ou_blanc(
             BG_STRIPS_FILE, cls.FINAL_SIZE,
             rotation=cls.FINAL_ROTATION, redresser_si_horizontal=True,
@@ -244,5 +243,33 @@ class MontageGeneratorStrip(MontageBase):
         cls._appliquer_watermark(canvas, WATERMARK_TAILLE_STRIP, WATERMARK_POSITION_STRIP)
         cls._appliquer_grain(canvas)
 
-        canvas.save(path_hd, "JPEG", quality=cls.FINAL_QUALITY)
-        return path_hd
+        # --- 2. SAUVEGARDE DE LA BANDELETTE "CLEAN" ---
+        # Elle va dans PATH_PRINT_STRIP (ton dossier print habituel)
+        path_clean = os.path.join(PATH_PRINT_STRIP, f"{PREFIXE_PRINT_STRIP}_{id_session}_CLEAN.jpg")
+        canvas.save(path_clean, "JPEG", quality=cls.FINAL_QUALITY)
+
+        # --- 3. CRÉATION DU MONTAGE 10x15 DANS LE SOUS-DOSSIER ---
+        dir_ready = os.path.join(PATH_PRINT_STRIP, "READY_TO_PRINT")
+        if not os.path.exists(dir_ready):
+            os.makedirs(dir_ready, exist_ok=True)
+
+        path_ready = os.path.join(dir_ready, f"{PREFIXE_PRINT_STRIP}_{id_session}_READY_TO_PRINT.jpg")
+        
+        # Création du canevas 10x15 paysage
+        canvas_10x15 = Image.new("RGB", MONTAGE_10X15_SIZE, "white")
+        bande_rot = canvas.rotate(90, expand=True)
+        
+        # Double collage (haut et bas)
+        canvas_10x15.paste(bande_rot, (0, 0))
+        canvas_10x15.paste(bande_rot, (0, MONTAGE_10X15_SIZE[1] // 2))
+
+        # Sauvegarde du fichier prêt pour l'impression dans le sous-dossier
+        canvas_10x15.save(path_ready, "JPEG", quality=cls.FINAL_QUALITY)
+
+        # --- 4. REDIRECTION VERS TEMP POUR ÉVITER LE DOUBLON DANS PRINT ---
+        # On sauve une copie dans TEMP pour que Photobooth_start.py 
+        # travaille avec ce fichier et n'enregistre rien dans le dossier parent PRINT.
+        path_tmp_print = os.path.join(PATH_TEMP, f"print_tmp_{id_session}.jpg")
+        canvas_10x15.save(path_tmp_print, "JPEG", quality=cls.FINAL_QUALITY)
+
+        return path_tmp_print

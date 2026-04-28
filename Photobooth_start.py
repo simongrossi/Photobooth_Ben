@@ -446,7 +446,8 @@ def _generer_montage_final(session: SessionState) -> str:
 def _destination_montage_imprime(session: SessionState) -> str:
     """Chemin d'archive du montage final selon le mode courant."""
     if session.mode_actuel == "strips":
-        return os.path.join(PATH_PRINT_STRIP, f"{PREFIXE_PRINT_STRIP}_{session.id_session_timestamp}.jpg")
+        # On pointe vers le sous-dossier et on ajoute le suffixe
+        return os.path.join(PATH_PRINT_STRIP, "READY_TO_PRINT", f"{PREFIXE_PRINT_STRIP}_{session.id_session_timestamp}_READY_TO_PRINT.jpg")
     return os.path.join(PATH_PRINT_10X15, f"{PREFIXE_PRINT_10X15}_{session.id_session_timestamp}.jpg")
 
 
@@ -463,7 +464,14 @@ def traiter_impression_session(session: SessionState) -> str:
             TXT_PREPARATION_IMP,
         )
         destination = _destination_montage_imprime(session)
-        shutil.copy(p, destination)
+
+        # On n'effectue la copie que si on n'est PAS en mode strips.
+        # En mode strips, MontageGeneratorStrip.final a déjà placé les fichiers.
+        if session.mode_actuel != "strips":
+            shutil.copy(p, destination)
+        else:
+            # Pour les strips, on utilise directement le chemin renvoyé par montage.py
+            destination = p
 
         if not ACTIVER_IMPRESSION:
             log_info(f"Impression désactivée : montage enregistré sans envoi CUPS ({destination})")
