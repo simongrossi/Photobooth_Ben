@@ -74,7 +74,7 @@ LIVE_W, LIVE_H = 800, 600       # Taille du flux vidéo en direct (Preview)
 KIOSK_FULLSCREEN = os.environ.get("PHOTOBOOTH_KIOSK", "0") == "1"
 
 
-MASQUE = 130   # Transparance des bande latérale noire si ratio image modifié (valeur : 0 invisble à 255 opaque)
+MASQUE = 200   # Transparance des bande latérale noire si ratio image modifié (valeur : 0 invisble à 255 opaque)
 
 
 
@@ -174,7 +174,7 @@ MARGE_ACCUEIL = 200   # Espace entre les deux icônes
 
 # --- Mode STRIPS (Bandelettes) ---
 STRIP_MARGE_HAUT     = 40    # Espace tout en haut de la bande
-STRIP_MARGE_LATERALE = 30   # Espace vide à gauche et à droite de chaque photo
+STRIP_MARGE_LATERALE = 30   # 30 pour ratio 0,80   /  100 pour ratio 1.00   /  XX pour ratio XX  =>Espace vide à gauche et à droite de chaque photo
 STRIP_ESPACE_PHOTOS  = 40    # Espace entre les photos
 
 # --- REGLAGES DYNAMIQUES ---
@@ -183,6 +183,17 @@ STRIP_ESPACE_PHOTOS  = 40    # Espace entre les photos
 # 0.80 pour le format 5:4 (Un peu plus carré)
 # 1.00 pour le format 1:1 (Parfaitement carré)
 STRIP_PHOTO_RATIO = 0.80
+
+
+# --- CALIBRATION DECOUPE BANDELETTE IMPRIMANTE DNP (Pixels) ---
+# Définit la zone réelle d'impression pour éviter le rognage et centrer la coupe
+# Ratio calculé : 1 mm ≈ 11.74 px (basé sur 600px = 51.1mm)
+# Formule : pixel / 11.74 = mm
+PRINT_CALIB_TOP    = 18
+PRINT_CALIB_BOTTOM = 12
+PRINT_CALIB_LEFT   = 3
+PRINT_CALIB_RIGHT  = 17
+
 
 
 # --- Mode 10x15 (Photo Unique) ---
@@ -212,10 +223,13 @@ MONTAGE_10X15_FINAL_PHOTO_FIT      = (1640, 1040)
 MONTAGE_10X15_FINAL_PHOTO_OFFSET   = (80, 80)
 MONTAGE_10X15_FINAL_QUALITY        = 98
 
+
+
+
 # --- Dimensions de preview écran (mode strip) ---
-STRIP_PREVIEW_PHOTO_LARGEUR = 520
-STRIP_PREVIEW_ESPACEMENT    = 40
-STRIP_PREVIEW_MARGE_HB      = 20     # marge haut/bas de la bande
+STRIP_PREVIEW_PHOTO_LARGEUR = 300   #520
+STRIP_PREVIEW_ESPACEMENT    = 40       #40
+STRIP_PREVIEW_MARGE_HB      = 40     # 20  marge haut/bas de la bande
 STRIP_PREVIEW_CANVAS_LARGEUR = 600
 STRIP_PREVIEW_THUMBNAIL_MAX = (400, 800)
 STRIP_PREVIEW_QUALITY       = 90
