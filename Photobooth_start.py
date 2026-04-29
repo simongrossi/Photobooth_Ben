@@ -931,8 +931,8 @@ def render_fin(session: SessionState) -> None:
     y_b = HEIGHT - BANDEAU_HAUTEUR
     screen.blit(BANDEAU_CACHE, (0, y_b))
     y_t = y_b + (BANDEAU_HAUTEUR // 2) - (font_bandeau.get_height() // 2)
-    txt_g = config.TXT_BOUTON_REPRENDRE if session.mode_actuel == "10x15" else config.TXT_BOUTON_ACCUEIL
-    screen.blit(font_bandeau.render(txt_g, True, config.COULEUR_TEXTE_G), (80, y_t))
+    txt_g_surf = font_bandeau.render(config.TXT_BOUTON_REPRENDRE, True, config.COULEUR_TEXTE_G)
+    screen.blit(txt_g_surf, (80, y_t))
     t_m = font_bandeau.render(config.TXT_BOUTON_IMPRIMER, True, config.COULEUR_TEXTE_M)
     screen.blit(t_m, (WIDTH // 2 - t_m.get_width() // 2, y_t))
     t_d = font_bandeau.render(config.TXT_BOUTON_SUPPRIMER, True, config.COULEUR_TEXTE_D)
