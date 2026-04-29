@@ -46,6 +46,7 @@ from PIL import Image, ImageOps
 from datetime import datetime
 
 
+
 # ========================================================================================================
 # --- MACHINE D'ÉTAT + SESSION STATE (extraits dans core/session.py) ---
 # ========================================================================================================
@@ -478,6 +479,17 @@ def traiter_impression_session(session: SessionState) -> str:
             afficher_message_plein_ecran("Impression désactivée - montage enregistré", couleur=(255, 215, 0))
             time.sleep(1.2)
             return "print_disabled"
+
+        # ===========================================================
+        # --- MODIFICATION ANTI-FLASH (Chemin helpers.py) ---
+        # ===========================================================
+        from ui import helpers
+        
+        # On vérifie si le cache existe dans helpers.py
+        if hasattr(helpers, '_fond_impression_cache') and helpers._fond_impression_cache:
+            helpers.UIContext.screen.blit(helpers._fond_impression_cache, (0, 0))
+            pygame.display.flip()
+        # ===========================================================
 
         if printer_mgr.send(destination, session.mode_actuel):
             jouer_son("success")

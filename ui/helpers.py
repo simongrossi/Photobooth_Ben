@@ -62,6 +62,15 @@ class UIContext:
         cls.font_bandeau = font_bandeau
         cls.font_decompte = font_decompte
 
+        global _fond_impression_cache
+        path_fond = "assets/interface/background.jpg"
+        if os.path.exists(path_fond):
+            try:
+                raw = pygame.image.load(path_fond).convert()
+                _fond_impression_cache = pygame.transform.scale(raw, (WIDTH, HEIGHT))
+            except Exception as e:
+                print(f"Erreur pré-chargement fond : {e}")
+
 
 # ========================================================================================================
 # --- Asset store pour l'écran d'accueil (cache des surfaces chargées au boot) ---
@@ -346,8 +355,7 @@ def afficher_message_plein_ecran(message, couleur=(255, 215, 0), fond=COULEUR_FO
 
 
 def executer_avec_spinner(fonction_longue, message):
-    """Exécute une fonction PIL bloquante dans un thread tout en animant le spinner.
-    Retourne sa valeur, ou re-lève l'exception capturée."""
+    global _global_spinner  # On utilise le spinner partagé
     ctx = UIContext
     resultat = {}
 
@@ -360,19 +368,32 @@ def executer_avec_spinner(fonction_longue, message):
     t = threading.Thread(target=_wrapper, daemon=True)
     t.start()
 
-    local_loader = LoaderAnimation()
+    # Initialisation du spinner global s'il n'existe pas encore
+    if _global_spinner is None:
+        _global_spinner = LoaderAnimation()
+
     while t.is_alive():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-        ctx.screen.fill(COULEUR_FOND_LOADER)
-        local_loader.update_and_draw(ctx.screen)
+
+        # --- MODIFICATION ANTI-FLASH ---
+        if _fond_impression_cache:
+            ctx.screen.blit(_fond_impression_cache, (0, 0))
+        else:
+            ctx.screen.fill(COULEUR_FOND_LOADER)
+        # -------------------------------
+
+        # On utilise _global_spinner au lieu de local_loader
+        _global_spinner.update_and_draw(ctx.screen)
+        
         try:
             txt = ctx.font_bandeau.render(message, True, (255, 255, 255))
             ctx.screen.blit(txt, (WIDTH // 2 - txt.get_width() // 2, HEIGHT - 120))
         except Exception as e:
             log_warning(f"Rendu spinner : {e}")
+            
         pygame.display.flip()
         ctx.clock.tick(SPINNER_FPS)
 
@@ -413,31 +434,52 @@ def ecran_erreur(message, timeout=None):
 
 # Singleton loader partagé pour l'écran d'attente d'impression (réutilisé entre sessions)
 _mon_loader = None
+_fond_impression_cache = None
+_global_spinner = None
 
 
 def ecran_attente_impression():
-    """Roue d'attente + texte 'Impression en cours...' pendant TEMPS_ATTENTE_IMP secondes.
-    Bloquant volontaire : laisse le temps à CUPS d'envoyer le job avant de retourner à l'accueil."""
-    global _mon_loader
-    if _mon_loader is None:
-        _mon_loader = LoaderAnimation()
+    """Roue d'attente fluide sans flash noir et sans saut d'animation."""
+    # 1. TOUTES les déclarations global en PREMIER
+    global _global_spinner, _fond_impression_cache
     ctx = UIContext
+
+    # 2. Initialisation immédiate du spinner s'il n'existe pas
+    if _global_spinner is None:
+        _global_spinner = LoaderAnimation()
+
+    # 3. ACTION ANTI-FLASH : On dessine TOUT DE SUITE
+    if _fond_impression_cache:
+        ctx.screen.blit(_fond_impression_cache, (0, 0))
+    else:
+        ctx.screen.fill(COULEUR_FOND_LOADER)
+    pygame.display.flip() 
+
+    # 4. BOUCLE D'ANIMATION
     temps_debut = time.time()
     while time.time() - temps_debut < TEMPS_ATTENTE_IMP:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-        ctx.screen.fill(COULEUR_FOND_LOADER)
-        _mon_loader.update_and_draw(ctx.screen)
+
+        # Dessin du fond à chaque frame pour le mouvement de la roue
+        if _fond_impression_cache:
+            ctx.screen.blit(_fond_impression_cache, (0, 0))
+        else:
+            ctx.screen.fill(COULEUR_FOND_LOADER)
+
+        # Utilisation UNIQUE de _global_spinner (pas de reset ici)
+        _global_spinner.update_and_draw(ctx.screen)
+        
         try:
             txt = ctx.font_bandeau.render("Impression en cours...", True, (255, 255, 255))
             ctx.screen.blit(txt, (WIDTH // 2 - txt.get_width() // 2, HEIGHT - 120))
         except Exception as e:
             log_warning(f"Rendu attente impression : {e}")
+            
         pygame.display.flip()
         ctx.clock.tick(SPINNER_FPS)
-
 
 def splash_connexion_camera(camera_mgr, timeout=None):
     """Splash au boot : tente de connecter la caméra avec animation + retry.

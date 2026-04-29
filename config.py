@@ -383,8 +383,8 @@ GRAIN_SIGMA        = 30.0    # Écart-type du bruit gaussien (bas = uniforme, ha
 # 8. CONFIGURATION IMPRESSION
 # ==========================================
 ACTIVER_IMPRESSION = True          # Permet de tester sans gâcher de papier
-NOM_IMPRIMANTE_10X15 = "DNP_10x15"
-NOM_IMPRIMANTE_STRIP = "DNP_STRIP"
+NOM_IMPRIMANTE_10X15 = "PDF"  #"DNP_10x15" Pour tets de developpement sazns impression mettre "PDF"
+NOM_IMPRIMANTE_STRIP = "PDF"   #"DNP_STRIP" Pour tets de developpement sazns impression mettre "PDF"
 TEMPS_ATTENTE_IMP    = 20  # Secondes d'affichage de la roue avant retour accueil
 
 
