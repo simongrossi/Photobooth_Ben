@@ -394,6 +394,11 @@ ANIM_COULEUR_TETE  = (27, 161, 70) # Magenta (255, 0, 150)
 ANIM_COULEUR_QUEUE = (194, 196, 37) # Cyan (0, 200, 255) 
 ANIM_TAILLE_ROUE   = 100            #100      
 
+# --- Tailles des polices pour l'écran d'attente ---
+TAILLE_TEXTE_IMP_COURANT = 80   # Pour "Impression en cours..."
+TAILLE_COMPTEUR_IMP = 120       # Pour le gros chiffre "15s"
+
+
 # Physique
 ANIM_V_BASE        = 4.0       #4.0              # Vitesse de rotation de base (points par frame)       
 ANIM_V_MAX_ADD     = 8       #8.0              # Vitesse max additionnelle (accélération) quand la roue tourne vite  

@@ -50,6 +50,8 @@ class UIContext:
     font_boutons = None
     font_bandeau = None
     font_decompte = None
+    font_imp_texte = None
+    font_imp_compteur = None
 
     @classmethod
     def setup(cls, screen, clock, font_titre, font_boutons, font_bandeau, font_decompte) -> None:
@@ -61,6 +63,19 @@ class UIContext:
         cls.font_boutons = font_boutons
         cls.font_bandeau = font_bandeau
         cls.font_decompte = font_decompte
+
+
+        # --- Chargement des polices d'impression ---
+        import config
+        try:
+            cls.font_imp_texte = pygame.font.Font(config.POLICE_FICHIER, config.TAILLE_TEXTE_IMP_COURANT)
+            cls.font_imp_compteur = pygame.font.Font(config.POLICE_FICHIER, config.TAILLE_COMPTEUR_IMP)
+        except Exception as e:
+            log_warning(f"Erreur chargement polices impression : {e}")
+            # Fallback sur les polices existantes si ça rate
+            cls.font_imp_texte = font_bandeau
+            cls.font_imp_compteur = font_decompte
+        # ----------------------------------------------------
 
         global _fond_impression_cache
         path_fond = "assets/interface/background.jpg"
@@ -494,12 +509,21 @@ def ecran_attente_impression():
         _global_spinner.update_and_draw(ctx.screen)
         
         try:
-            # Calcul du temps restant
             restant = max(0, int(TEMPS_ATTENTE_IMP - (time.time() - temps_debut)))
             
-            # On affiche le texte avec le chiffre qui décompte
-            txt = ctx.font_bandeau.render(f"Impression en cours... {restant}s", True, (255, 255, 255))
-            ctx.screen.blit(txt, (WIDTH // 2 - txt.get_width() // 2, HEIGHT - 120))
+            # Utilisation des polices dédiées
+            surf_txt = ctx.font_imp_texte.render("Impression en cours...", True, (255, 255, 255))
+            surf_num = ctx.font_imp_compteur.render(f"{restant}s", True, (255, 255, 255))
+            
+            # Le chiffre (le plus gros) est placé à 150px du bord bas
+            pos_y_num = HEIGHT - 10 - surf_num.get_height()
+            # Le texte "Impression en cours" est placé juste au-dessus du chiffre
+            pos_y_txt = pos_y_num - surf_txt.get_height() - 10 
+            
+            # Centrage horizontal classique
+            ctx.screen.blit(surf_txt, (WIDTH // 2 - surf_txt.get_width() // 2, pos_y_txt))
+            ctx.screen.blit(surf_num, (WIDTH // 2 - surf_num.get_width() // 2, pos_y_num))
+
         except Exception as e:
             log_warning(f"Rendu attente impression : {e}")
             
