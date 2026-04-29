@@ -453,12 +453,7 @@ def _destination_montage_imprime(session: SessionState) -> str:
 
 
 def traiter_impression_session(session: SessionState) -> str:
-    """Génère, archive et imprime le montage final.
-
-    Returns:
-        "printed" si le job CUPS est lancé, "print_disabled" si l'impression est
-        volontairement désactivée, "print_failed" si la génération/copie/envoi échoue.
-    """
+    """Génère, archive et imprime le montage final avec diagnostic précis."""
     try:
         p = executer_avec_spinner(
             lambda: _generer_montage_final(session),
@@ -466,43 +461,50 @@ def traiter_impression_session(session: SessionState) -> str:
         )
         destination = _destination_montage_imprime(session)
 
-        # On n'effectue la copie que si on n'est PAS en mode strips.
-        # En mode strips, MontageGeneratorStrip.final a déjà placé les fichiers.
+        # Copie si nécessaire (Strips gèrent leur propre chemin)
         if session.mode_actuel != "strips":
             shutil.copy(p, destination)
         else:
-            # Pour les strips, on utilise directement le chemin renvoyé par montage.py
             destination = p
 
         if not ACTIVER_IMPRESSION:
-            log_info(f"Impression désactivée : montage enregistré sans envoi CUPS ({destination})")
+            log_info(f"Impression désactivée : montage enregistré ({destination})")
             afficher_message_plein_ecran("Impression désactivée - montage enregistré", couleur=(255, 215, 0))
             time.sleep(1.2)
             return "print_disabled"
 
-        # ===========================================================
-        # --- MODIFICATION ANTI-FLASH (Chemin helpers.py) ---
-        # ===========================================================
+        # --- MODIFICATION ANTI-FLASH ---
         from ui import helpers
-        
-        # On vérifie si le cache existe dans helpers.py
         if hasattr(helpers, '_fond_impression_cache') and helpers._fond_impression_cache:
             helpers.UIContext.screen.blit(helpers._fond_impression_cache, (0, 0))
             pygame.display.flip()
+
+        # ===========================================================
+        # --- NOUVELLE VÉRIFICATION DE SÉCURITÉ (Saturations/État) ---
+        # ===========================================================
+        status = printer_mgr.is_ready(session.mode_actuel)
+
+        if status is True:
+            # Si tout est OK (True), on tente l'envoi physique
+            if printer_mgr.send(destination, session.mode_actuel):
+                jouer_son("success")
+                ecran_attente_impression()
+                return "printed"
+            else:
+                ecran_erreur(TXT_ERREUR_IMPRIMANTE)
+                return "print_failed"
+        else:
+            # Si status contient un texte (ex: "FILE D'ATTENTE PLEINE")
+            # On affiche ce texte précis au lieu du message générique.
+            log_warning(f"Impression bloquée : {status}")
+            ecran_erreur(status) 
+            return "print_failed"
         # ===========================================================
 
-        if printer_mgr.send(destination, session.mode_actuel):
-            jouer_son("success")
-            ecran_attente_impression()
-            return "printed"
-
-        ecran_erreur(TXT_ERREUR_IMPRIMANTE)
-        return "print_failed"
     except Exception as e:
         log_critical(f"Erreur impression finale : {e}")
         ecran_erreur(TXT_ERREUR_IMPRIMANTE)
         return "print_failed"
-
 
 def demander_arret(signum=None, frame=None) -> None:
     """Demande un arrêt propre de la boucle principale."""

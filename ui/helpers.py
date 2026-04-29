@@ -404,30 +404,51 @@ def executer_avec_spinner(fonction_longue, message):
 
 
 def ecran_erreur(message, timeout=None):
-    """Écran rouge plein écran avec le message. Timeout auto OU pression de touche."""
+    """Écran rouge avec la bonne police en taille intermédiaire."""
     ctx = UIContext
     if timeout is None:
         timeout = DUREE_ECRAN_ERREUR
+    
+    # On récupère le chemin du fichier utilisé par font_titre
+    # Si font_titre n'a pas d'attribut .name, on utilise font_bandeau
+    try:
+        # On crée une version intermédiaire (taille 65 ici) à partir de ta police existante
+        # Note : On suppose que ctx.font_path contient le chemin vers ton fichier .ttf
+        # Si tu n'as pas font_path, on utilise le nom de la police chargée
+        font_inter = pygame.font.Font(ctx.font_path, 65) 
+    except:
+        # Solution de secours si le chemin n'est pas accessible
+        font_inter = pygame.font.Font("assets/fonts/WesternBangBang-Regular.ttf", 65)
+
     t_start = time.time()
     while time.time() - t_start < timeout:
+        # ... (le reste de ta boucle d'événements reste identique)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
             if event.type == pygame.KEYDOWN:
                 return
+        
         ctx.screen.fill((40, 10, 10))
         try:
-            titre = ctx.font_titre.render("ERREUR", True, (255, 100, 100))
+            couleur_alerte = (255, 100, 100)
+            
+            # Titre "ERREUR"
+            titre = ctx.font_titre.render("ERREUR", True, couleur_alerte)
             ctx.screen.blit(titre, (WIDTH // 2 - titre.get_width() // 2, HEIGHT // 2 - 220))
-            msg = ctx.font_bandeau.render(message, True, (255, 255, 255))
-            ctx.screen.blit(msg, (WIDTH // 2 - msg.get_width() // 2, HEIGHT // 2))
+            
+            # Message avec la BONNE police et la BONNE couleur
+            msg = font_inter.render(message, True, couleur_alerte)
+            ctx.screen.blit(msg, (WIDTH // 2 - msg.get_width() // 2, HEIGHT // 2 - 20))
+            
             hint = ctx.font_bandeau.render(
                 "Appuyez sur une touche ou patientez...", True, (170, 170, 170)
             )
             ctx.screen.blit(hint, (WIDTH // 2 - hint.get_width() // 2, HEIGHT - 100))
         except Exception as e:
             log_warning(f"Rendu écran erreur : {e}")
+            
         pygame.display.flip()
         ctx.clock.tick(30)
 
@@ -473,7 +494,11 @@ def ecran_attente_impression():
         _global_spinner.update_and_draw(ctx.screen)
         
         try:
-            txt = ctx.font_bandeau.render("Impression en cours...", True, (255, 255, 255))
+            # Calcul du temps restant
+            restant = max(0, int(TEMPS_ATTENTE_IMP - (time.time() - temps_debut)))
+            
+            # On affiche le texte avec le chiffre qui décompte
+            txt = ctx.font_bandeau.render(f"Impression en cours... {restant}s", True, (255, 255, 255))
             ctx.screen.blit(txt, (WIDTH // 2 - txt.get_width() // 2, HEIGHT - 120))
         except Exception as e:
             log_warning(f"Rendu attente impression : {e}")

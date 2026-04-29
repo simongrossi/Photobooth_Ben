@@ -383,26 +383,26 @@ GRAIN_SIGMA        = 30.0    # Écart-type du bruit gaussien (bas = uniforme, ha
 # 8. CONFIGURATION IMPRESSION
 # ==========================================
 ACTIVER_IMPRESSION = True          # Permet de tester sans gâcher de papier
-NOM_IMPRIMANTE_10X15 = "PDF"  #"DNP_10x15" Pour tets de developpement sazns impression mettre "PDF"
-NOM_IMPRIMANTE_STRIP = "PDF"   #"DNP_STRIP" Pour tets de developpement sazns impression mettre "PDF"
-TEMPS_ATTENTE_IMP    = 20  # Secondes d'affichage de la roue avant retour accueil
+NOM_IMPRIMANTE_10X15 = "DNP_10x15"  #Par défaut "DNP_10x15",  Pour tets de developpement sans impression mettre "PDF"
+NOM_IMPRIMANTE_STRIP = "DNP_STRIP"   #Par défaut "DNP_STRIP",   Pour tets de developpement sans impression mettre "PDF"
+TEMPS_ATTENTE_IMP    = 15  # Secondes d'affichage de la roue avant retour accueil
 
 
 
 # --- CONFIGURATION ANIMATION ROUE DE CHARGEMENT ---
-ANIM_COULEUR_TETE  = (255, 0, 150) # Magenta
-ANIM_COULEUR_QUEUE = (0, 200, 255) # Cyan
-ANIM_TAILLE_ROUE   = 100           
+ANIM_COULEUR_TETE  = (27, 161, 70) # Magenta (255, 0, 150)    
+ANIM_COULEUR_QUEUE = (194, 196, 37) # Cyan (0, 200, 255) 
+ANIM_TAILLE_ROUE   = 100            #100      
 
 # Physique
-ANIM_V_BASE        = 4.0           
-ANIM_V_MAX_ADD     = 8             
-ANIM_FREQ          = 1.5           
+ANIM_V_BASE        = 4.0       #4.0              # Vitesse de rotation de base (points par frame)       
+ANIM_V_MAX_ADD     = 8       #8.0              # Vitesse max additionnelle (accélération) quand la roue tourne vite  
+ANIM_FREQ          = 1.5       #1.5              # Fréquence de variation de la vitesse (Hz) : plus haut = oscillations plus rapides
 
 # Structure
-ANIM_NB_POINTS     = 120           # Nombre de points composant la roue (baissé de 300 : overkill visuel pour le CPU Pi)
-ANIM_RAYON_POINT   = 28
-ANIM_V_ELASTIQUE   = 5.0
+ANIM_NB_POINTS     = 120          # 120
+ANIM_RAYON_POINT   = 28             #28
+ANIM_V_ELASTIQUE   = 5.0        #5.0              # Force de rappel élastique vers la position idéale (plus haut = roue plus rigide)
 
 # Framerate de rafraîchissement du spinner (écrans loader / attente impression).
 # Distinct de FPS (boucle principale) pour réduire la charge CPU sur Pi.
