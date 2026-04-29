@@ -172,17 +172,32 @@ MARGE_ACCUEIL = 200   # Espace entre les deux icônes
 # 5. CONFIGURATION DES MONTAGES (IMPRESSION)
 # ==========================================
 
-# --- Mode STRIPS (Bandelettes) ---
-STRIP_MARGE_HAUT     = 40    # Espace tout en haut de la bande
-STRIP_MARGE_LATERALE = 30   # 30 pour ratio 0,80   /  100 pour ratio 1.00   /  XX pour ratio XX  =>Espace vide à gauche et à droite de chaque photo
-STRIP_ESPACE_PHOTOS  = 40    # Espace entre les photos
+# --- CONFIGURATION DYNAMIQUE DES BANDELETTES ---
 
-# --- REGLAGES DYNAMIQUES ---
-# Ratio de la photo (Hauteur / Largeur)
-# 0.66 pour le format standard 3:2 (Canon natif, rectangulaire)
-# 0.80 pour le format 5:4 (Un peu plus carré)
-# 1.00 pour le format 1:1 (Parfaitement carré)
-STRIP_PHOTO_RATIO = 0.80
+# Choix du profil : "WIDE", "MEDIUM", "SQUARE", "NO_LOGO"  (voir rendu les templates dans dosssier "assets/backgrounds/templates" pour visualiser les formats)
+STRIP_FORMAT_MODE = "SQUARE" 
+#---------------------------------------------------------------------
+# Dictionnaire des profils de mise en page (a modifier si format specifique autre que les 4 proposés)
+#---------------------------------------------------------------------
+STRIP_PROFILES = {
+    # ratio     : Proportion de la photo (Hauteur / Largeur). 1.0 = Carré, 0.8 = Paysage.
+    # marge_lat : Espace vide à gauche et à droite de chaque photo (en pixels).
+    # espace    : Espace vide vertical entre les photos (en pixels).
+    # marge_h   : Distance entre le bord haut de la bandelette et la première photo.
+    "WIDE":    {"ratio": 0.66, "marge_lat": 30, "espace": 40, "marge_h": 40},
+    "MEDIUM":  {"ratio": 0.80, "marge_lat": 30, "espace": 40, "marge_h": 40},
+    "SQUARE":  {"ratio": 1.00, "marge_lat": 60, "espace": 20, "marge_h": 20},
+    "NO_LOGO": {"ratio": 1.00, "marge_lat": 40, "espace": 50, "marge_h": 60}
+}
+
+# Extraction automatique : on injecte directement les valeurs dans l'espace global
+_p = STRIP_PROFILES.get(STRIP_FORMAT_MODE, STRIP_PROFILES["WIDE"])
+
+STRIP_PHOTO_RATIO    = _p["ratio"]
+STRIP_MARGE_LATERALE = _p["marge_lat"]
+STRIP_ESPACE_PHOTOS  = _p["espace"]
+STRIP_MARGE_HAUT     = _p["marge_h"]
+#---------------------------------------------------------------------------
 
 
 # --- CALIBRATION DECOUPE BANDELETTE IMPRIMANTE DNP (Pixels) ---
