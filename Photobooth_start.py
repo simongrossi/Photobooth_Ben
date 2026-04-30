@@ -891,65 +891,66 @@ def render_validation(session: SessionState) -> bool:
 
 
 def render_fin(session: SessionState) -> None:
-    """FIN : aperçu du montage final + bandeau 3 boutons + overlay confirmation abandon.
-
-    En mode strip, le montage est lu depuis `session.path_montage` (produit par
-    `MontageGeneratorStrip.preview()` à la transition VALIDATION→FIN). En mode
-    10x15, l'aperçu est chargé depuis PATH_TEMP/montage_prev.jpg."""
+    """FIN : aperçu du montage final + bandeau 3 boutons + overlay confirmation abandon."""
     inserer_background(screen, fond_accueil)
 
-    # Récupération de l'image
+    # 1. Récupération du chemin de l'image
     p_prev = session.path_montage if session.path_montage else os.path.join(
         getattr(config, 'PATH_TEMP', 'temp'), "montage_prev.jpg"
     )
 
-    if session.img_preview_cache is None:
-        if os.path.exists(p_prev):
-            try:
-                raw_m = pygame.image.load(p_prev).convert_alpha()
-                h_max_fin = 600 if session.mode_actuel == "strips" else 520
-                ratio_m = raw_m.get_width() / raw_m.get_height()
-                session.img_preview_cache = pygame.transform.smoothscale(raw_m, (int(h_max_fin * ratio_m), h_max_fin))
-            except Exception as e:
-                log_warning(f"Erreur chargement aperçu FIN : {e}")
+    # 2. Chargement et redimensionnement dynamique (respecte le ratio du fichier)
+    if session.img_preview_cache is None and os.path.exists(p_prev):
+        try:
+            raw_m = pygame.image.load(p_prev).convert_alpha()
+            ratio_reel = raw_m.get_width() / raw_m.get_height()
+            
+            h_max_fin = 650 if session.mode_actuel == "strips" else 520
+            w_ajustee = int(h_max_fin * ratio_reel)
 
-    # Application des décalages spécifiques
+            session.img_preview_cache = pygame.transform.smoothscale(raw_m, (w_ajustee, h_max_fin))
+        except Exception as e:
+            log_warning(f"Erreur chargement aperçu FIN : {e}")
+
+    # 3. Affichage de l'aperçu centré (Le cadre blanc est déjà dans l'image)
     if session.img_preview_cache:
-        if session.mode_actuel == "strips":
-            dec_y = getattr(config, 'DECALAGE_Y_MONTAGE_FINAL_STRIP', 0)
-        else:
-            dec_y = getattr(config, 'DECALAGE_Y_PREVISU_10X15', 0)
-
+        dec_y = getattr(config, 'DECALAGE_Y_MONTAGE_FINAL_STRIP', 0) if session.mode_actuel == "strips" else getattr(config, 'DECALAGE_Y_PREVISU_10X15', 0)
+        
         x_m = (WIDTH - session.img_preview_cache.get_width()) // 2
         y_m = (HEIGHT // 2 - session.img_preview_cache.get_height() // 2) + dec_y
-
-        pygame.draw.rect(screen, (255, 255, 255),
-                         (x_m - 10, y_m - 10, session.img_preview_cache.get_width() + 20, session.img_preview_cache.get_height() + 20))
+        
         screen.blit(session.img_preview_cache, (x_m, y_m))
 
-    # Bandeau de boutons
+    # 4. Bandeau de boutons
     y_b = HEIGHT - BANDEAU_HAUTEUR
     screen.blit(BANDEAU_CACHE, (0, y_b))
     y_t = y_b + (BANDEAU_HAUTEUR // 2) - (font_bandeau.get_height() // 2)
+    
+    # Bouton Reprendre (Gauche)
     txt_g_surf = font_bandeau.render(config.TXT_BOUTON_REPRENDRE, True, config.COULEUR_TEXTE_G)
     screen.blit(txt_g_surf, (80, y_t))
+    
+    # Bouton Imprimer (Milieu)
     t_m = font_bandeau.render(config.TXT_BOUTON_IMPRIMER, True, config.COULEUR_TEXTE_M)
     screen.blit(t_m, (WIDTH // 2 - t_m.get_width() // 2, y_t))
+    
+    # Bouton Supprimer (Droite)
     t_d = font_bandeau.render(config.TXT_BOUTON_SUPPRIMER, True, config.COULEUR_TEXTE_D)
     screen.blit(t_d, (WIDTH - 80 - t_d.get_width(), y_t))
 
-    # Overlay de confirmation d'abandon (Sprint 2.8)
-    if session.abandon_confirm_until:
-        if time.time() < session.abandon_confirm_until:
-            overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 170))
-            screen.blit(overlay, (0, 0))
-            t1 = font_titre.render(TXT_CONFIRM_ABANDON_1, True, (255, 120, 120))
-            screen.blit(t1, (WIDTH // 2 - t1.get_width() // 2, HEIGHT // 2 - 120))
-            t2 = font_bandeau.render(TXT_CONFIRM_ABANDON_2, True, (255, 255, 255))
-            screen.blit(t2, (WIDTH // 2 - t2.get_width() // 2, HEIGHT // 2 + 20))
-        else:
-            session.abandon_confirm_until = 0.0
+    # 5. Overlay de confirmation d'abandon
+    if session.abandon_confirm_until and time.time() < session.abandon_confirm_until:
+        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 170))
+        screen.blit(overlay, (0, 0))
+        
+        t1 = font_titre.render(config.TXT_CONFIRM_ABANDON_1, True, (255, 120, 120))
+        screen.blit(t1, (WIDTH // 2 - t1.get_width() // 2, HEIGHT // 2 - 120))
+        
+        t2 = font_bandeau.render(config.TXT_CONFIRM_ABANDON_2, True, (255, 255, 255))
+        screen.blit(t2, (WIDTH // 2 - t2.get_width() // 2, HEIGHT // 2 + 20))
+    elif session.abandon_confirm_until:
+        session.abandon_confirm_until = 0.0
 
 
 # ========================================================================================================

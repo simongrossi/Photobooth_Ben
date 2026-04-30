@@ -203,10 +203,20 @@ class MontageGeneratorStrip(MontageBase):
         h_p = int(l_p * ratio)
         espacement = cls.PREVIEW_ESPACEMENT
         marge_hb = cls.PREVIEW_MARGE_HAUT_BAS
+        
+        # --- AJUSTEMENT DYNAMIQUE ---
+        # Au lieu d'utiliser PREVIEW_CANEVAS_LARGEUR (fixe), 
+        # on définit une marge latérale fixe (ex: 20px)
+        marge_laterale_interne = 20 
+        largeur_canevas_auto = l_p + (marge_laterale_interne * 2)
+        
         hauteur_totale = (h_p * 3) + (espacement * 2) + (marge_hb * 2)
 
-        bande_v = Image.new("RGB", (cls.PREVIEW_CANEVAS_LARGEUR, hauteur_totale), "white")
-        offset_x = (cls.PREVIEW_CANEVAS_LARGEUR - l_p) // 2
+        # On crée le canevas avec la largeur adaptée
+        bande_v = Image.new("RGB", (largeur_canevas_auto, hauteur_totale), "white")
+        
+        # Les photos sont maintenant parfaitement centrées avec une marge fixe
+        offset_x = marge_laterale_interne
 
         for i in range(min(len(photos), 3)):
             img = charger_et_corriger(photos[i])
@@ -214,6 +224,7 @@ class MontageGeneratorStrip(MontageBase):
             pos_y = marge_hb + i * (h_p + espacement)
             bande_v.paste(img_fit, (offset_x, pos_y))
 
+        # On garde le thumbnail pour l'affichage Pygame
         bande_v.thumbnail(cls.PREVIEW_THUMBNAIL_MAX, Image.Resampling.LANCZOS)
         bande_v.save(path_prev, "JPEG", quality=cls.PREVIEW_QUALITY)
         return path_prev
