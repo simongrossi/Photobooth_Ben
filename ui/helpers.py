@@ -50,6 +50,8 @@ class UIContext:
     font_boutons = None
     font_bandeau = None
     font_decompte = None
+    font_imp_texte = None
+    font_imp_compteur = None
 
     @classmethod
     def setup(cls, screen, clock, font_titre, font_boutons, font_bandeau, font_decompte) -> None:
@@ -61,6 +63,28 @@ class UIContext:
         cls.font_boutons = font_boutons
         cls.font_bandeau = font_bandeau
         cls.font_decompte = font_decompte
+
+
+        # --- Chargement des polices d'impression ---
+        import config
+        try:
+            cls.font_imp_texte = pygame.font.Font(config.POLICE_FICHIER, config.TAILLE_TEXTE_IMP_COURANT)
+            cls.font_imp_compteur = pygame.font.Font(config.POLICE_FICHIER, config.TAILLE_COMPTEUR_IMP)
+        except Exception as e:
+            log_warning(f"Erreur chargement polices impression : {e}")
+            # Fallback sur les polices existantes si ça rate
+            cls.font_imp_texte = font_bandeau
+            cls.font_imp_compteur = font_decompte
+        # ----------------------------------------------------
+
+        global _fond_impression_cache
+        path_fond = "assets/interface/background.jpg"
+        if os.path.exists(path_fond):
+            try:
+                raw = pygame.image.load(path_fond).convert()
+                _fond_impression_cache = pygame.transform.scale(raw, (WIDTH, HEIGHT))
+            except Exception as e:
+                print(f"Erreur pré-chargement fond : {e}")
 
 
 # ========================================================================================================
@@ -346,8 +370,7 @@ def afficher_message_plein_ecran(message, couleur=(255, 215, 0), fond=COULEUR_FO
 
 
 def executer_avec_spinner(fonction_longue, message):
-    """Exécute une fonction PIL bloquante dans un thread tout en animant le spinner.
-    Retourne sa valeur, ou re-lève l'exception capturée."""
+    global _global_spinner  # On utilise le spinner partagé
     ctx = UIContext
     resultat = {}
 
@@ -360,19 +383,32 @@ def executer_avec_spinner(fonction_longue, message):
     t = threading.Thread(target=_wrapper, daemon=True)
     t.start()
 
-    local_loader = LoaderAnimation()
+    # Initialisation du spinner global s'il n'existe pas encore
+    if _global_spinner is None:
+        _global_spinner = LoaderAnimation()
+
     while t.is_alive():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-        ctx.screen.fill(COULEUR_FOND_LOADER)
-        local_loader.update_and_draw(ctx.screen)
+
+        # --- MODIFICATION ANTI-FLASH ---
+        if _fond_impression_cache:
+            ctx.screen.blit(_fond_impression_cache, (0, 0))
+        else:
+            ctx.screen.fill(COULEUR_FOND_LOADER)
+        # -------------------------------
+
+        # On utilise _global_spinner au lieu de local_loader
+        _global_spinner.update_and_draw(ctx.screen)
+        
         try:
             txt = ctx.font_bandeau.render(message, True, (255, 255, 255))
             ctx.screen.blit(txt, (WIDTH // 2 - txt.get_width() // 2, HEIGHT - 120))
         except Exception as e:
             log_warning(f"Rendu spinner : {e}")
+            
         pygame.display.flip()
         ctx.clock.tick(SPINNER_FPS)
 
@@ -383,61 +419,116 @@ def executer_avec_spinner(fonction_longue, message):
 
 
 def ecran_erreur(message, timeout=None):
-    """Écran rouge plein écran avec le message. Timeout auto OU pression de touche."""
+    """Écran rouge avec la bonne police en taille intermédiaire."""
     ctx = UIContext
     if timeout is None:
         timeout = DUREE_ECRAN_ERREUR
+    
+    # On récupère le chemin du fichier utilisé par font_titre
+    # Si font_titre n'a pas d'attribut .name, on utilise font_bandeau
+    try:
+        # On crée une version intermédiaire (taille 65 ici) à partir de ta police existante
+        # Note : On suppose que ctx.font_path contient le chemin vers ton fichier .ttf
+        # Si tu n'as pas font_path, on utilise le nom de la police chargée
+        font_inter = pygame.font.Font(ctx.font_path, 65) 
+    except Exception:
+        # Solution de secours si le chemin n'est pas accessible
+        font_inter = pygame.font.Font("assets/fonts/WesternBangBang-Regular.ttf", 65)
+
     t_start = time.time()
     while time.time() - t_start < timeout:
+        # ... (le reste de ta boucle d'événements reste identique)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
             if event.type == pygame.KEYDOWN:
                 return
+        
         ctx.screen.fill((40, 10, 10))
         try:
-            titre = ctx.font_titre.render("ERREUR", True, (255, 100, 100))
+            couleur_alerte = (255, 100, 100)
+            
+            # Titre "ERREUR"
+            titre = ctx.font_titre.render("ERREUR", True, couleur_alerte)
             ctx.screen.blit(titre, (WIDTH // 2 - titre.get_width() // 2, HEIGHT // 2 - 220))
-            msg = ctx.font_bandeau.render(message, True, (255, 255, 255))
-            ctx.screen.blit(msg, (WIDTH // 2 - msg.get_width() // 2, HEIGHT // 2))
+            
+            # Message avec la BONNE police et la BONNE couleur
+            msg = font_inter.render(message, True, couleur_alerte)
+            ctx.screen.blit(msg, (WIDTH // 2 - msg.get_width() // 2, HEIGHT // 2 - 20))
+            
             hint = ctx.font_bandeau.render(
                 "Appuyez sur une touche ou patientez...", True, (170, 170, 170)
             )
             ctx.screen.blit(hint, (WIDTH // 2 - hint.get_width() // 2, HEIGHT - 100))
         except Exception as e:
             log_warning(f"Rendu écran erreur : {e}")
+            
         pygame.display.flip()
         ctx.clock.tick(30)
 
 
 # Singleton loader partagé pour l'écran d'attente d'impression (réutilisé entre sessions)
 _mon_loader = None
+_fond_impression_cache = None
+_global_spinner = None
 
 
 def ecran_attente_impression():
-    """Roue d'attente + texte 'Impression en cours...' pendant TEMPS_ATTENTE_IMP secondes.
-    Bloquant volontaire : laisse le temps à CUPS d'envoyer le job avant de retourner à l'accueil."""
-    global _mon_loader
-    if _mon_loader is None:
-        _mon_loader = LoaderAnimation()
+    """Roue d'attente fluide sans flash noir et sans saut d'animation."""
+    # 1. TOUTES les déclarations global en PREMIER
+    global _global_spinner, _fond_impression_cache
     ctx = UIContext
+
+    # 2. Initialisation immédiate du spinner s'il n'existe pas
+    if _global_spinner is None:
+        _global_spinner = LoaderAnimation()
+
+    # 3. ACTION ANTI-FLASH : On dessine TOUT DE SUITE
+    if _fond_impression_cache:
+        ctx.screen.blit(_fond_impression_cache, (0, 0))
+    else:
+        ctx.screen.fill(COULEUR_FOND_LOADER)
+    pygame.display.flip() 
+
+    # 4. BOUCLE D'ANIMATION
     temps_debut = time.time()
     while time.time() - temps_debut < TEMPS_ATTENTE_IMP:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-        ctx.screen.fill(COULEUR_FOND_LOADER)
-        _mon_loader.update_and_draw(ctx.screen)
+
+        # Dessin du fond à chaque frame pour le mouvement de la roue
+        if _fond_impression_cache:
+            ctx.screen.blit(_fond_impression_cache, (0, 0))
+        else:
+            ctx.screen.fill(COULEUR_FOND_LOADER)
+
+        # Utilisation UNIQUE de _global_spinner (pas de reset ici)
+        _global_spinner.update_and_draw(ctx.screen)
+        
         try:
-            txt = ctx.font_bandeau.render("Impression en cours...", True, (255, 255, 255))
-            ctx.screen.blit(txt, (WIDTH // 2 - txt.get_width() // 2, HEIGHT - 120))
+            restant = max(0, int(TEMPS_ATTENTE_IMP - (time.time() - temps_debut)))
+            
+            # Utilisation des polices dédiées
+            surf_txt = ctx.font_imp_texte.render("Impression en cours...", True, (255, 255, 255))
+            surf_num = ctx.font_imp_compteur.render(f"{restant}s", True, (255, 255, 255))
+            
+            # Le chiffre (le plus gros) est placé à 150px du bord bas
+            pos_y_num = HEIGHT - 10 - surf_num.get_height()
+            # Le texte "Impression en cours" est placé juste au-dessus du chiffre
+            pos_y_txt = pos_y_num - surf_txt.get_height() - 10 
+            
+            # Centrage horizontal classique
+            ctx.screen.blit(surf_txt, (WIDTH // 2 - surf_txt.get_width() // 2, pos_y_txt))
+            ctx.screen.blit(surf_num, (WIDTH // 2 - surf_num.get_width() // 2, pos_y_num))
+
         except Exception as e:
             log_warning(f"Rendu attente impression : {e}")
+            
         pygame.display.flip()
         ctx.clock.tick(SPINNER_FPS)
-
 
 def splash_connexion_camera(camera_mgr, timeout=None):
     """Splash au boot : tente de connecter la caméra avec animation + retry.

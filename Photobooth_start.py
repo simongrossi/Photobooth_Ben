@@ -26,7 +26,7 @@ from config import (
     TEMP_PATH,
     TAILLE_TEXTE_BOUTON, TAILLE_TITRE_ACCUEIL, TEMPS_DECOMPTE, TEXTE_PHOTO_COUNT,
     TOUCHE_DROITE, TOUCHE_GAUCHE, TOUCHE_MILIEU,
-    TXT_BURST_COUNTDOWN, TXT_CONFIRM_ABANDON_1, TXT_CONFIRM_ABANDON_2, TXT_ERREUR_CAPTURE,
+    TXT_BURST_COUNTDOWN, TXT_ERREUR_CAPTURE,
     TXT_ERREUR_IMPRIMANTE, TXT_PREPARATION_IMP, TXT_SLIDESHOW_INVITATION, WIDTH, ZOOM_FACTOR,
 )
 import config  # accès qualifié `config.X` dans les render functions
@@ -44,6 +44,7 @@ from typing import Optional
 
 from PIL import Image, ImageOps
 from datetime import datetime
+
 
 
 # ========================================================================================================
@@ -132,7 +133,7 @@ camera_mgr: CameraManager | None = None
 
 
 # Wrapper de compat — seul `get_canon_frame` est encore appelé (dans render_decompte).
-def get_canon_frame() -> Optional[pygame.Surface]:
+def get_canon_frame() -> Optional[pygame.Surface]:  # type: ignore
     """Retourne la frame preview caméra courante sous forme de pygame.Surface, ou None."""
     if camera_mgr is None:
         return None
@@ -143,7 +144,7 @@ def get_canon_frame() -> Optional[pygame.Surface]:
 # --- 2. FONCTIONS TECHNIQUES --- ########################################################################
 # ========================================================================================================
 
-def capturer_hq(id_session: str, index_photo: int) -> Optional[str]:
+def capturer_hq(id_session: str, index_photo: int) -> Optional[str]: 
     """Procédure de capture : UI (flash + SOURIEZ animé) + appel CameraManager.capture_hq().
 
     La capture subprocess (2-3 s) tourne dans un thread daemon pendant qu'on anime
@@ -446,43 +447,63 @@ def _generer_montage_final(session: SessionState) -> str:
 def _destination_montage_imprime(session: SessionState) -> str:
     """Chemin d'archive du montage final selon le mode courant."""
     if session.mode_actuel == "strips":
-        return os.path.join(PATH_PRINT_STRIP, f"{PREFIXE_PRINT_STRIP}_{session.id_session_timestamp}.jpg")
+        # On pointe vers le sous-dossier et on ajoute le suffixe
+        return os.path.join(PATH_PRINT_STRIP, "READY_TO_PRINT", f"{PREFIXE_PRINT_STRIP}_{session.id_session_timestamp}_READY_TO_PRINT.jpg")
     return os.path.join(PATH_PRINT_10X15, f"{PREFIXE_PRINT_10X15}_{session.id_session_timestamp}.jpg")
 
 
 def traiter_impression_session(session: SessionState) -> str:
-    """Génère, archive et imprime le montage final.
-
-    Returns:
-        "printed" si le job CUPS est lancé, "print_disabled" si l'impression est
-        volontairement désactivée, "print_failed" si la génération/copie/envoi échoue.
-    """
+    """Génère, archive et imprime le montage final avec diagnostic précis."""
     try:
         p = executer_avec_spinner(
             lambda: _generer_montage_final(session),
             TXT_PREPARATION_IMP,
         )
         destination = _destination_montage_imprime(session)
-        shutil.copy(p, destination)
+
+        # Copie si nécessaire (Strips gèrent leur propre chemin)
+        if session.mode_actuel != "strips":
+            shutil.copy(p, destination)
+        else:
+            destination = p
 
         if not ACTIVER_IMPRESSION:
-            log_info(f"Impression désactivée : montage enregistré sans envoi CUPS ({destination})")
+            log_info(f"Impression désactivée : montage enregistré ({destination})")
             afficher_message_plein_ecran("Impression désactivée - montage enregistré", couleur=(255, 215, 0))
             time.sleep(1.2)
             return "print_disabled"
 
-        if printer_mgr.send(destination, session.mode_actuel):
-            jouer_son("success")
-            ecran_attente_impression()
-            return "printed"
+        # --- MODIFICATION ANTI-FLASH ---
+        from ui import helpers
+        if hasattr(helpers, '_fond_impression_cache') and helpers._fond_impression_cache:
+            helpers.UIContext.screen.blit(helpers._fond_impression_cache, (0, 0))
+            pygame.display.flip()
 
-        ecran_erreur(TXT_ERREUR_IMPRIMANTE)
-        return "print_failed"
+        # ===========================================================
+        # --- NOUVELLE VÉRIFICATION DE SÉCURITÉ (Saturations/État) ---
+        # ===========================================================
+        # On appelle is_ready qui renvoie désormais True ou False
+        if printer_mgr.is_ready(session.mode_actuel):
+            if printer_mgr.send(destination, session.mode_actuel):
+                jouer_son("success")
+                ecran_attente_impression()
+                return "printed"
+            else:
+                # En cas d'échec d'envoi, on affiche l'erreur stockée
+                ecran_erreur(printer_mgr.last_error or TXT_ERREUR_IMPRIMANTE)
+                return "print_failed"
+        else:
+            # ICI : Au lieu d'afficher "status" (qui est juste False),
+            # on affiche le message texte précis qu'on a mémorisé.
+            log_warning(f"Impression bloquée : {printer_mgr.last_error}")
+            ecran_erreur(printer_mgr.last_error) 
+            return "print_failed"
+        # ===========================================================
+
     except Exception as e:
         log_critical(f"Erreur impression finale : {e}")
         ecran_erreur(TXT_ERREUR_IMPRIMANTE)
         return "print_failed"
-
 
 def demander_arret(signum=None, frame=None) -> None:
     """Demande un arrêt propre de la boucle principale."""
@@ -671,10 +692,10 @@ def render_accueil(session: SessionState) -> None:
         _render_accueil_normal(session)
 
 
-_masque_decompte_cache: dict[tuple[int, int], "pygame.Surface"] = {}
+_masque_decompte_cache: dict[tuple[int, int], "pygame.Surface"] = {}  # type: ignore
 
 
-def _get_masque_decompte(bande_w: int, alpha: int) -> "pygame.Surface":
+def _get_masque_decompte(bande_w: int, alpha: int) -> "pygame.Surface":  # type: ignore
     """Retourne la bande noire latérale du décompte, mise en cache par (largeur, alpha).
 
     Évite une allocation pygame.Surface par frame (≈60/s pendant le décompte)."""
@@ -869,65 +890,66 @@ def render_validation(session: SessionState) -> bool:
 
 
 def render_fin(session: SessionState) -> None:
-    """FIN : aperçu du montage final + bandeau 3 boutons + overlay confirmation abandon.
-
-    En mode strip, le montage est lu depuis `session.path_montage` (produit par
-    `MontageGeneratorStrip.preview()` à la transition VALIDATION→FIN). En mode
-    10x15, l'aperçu est chargé depuis PATH_TEMP/montage_prev.jpg."""
+    """FIN : aperçu du montage final + bandeau 3 boutons + overlay confirmation abandon."""
     inserer_background(screen, fond_accueil)
 
-    # Récupération de l'image
+    # 1. Récupération du chemin de l'image
     p_prev = session.path_montage if session.path_montage else os.path.join(
         getattr(config, 'PATH_TEMP', 'temp'), "montage_prev.jpg"
     )
 
-    if session.img_preview_cache is None:
-        if os.path.exists(p_prev):
-            try:
-                raw_m = pygame.image.load(p_prev).convert_alpha()
-                h_max_fin = 600 if session.mode_actuel == "strips" else 520
-                ratio_m = raw_m.get_width() / raw_m.get_height()
-                session.img_preview_cache = pygame.transform.smoothscale(raw_m, (int(h_max_fin * ratio_m), h_max_fin))
-            except Exception as e:
-                log_warning(f"Erreur chargement aperçu FIN : {e}")
+    # 2. Chargement et redimensionnement dynamique (respecte le ratio du fichier)
+    if session.img_preview_cache is None and os.path.exists(p_prev):
+        try:
+            raw_m = pygame.image.load(p_prev).convert_alpha()
+            ratio_reel = raw_m.get_width() / raw_m.get_height()
+            
+            h_max_fin = 650 if session.mode_actuel == "strips" else 520
+            w_ajustee = int(h_max_fin * ratio_reel)
 
-    # Application des décalages spécifiques
+            session.img_preview_cache = pygame.transform.smoothscale(raw_m, (w_ajustee, h_max_fin))
+        except Exception as e:
+            log_warning(f"Erreur chargement aperçu FIN : {e}")
+
+    # 3. Affichage de l'aperçu centré (Le cadre blanc est déjà dans l'image)
     if session.img_preview_cache:
-        if session.mode_actuel == "strips":
-            dec_y = getattr(config, 'DECALAGE_Y_MONTAGE_FINAL_STRIP', 0)
-        else:
-            dec_y = getattr(config, 'DECALAGE_Y_PREVISU_10X15', 0)
-
+        dec_y = getattr(config, 'DECALAGE_Y_MONTAGE_FINAL_STRIP', 0) if session.mode_actuel == "strips" else getattr(config, 'DECALAGE_Y_PREVISU_10X15', 0)
+        
         x_m = (WIDTH - session.img_preview_cache.get_width()) // 2
         y_m = (HEIGHT // 2 - session.img_preview_cache.get_height() // 2) + dec_y
-
-        pygame.draw.rect(screen, (255, 255, 255),
-                         (x_m - 10, y_m - 10, session.img_preview_cache.get_width() + 20, session.img_preview_cache.get_height() + 20))
+        
         screen.blit(session.img_preview_cache, (x_m, y_m))
 
-    # Bandeau de boutons
+    # 4. Bandeau de boutons
     y_b = HEIGHT - BANDEAU_HAUTEUR
     screen.blit(BANDEAU_CACHE, (0, y_b))
     y_t = y_b + (BANDEAU_HAUTEUR // 2) - (font_bandeau.get_height() // 2)
-    txt_g = config.TXT_BOUTON_REPRENDRE if session.mode_actuel == "10x15" else config.TXT_BOUTON_ACCUEIL
-    screen.blit(font_bandeau.render(txt_g, True, config.COULEUR_TEXTE_G), (80, y_t))
+    
+    # Bouton Reprendre (Gauche)
+    txt_g_surf = font_bandeau.render(config.TXT_BOUTON_REPRENDRE, True, config.COULEUR_TEXTE_G)
+    screen.blit(txt_g_surf, (80, y_t))
+    
+    # Bouton Imprimer (Milieu)
     t_m = font_bandeau.render(config.TXT_BOUTON_IMPRIMER, True, config.COULEUR_TEXTE_M)
     screen.blit(t_m, (WIDTH // 2 - t_m.get_width() // 2, y_t))
+    
+    # Bouton Supprimer (Droite)
     t_d = font_bandeau.render(config.TXT_BOUTON_SUPPRIMER, True, config.COULEUR_TEXTE_D)
     screen.blit(t_d, (WIDTH - 80 - t_d.get_width(), y_t))
 
-    # Overlay de confirmation d'abandon (Sprint 2.8)
-    if session.abandon_confirm_until:
-        if time.time() < session.abandon_confirm_until:
-            overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 170))
-            screen.blit(overlay, (0, 0))
-            t1 = font_titre.render(TXT_CONFIRM_ABANDON_1, True, (255, 120, 120))
-            screen.blit(t1, (WIDTH // 2 - t1.get_width() // 2, HEIGHT // 2 - 120))
-            t2 = font_bandeau.render(TXT_CONFIRM_ABANDON_2, True, (255, 255, 255))
-            screen.blit(t2, (WIDTH // 2 - t2.get_width() // 2, HEIGHT // 2 + 20))
-        else:
-            session.abandon_confirm_until = 0.0
+    # 5. Overlay de confirmation d'abandon
+    if session.abandon_confirm_until and time.time() < session.abandon_confirm_until:
+        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 170))
+        screen.blit(overlay, (0, 0))
+        
+        t1 = font_titre.render(config.TXT_CONFIRM_ABANDON_1, True, (255, 120, 120))
+        screen.blit(t1, (WIDTH // 2 - t1.get_width() // 2, HEIGHT // 2 - 120))
+        
+        t2 = font_bandeau.render(config.TXT_CONFIRM_ABANDON_2, True, (255, 255, 255))
+        screen.blit(t2, (WIDTH // 2 - t2.get_width() // 2, HEIGHT // 2 + 20))
+    elif session.abandon_confirm_until:
+        session.abandon_confirm_until = 0.0
 
 
 # ========================================================================================================
@@ -938,7 +960,7 @@ def render_fin(session: SessionState) -> None:
 # DECOMPTE n'a pas de handler car l'état est non-interactif (géré par render_decompte).
 # ========================================================================================================
 
-def handle_accueil_event(event: pygame.event.Event, session: SessionState,
+def handle_accueil_event(event: pygame.event.Event, session: SessionState,   # type: ignore
                          maintenant: float, ecoule: float) -> None:
     """ACCUEIL : G/D sélectionnent le mode, M valide et passe à DECOMPTE.
     Debounce via DELAI_SECURITE. Mute session en place."""
@@ -957,7 +979,7 @@ def handle_accueil_event(event: pygame.event.Event, session: SessionState,
         session.etat = Etat.DECOMPTE
 
 
-def _handle_validation_10x15(event: pygame.event.Event, session: SessionState,
+def _handle_validation_10x15(event: pygame.event.Event, session: SessionState,  # type: ignore
                              maintenant: float) -> None:
     """VALIDATION mode 10x15 : retake / imprimer / abandon (debounce géré par caller)."""
     if event.key == TOUCHE_GAUCHE:
@@ -1000,7 +1022,7 @@ def _handle_validation_10x15(event: pygame.event.Event, session: SessionState,
         session.dernier_clic_time = maintenant
 
 
-def _handle_validation_strips(event: pygame.event.Event, session: SessionState,
+def _handle_validation_strips(event: pygame.event.Event, session: SessionState,  # type: ignore
                               maintenant: float) -> None:
     """VALIDATION mode strips : retake dernière / valider-continue / annuler."""
     if event.key == TOUCHE_GAUCHE:
@@ -1027,7 +1049,7 @@ def _handle_validation_strips(event: pygame.event.Event, session: SessionState,
         session.dernier_clic_time = maintenant
 
 
-def handle_validation_event(event: pygame.event.Event, session: SessionState,
+def handle_validation_event(event: pygame.event.Event, session: SessionState,  # type: ignore
                             maintenant: float, ecoule: float) -> None:
     """VALIDATION : dispatch selon mode (10x15 vs strips). Debounce 0.5 s."""
     if ecoule < 0.5:
@@ -1038,7 +1060,7 @@ def handle_validation_event(event: pygame.event.Event, session: SessionState,
         _handle_validation_strips(event, session, maintenant)
 
 
-def handle_fin_event(event: pygame.event.Event, session: SessionState,
+def handle_fin_event(event: pygame.event.Event, session: SessionState,   # type: ignore
                      maintenant: float, ecoule: float) -> None:
     """FIN : recommencer / imprimer / abandon (double-press confirm). Debounce 1 s.
 

@@ -74,7 +74,7 @@ LIVE_W, LIVE_H = 800, 600       # Taille du flux vidéo en direct (Preview)
 KIOSK_FULLSCREEN = os.environ.get("PHOTOBOOTH_KIOSK", "0") == "1"
 
 
-MASQUE = 130   # Transparance des bande latérale noire si ratio image modifié (valeur : 0 invisble à 255 opaque)
+MASQUE = 200   # Transparance des bande latérale noire si ratio image modifié (valeur : 0 invisble à 255 opaque)
 
 
 
@@ -172,17 +172,43 @@ MARGE_ACCUEIL = 200   # Espace entre les deux icônes
 # 5. CONFIGURATION DES MONTAGES (IMPRESSION)
 # ==========================================
 
-# --- Mode STRIPS (Bandelettes) ---
-STRIP_MARGE_HAUT     = 40    # Espace tout en haut de la bande
-STRIP_MARGE_LATERALE = 30   # Espace vide à gauche et à droite de chaque photo
-STRIP_ESPACE_PHOTOS  = 40    # Espace entre les photos
+# --- CONFIGURATION DYNAMIQUE DES BANDELETTES ---
 
-# --- REGLAGES DYNAMIQUES ---
-# Ratio de la photo (Hauteur / Largeur)
-# 0.66 pour le format standard 3:2 (Canon natif, rectangulaire)
-# 0.80 pour le format 5:4 (Un peu plus carré)
-# 1.00 pour le format 1:1 (Parfaitement carré)
-STRIP_PHOTO_RATIO = 0.80
+# Choix du profil : "WIDE", "MEDIUM", "SQUARE", "NO_LOGO"  (voir rendu les templates dans dosssier "assets/backgrounds/templates" pour visualiser les formats)
+STRIP_FORMAT_MODE = "SQUARE" 
+#---------------------------------------------------------------------
+# Dictionnaire des profils de mise en page (a modifier si format specifique autre que les 4 proposés)
+#---------------------------------------------------------------------
+STRIP_PROFILES = {
+    # ratio     : Proportion de la photo (Hauteur / Largeur). 1.0 = Carré, 0.8 = Paysage.
+    # marge_lat : Espace vide à gauche et à droite de chaque photo (en pixels).
+    # espace    : Espace vide vertical entre les photos (en pixels).
+    # marge_h   : Distance entre le bord haut de la bandelette et la première photo.
+    "WIDE":    {"ratio": 0.66, "marge_lat": 30, "espace": 40, "marge_h": 40},
+    "MEDIUM":  {"ratio": 0.80, "marge_lat": 30, "espace": 40, "marge_h": 40},
+    "SQUARE":  {"ratio": 1.00, "marge_lat": 60, "espace": 20, "marge_h": 20},
+    "NO_LOGO": {"ratio": 1.00, "marge_lat": 40, "espace": 50, "marge_h": 60}
+}
+
+# Extraction automatique : on injecte directement les valeurs dans l'espace global
+_p = STRIP_PROFILES.get(STRIP_FORMAT_MODE, STRIP_PROFILES["WIDE"])
+
+STRIP_PHOTO_RATIO    = _p["ratio"]
+STRIP_MARGE_LATERALE = _p["marge_lat"]
+STRIP_ESPACE_PHOTOS  = _p["espace"]
+STRIP_MARGE_HAUT     = _p["marge_h"]
+#---------------------------------------------------------------------------
+
+
+# --- CALIBRATION DECOUPE BANDELETTE IMPRIMANTE DNP (Pixels) ---
+# Définit la zone réelle d'impression pour éviter le rognage et centrer la coupe
+# Ratio calculé : 1 mm ≈ 11.74 px (basé sur 600px = 51.1mm)
+# Formule : pixel / 11.74 = mm
+PRINT_CALIB_TOP    = 18
+PRINT_CALIB_BOTTOM = 12
+PRINT_CALIB_LEFT   = 3
+PRINT_CALIB_RIGHT  = 17
+
 
 
 # --- Mode 10x15 (Photo Unique) ---
@@ -212,10 +238,13 @@ MONTAGE_10X15_FINAL_PHOTO_FIT      = (1640, 1040)
 MONTAGE_10X15_FINAL_PHOTO_OFFSET   = (80, 80)
 MONTAGE_10X15_FINAL_QUALITY        = 98
 
+
+
+
 # --- Dimensions de preview écran (mode strip) ---
-STRIP_PREVIEW_PHOTO_LARGEUR = 520
-STRIP_PREVIEW_ESPACEMENT    = 40
-STRIP_PREVIEW_MARGE_HB      = 20     # marge haut/bas de la bande
+STRIP_PREVIEW_PHOTO_LARGEUR = 300   #520
+STRIP_PREVIEW_ESPACEMENT    = 40       #40
+STRIP_PREVIEW_MARGE_HB      = 40     # 20  marge haut/bas de la bande
 STRIP_PREVIEW_CANVAS_LARGEUR = 600
 STRIP_PREVIEW_THUMBNAIL_MAX = (400, 800)
 STRIP_PREVIEW_QUALITY       = 90
@@ -354,26 +383,31 @@ GRAIN_SIGMA        = 30.0    # Écart-type du bruit gaussien (bas = uniforme, ha
 # 8. CONFIGURATION IMPRESSION
 # ==========================================
 ACTIVER_IMPRESSION = True          # Permet de tester sans gâcher de papier
-NOM_IMPRIMANTE_10X15 = "DNP_10x15"
-NOM_IMPRIMANTE_STRIP = "DNP_STRIP"
-TEMPS_ATTENTE_IMP    = 20  # Secondes d'affichage de la roue avant retour accueil
+NOM_IMPRIMANTE_10X15 = "DNP_10x15"  #Par défaut "DNP_10x15",  Pour tets de developpement sans impression mettre "PDF"
+NOM_IMPRIMANTE_STRIP = "DNP_STRIP"   #Par défaut "DNP_STRIP",   Pour tets de developpement sans impression mettre "PDF"
+TEMPS_ATTENTE_IMP    = 15  # Secondes d'affichage de la roue avant retour accueil
 
 
 
 # --- CONFIGURATION ANIMATION ROUE DE CHARGEMENT ---
-ANIM_COULEUR_TETE  = (255, 0, 150) # Magenta
-ANIM_COULEUR_QUEUE = (0, 200, 255) # Cyan
-ANIM_TAILLE_ROUE   = 100           
+ANIM_COULEUR_TETE  = (27, 161, 70) # Magenta (255, 0, 150)    
+ANIM_COULEUR_QUEUE = (194, 196, 37) # Cyan (0, 200, 255) 
+ANIM_TAILLE_ROUE   = 100            #100      
+
+# --- Tailles des polices pour l'écran d'attente ---
+TAILLE_TEXTE_IMP_COURANT = 80   # Pour "Impression en cours..."
+TAILLE_COMPTEUR_IMP = 120       # Pour le gros chiffre "15s"
+
 
 # Physique
-ANIM_V_BASE        = 4.0           
-ANIM_V_MAX_ADD     = 8             
-ANIM_FREQ          = 1.5           
+ANIM_V_BASE        = 4.0       #4.0              # Vitesse de rotation de base (points par frame)       
+ANIM_V_MAX_ADD     = 8       #8.0              # Vitesse max additionnelle (accélération) quand la roue tourne vite  
+ANIM_FREQ          = 1.5       #1.5              # Fréquence de variation de la vitesse (Hz) : plus haut = oscillations plus rapides
 
 # Structure
-ANIM_NB_POINTS     = 120           # Nombre de points composant la roue (baissé de 300 : overkill visuel pour le CPU Pi)
-ANIM_RAYON_POINT   = 28
-ANIM_V_ELASTIQUE   = 5.0
+ANIM_NB_POINTS     = 120          # 120
+ANIM_RAYON_POINT   = 28             #28
+ANIM_V_ELASTIQUE   = 5.0        #5.0              # Force de rappel élastique vers la position idéale (plus haut = roue plus rigide)
 
 # Framerate de rafraîchissement du spinner (écrans loader / attente impression).
 # Distinct de FPS (boucle principale) pour réduire la charge CPU sur Pi.
