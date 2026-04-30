@@ -23,7 +23,8 @@ from config import (
     NOM_IMPRIMANTE_10X15, NOM_IMPRIMANTE_STRIP,
     OVERLAY_10X15, OVERLAY_STRIPS,
     PATH_DATA, PATH_IMG_10X15, PATH_IMG_STRIP,
-    POLICE_FICHIER, SON_BEEP, SON_SHUTTER, SON_SUCCESS,
+    POLICE_FICHIER, SEUIL_TEMP_CRITIQUE_C, SON_BEEP, SON_BEEP_FINAL,
+    SON_SHUTTER, SON_SUCCESS, TEMP_PATH,
 )
 
 # --- Sortie ANSI (pas de dépendance externe) ---
@@ -71,6 +72,26 @@ def check_disk():
     ok = libre_go >= 1.0
     detail = f"{libre_go:.1f} Go libres" + (" — PURGER AVANT !" if not ok else "")
     return print_check("Espace disque", ok, detail)
+
+
+def check_temperature():
+    """Lit la température CPU (Pi). Ne bloque pas : info purement indicative.
+
+    Sur macOS/Windows ou si TEMP_PATH n'existe pas, on affiche un marqueur
+    optionnel. Sur Pi chaud (>= seuil critique), on alerte."""
+    try:
+        with open(TEMP_PATH) as f:
+            temp_c = int(f.read().strip()) / 1000.0
+    except FileNotFoundError:
+        print(f"  {YELLOW}·{RESET} Température CPU  — (non disponible sur cet OS)")
+        return True  # pas un échec critique
+    except Exception as e:
+        print_check("Température CPU", False, str(e))
+        return True
+
+    ok = temp_c < SEUIL_TEMP_CRITIQUE_C
+    detail = f"{temp_c:.1f} °C" + (f" — AU-DESSUS DE {SEUIL_TEMP_CRITIQUE_C:.0f} °C" if not ok else "")
+    return print_check("Température CPU", ok, detail)
 
 
 def check_camera():
@@ -137,6 +158,9 @@ def main():
     print_section("Stockage")
     all_ok &= check_disk()
 
+    print_section("Système")
+    check_temperature()
+
     print_section("Dépendances Python")
     all_ok &= check_python_deps()
 
@@ -161,6 +185,7 @@ def main():
 
     print_section("Sons (optionnels — silencieux si absents)")
     check_optional_file(SON_BEEP, "Beep décompte")
+    check_optional_file(SON_BEEP_FINAL, "Beep dernière seconde (fallback SON_BEEP)")
     check_optional_file(SON_SHUTTER, "Shutter")
     check_optional_file(SON_SUCCESS, "Success impression")
 

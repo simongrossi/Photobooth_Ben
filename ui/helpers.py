@@ -23,7 +23,7 @@ import pygame
 from PIL import Image
 
 from config import (
-    WIDTH, HEIGHT, FPS,
+    WIDTH, HEIGHT, SPINNER_FPS,
     ANIM_COULEUR_TETE, ANIM_COULEUR_QUEUE, ANIM_TAILLE_ROUE,
     ANIM_V_BASE, ANIM_V_MAX_ADD, ANIM_FREQ,
     ANIM_NB_POINTS, ANIM_RAYON_POINT, ANIM_V_ELASTIQUE,
@@ -32,7 +32,7 @@ from config import (
     TIMEOUT_SPLASH_CAMERA,
     DUREE_ECRAN_ERREUR,
     TEMPS_ATTENTE_IMP,
-    SON_BEEP, SON_SHUTTER, SON_SUCCESS,
+    SON_BEEP, SON_BEEP_FINAL, SON_SHUTTER, SON_SUCCESS,
 )
 from core.logger import log_warning
 
@@ -50,6 +50,8 @@ class UIContext:
     font_boutons = None
     font_bandeau = None
     font_decompte = None
+    font_imp_texte = None
+    font_imp_compteur = None
 
     @classmethod
     def setup(cls, screen, clock, font_titre, font_boutons, font_bandeau, font_decompte) -> None:
@@ -61,6 +63,28 @@ class UIContext:
         cls.font_boutons = font_boutons
         cls.font_bandeau = font_bandeau
         cls.font_decompte = font_decompte
+
+
+        # --- Chargement des polices d'impression ---
+        import config
+        try:
+            cls.font_imp_texte = pygame.font.Font(config.POLICE_FICHIER, config.TAILLE_TEXTE_IMP_COURANT)
+            cls.font_imp_compteur = pygame.font.Font(config.POLICE_FICHIER, config.TAILLE_COMPTEUR_IMP)
+        except Exception as e:
+            log_warning(f"Erreur chargement polices impression : {e}")
+            # Fallback sur les polices existantes si ça rate
+            cls.font_imp_texte = font_bandeau
+            cls.font_imp_compteur = font_decompte
+        # ----------------------------------------------------
+
+        global _fond_impression_cache
+        path_fond = "assets/interface/background.jpg"
+        if os.path.exists(path_fond):
+            try:
+                raw = pygame.image.load(path_fond).convert()
+                _fond_impression_cache = pygame.transform.scale(raw, (WIDTH, HEIGHT))
+            except Exception as e:
+                print(f"Erreur pré-chargement fond : {e}")
 
 
 # ========================================================================================================
@@ -160,7 +184,12 @@ def setup_sounds():
     except Exception as e:
         log_warning(f"pygame.mixer non disponible : {e}")
         return
-    for nom, path in [("beep", SON_BEEP), ("shutter", SON_SHUTTER), ("success", SON_SUCCESS)]:
+    for nom, path in [
+        ("beep", SON_BEEP),
+        ("beep_final", SON_BEEP_FINAL),
+        ("shutter", SON_SHUTTER),
+        ("success", SON_SUCCESS),
+    ]:
         if not os.path.exists(path):
             continue
         try:
@@ -169,9 +198,14 @@ def setup_sounds():
             log_warning(f"Son {nom} non chargé ({path}) : {e}")
 
 
+_SON_FALLBACK = {"beep_final": "beep"}
+
+
 def jouer_son(nom):
-    """Joue un son si disponible, sinon silencieux."""
+    """Joue un son si disponible, sinon fallback ou silencieux."""
     s = SONS.get(nom)
+    if s is None and nom in _SON_FALLBACK:
+        s = SONS.get(_SON_FALLBACK[nom])
     if s is None:
         return
     try:
@@ -240,23 +274,52 @@ def get_pygame_surf(path_or_img, size):
 # ========================================================================================================
 
 class LoaderAnimation:
-    """Spinner animé (roue à queue) pour les écrans d'attente + spinner de génération."""
+    """Spinner animé (roue à queue) pour les écrans d'attente + spinner de génération.
+
+    Les sprites de points sont précalculés à l'init : couleur et alpha ne dépendent
+    que de l'index, pas du temps. Chaque frame ne fait plus qu'un blit par point."""
+
+    _sprites_cache: list["pygame.Surface"] | None = None
+    _sprites_cache_key: tuple[int, int, tuple, tuple] | None = None
 
     def __init__(self):
         self.reset()
-        # Buffer de Surface pré-alloué (Sprint 3.3 : évite 300 allocs/frame)
+        self._sprites = self._build_sprites()
+
+    @classmethod
+    def _build_sprites(cls) -> list["pygame.Surface"]:
+        """Pré-rend `ANIM_NB_POINTS` cercles à couleur+alpha finales.
+        Cache partagé entre instances — la config ne change pas à l'exécution."""
+        key = (ANIM_NB_POINTS, ANIM_RAYON_POINT, ANIM_COULEUR_TETE, ANIM_COULEUR_QUEUE)
+        if cls._sprites_cache is not None and cls._sprites_cache_key == key:
+            return cls._sprites_cache
+
         diametre = ANIM_RAYON_POINT * 2
-        self._point_buffer = pygame.Surface((diametre, diametre), pygame.SRCALPHA)
+        sprites: list[pygame.Surface] = []
+        denom = max(ANIM_NB_POINTS - 1, 1)
+        for i in range(ANIM_NB_POINTS):
+            progression = i / denom
+            fading = 1.0 - progression
+            couleur = tuple(
+                int(ANIM_COULEUR_TETE[j] + (ANIM_COULEUR_QUEUE[j] - ANIM_COULEUR_TETE[j]) * (1 - fading))
+                for j in range(3)
+            )
+            alpha = int(255 * (fading ** 0.6))
+            sprite = pygame.Surface((diametre, diametre), pygame.SRCALPHA)
+            pygame.draw.circle(
+                sprite, (*couleur, alpha),
+                (ANIM_RAYON_POINT, ANIM_RAYON_POINT), ANIM_RAYON_POINT,
+            )
+            sprites.append(sprite)
+        cls._sprites_cache = sprites
+        cls._sprites_cache_key = key
+        return sprites
 
     def reset(self) -> None:
         """Remet l'animation à son état initial (début de roue, longueur minimale)."""
         self.angle_tete = 0
         self.longueur_actuelle = 30
         self.dernier_temps = time.time()
-
-    def _interpoler_couleur(self, c1, c2, facteur):
-        """Mélange linéaire entre deux couleurs RGB selon un facteur [0..1]."""
-        return tuple(int(c1[j] + (c2[j] - c1[j]) * (1 - facteur)) for j in range(3))
 
     def update_and_draw(self, screen) -> None:
         """Fait tourner la roue d'une frame et la blite sur `screen`."""
@@ -273,18 +336,18 @@ class LoaderAnimation:
         longueur_cible = 30 + (boost * 210)
         self.longueur_actuelle += (longueur_cible - self.longueur_actuelle) * ANIM_V_ELASTIQUE * dt
 
-        buf = self._point_buffer
+        cx = WIDTH // 2
+        cy = HEIGHT // 2
+        angle_tete = self.angle_tete
+        longueur = self.longueur_actuelle
+        denom = max(ANIM_NB_POINTS - 1, 1)
+        sprites = self._sprites
         for i in reversed(range(ANIM_NB_POINTS)):
-            progression = i / (ANIM_NB_POINTS - 1)
-            fading = 1.0 - progression
-            angle_point = math.radians(self.angle_tete - (progression * self.longueur_actuelle))
-            x = WIDTH // 2 + math.cos(angle_point) * ANIM_TAILLE_ROUE
-            y = HEIGHT // 2 + math.sin(angle_point) * ANIM_TAILLE_ROUE
-            couleur = self._interpoler_couleur(ANIM_COULEUR_TETE, ANIM_COULEUR_QUEUE, fading)
-            alpha = int(255 * (fading ** 0.6))
-            buf.fill((0, 0, 0, 0))
-            pygame.draw.circle(buf, (*couleur, alpha), (ANIM_RAYON_POINT, ANIM_RAYON_POINT), ANIM_RAYON_POINT)
-            screen.blit(buf, (x - ANIM_RAYON_POINT, y - ANIM_RAYON_POINT))
+            progression = i / denom
+            angle_point = math.radians(angle_tete - (progression * longueur))
+            x = cx + math.cos(angle_point) * ANIM_TAILLE_ROUE
+            y = cy + math.sin(angle_point) * ANIM_TAILLE_ROUE
+            screen.blit(sprites[i], (x - ANIM_RAYON_POINT, y - ANIM_RAYON_POINT))
 
 
 # ========================================================================================================
@@ -307,8 +370,7 @@ def afficher_message_plein_ecran(message, couleur=(255, 215, 0), fond=COULEUR_FO
 
 
 def executer_avec_spinner(fonction_longue, message):
-    """Exécute une fonction PIL bloquante dans un thread tout en animant le spinner.
-    Retourne sa valeur, ou re-lève l'exception capturée."""
+    global _global_spinner  # On utilise le spinner partagé
     ctx = UIContext
     resultat = {}
 
@@ -321,21 +383,34 @@ def executer_avec_spinner(fonction_longue, message):
     t = threading.Thread(target=_wrapper, daemon=True)
     t.start()
 
-    local_loader = LoaderAnimation()
+    # Initialisation du spinner global s'il n'existe pas encore
+    if _global_spinner is None:
+        _global_spinner = LoaderAnimation()
+
     while t.is_alive():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-        ctx.screen.fill(COULEUR_FOND_LOADER)
-        local_loader.update_and_draw(ctx.screen)
+
+        # --- MODIFICATION ANTI-FLASH ---
+        if _fond_impression_cache:
+            ctx.screen.blit(_fond_impression_cache, (0, 0))
+        else:
+            ctx.screen.fill(COULEUR_FOND_LOADER)
+        # -------------------------------
+
+        # On utilise _global_spinner au lieu de local_loader
+        _global_spinner.update_and_draw(ctx.screen)
+        
         try:
             txt = ctx.font_bandeau.render(message, True, (255, 255, 255))
             ctx.screen.blit(txt, (WIDTH // 2 - txt.get_width() // 2, HEIGHT - 120))
         except Exception as e:
             log_warning(f"Rendu spinner : {e}")
+            
         pygame.display.flip()
-        ctx.clock.tick(30)
+        ctx.clock.tick(SPINNER_FPS)
 
     t.join(timeout=1.0)
     if "error" in resultat:
@@ -344,61 +419,116 @@ def executer_avec_spinner(fonction_longue, message):
 
 
 def ecran_erreur(message, timeout=None):
-    """Écran rouge plein écran avec le message. Timeout auto OU pression de touche."""
+    """Écran rouge avec la bonne police en taille intermédiaire."""
     ctx = UIContext
     if timeout is None:
         timeout = DUREE_ECRAN_ERREUR
+    
+    # On récupère le chemin du fichier utilisé par font_titre
+    # Si font_titre n'a pas d'attribut .name, on utilise font_bandeau
+    try:
+        # On crée une version intermédiaire (taille 65 ici) à partir de ta police existante
+        # Note : On suppose que ctx.font_path contient le chemin vers ton fichier .ttf
+        # Si tu n'as pas font_path, on utilise le nom de la police chargée
+        font_inter = pygame.font.Font(ctx.font_path, 65) 
+    except Exception:
+        # Solution de secours si le chemin n'est pas accessible
+        font_inter = pygame.font.Font("assets/fonts/WesternBangBang-Regular.ttf", 65)
+
     t_start = time.time()
     while time.time() - t_start < timeout:
+        # ... (le reste de ta boucle d'événements reste identique)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
             if event.type == pygame.KEYDOWN:
                 return
+        
         ctx.screen.fill((40, 10, 10))
         try:
-            titre = ctx.font_titre.render("ERREUR", True, (255, 100, 100))
+            couleur_alerte = (255, 100, 100)
+            
+            # Titre "ERREUR"
+            titre = ctx.font_titre.render("ERREUR", True, couleur_alerte)
             ctx.screen.blit(titre, (WIDTH // 2 - titre.get_width() // 2, HEIGHT // 2 - 220))
-            msg = ctx.font_bandeau.render(message, True, (255, 255, 255))
-            ctx.screen.blit(msg, (WIDTH // 2 - msg.get_width() // 2, HEIGHT // 2))
+            
+            # Message avec la BONNE police et la BONNE couleur
+            msg = font_inter.render(message, True, couleur_alerte)
+            ctx.screen.blit(msg, (WIDTH // 2 - msg.get_width() // 2, HEIGHT // 2 - 20))
+            
             hint = ctx.font_bandeau.render(
                 "Appuyez sur une touche ou patientez...", True, (170, 170, 170)
             )
             ctx.screen.blit(hint, (WIDTH // 2 - hint.get_width() // 2, HEIGHT - 100))
         except Exception as e:
             log_warning(f"Rendu écran erreur : {e}")
+            
         pygame.display.flip()
         ctx.clock.tick(30)
 
 
 # Singleton loader partagé pour l'écran d'attente d'impression (réutilisé entre sessions)
 _mon_loader = None
+_fond_impression_cache = None
+_global_spinner = None
 
 
 def ecran_attente_impression():
-    """Roue d'attente + texte 'Impression en cours...' pendant TEMPS_ATTENTE_IMP secondes.
-    Bloquant volontaire : laisse le temps à CUPS d'envoyer le job avant de retourner à l'accueil."""
-    global _mon_loader
-    if _mon_loader is None:
-        _mon_loader = LoaderAnimation()
+    """Roue d'attente fluide sans flash noir et sans saut d'animation."""
+    # 1. TOUTES les déclarations global en PREMIER
+    global _global_spinner, _fond_impression_cache
     ctx = UIContext
+
+    # 2. Initialisation immédiate du spinner s'il n'existe pas
+    if _global_spinner is None:
+        _global_spinner = LoaderAnimation()
+
+    # 3. ACTION ANTI-FLASH : On dessine TOUT DE SUITE
+    if _fond_impression_cache:
+        ctx.screen.blit(_fond_impression_cache, (0, 0))
+    else:
+        ctx.screen.fill(COULEUR_FOND_LOADER)
+    pygame.display.flip() 
+
+    # 4. BOUCLE D'ANIMATION
     temps_debut = time.time()
     while time.time() - temps_debut < TEMPS_ATTENTE_IMP:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-        ctx.screen.fill(COULEUR_FOND_LOADER)
-        _mon_loader.update_and_draw(ctx.screen)
+
+        # Dessin du fond à chaque frame pour le mouvement de la roue
+        if _fond_impression_cache:
+            ctx.screen.blit(_fond_impression_cache, (0, 0))
+        else:
+            ctx.screen.fill(COULEUR_FOND_LOADER)
+
+        # Utilisation UNIQUE de _global_spinner (pas de reset ici)
+        _global_spinner.update_and_draw(ctx.screen)
+        
         try:
-            txt = ctx.font_bandeau.render("Impression en cours...", True, (255, 255, 255))
-            ctx.screen.blit(txt, (WIDTH // 2 - txt.get_width() // 2, HEIGHT - 120))
+            restant = max(0, int(TEMPS_ATTENTE_IMP - (time.time() - temps_debut)))
+            
+            # Utilisation des polices dédiées
+            surf_txt = ctx.font_imp_texte.render("Impression en cours...", True, (255, 255, 255))
+            surf_num = ctx.font_imp_compteur.render(f"{restant}s", True, (255, 255, 255))
+            
+            # Le chiffre (le plus gros) est placé à 150px du bord bas
+            pos_y_num = HEIGHT - 10 - surf_num.get_height()
+            # Le texte "Impression en cours" est placé juste au-dessus du chiffre
+            pos_y_txt = pos_y_num - surf_txt.get_height() - 10 
+            
+            # Centrage horizontal classique
+            ctx.screen.blit(surf_txt, (WIDTH // 2 - surf_txt.get_width() // 2, pos_y_txt))
+            ctx.screen.blit(surf_num, (WIDTH // 2 - surf_num.get_width() // 2, pos_y_num))
+
         except Exception as e:
             log_warning(f"Rendu attente impression : {e}")
+            
         pygame.display.flip()
-        ctx.clock.tick(FPS)
-
+        ctx.clock.tick(SPINNER_FPS)
 
 def splash_connexion_camera(camera_mgr, timeout=None):
     """Splash au boot : tente de connecter la caméra avec animation + retry.

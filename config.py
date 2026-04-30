@@ -32,7 +32,8 @@ PATH_OVERLAYS   = os.path.join(PATH_ASSETS, "overlays")
 PATH_SOUNDS     = os.path.join(PATH_ASSETS, "sounds")
 
 # --- Fichiers sons (chargés si présents, sinon ignorés silencieusement) ---
-SON_BEEP        = os.path.join(PATH_SOUNDS, "beep.wav")      # Tick décompte
+SON_BEEP        = os.path.join(PATH_SOUNDS, "beep.wav")      # Tick décompte (sauf dernière seconde)
+SON_BEEP_FINAL  = os.path.join(PATH_SOUNDS, "beep_final.wav") # Tick dernière seconde (tension) - fallback sur SON_BEEP si absent
 SON_SHUTTER     = os.path.join(PATH_SOUNDS, "shutter.wav")   # Déclenchement photo
 SON_SUCCESS     = os.path.join(PATH_SOUNDS, "success.wav")   # Impression lancée
 
@@ -67,8 +68,13 @@ FORMAT_TIMESTAMP = "%Y-%m-%d_%Hh%M_%S"
 WIDTH, HEIGHT = 1280, 800       # Résolution de la fenêtre Pygame
 LIVE_W, LIVE_H = 800, 600       # Taille du flux vidéo en direct (Preview)
 
+# Mode kiosque : pygame passe en FULLSCREEN + NOFRAME si la variable
+# d'environnement PHOTOBOOTH_KIOSK=1 est posée (par deploy/kiosk.sh en prod).
+# En dev (env vide), reste en fenêtré standard pour faciliter le debug.
+KIOSK_FULLSCREEN = os.environ.get("PHOTOBOOTH_KIOSK", "0") == "1"
 
-MASQUE = 130   # Transparance des bande latérale noire si ratio image modifié (valeur : 0 invisble à 255 opaque)
+
+MASQUE = 200   # Transparance des bande latérale noire si ratio image modifié (valeur : 0 invisble à 255 opaque)
 
 
 
@@ -166,17 +172,43 @@ MARGE_ACCUEIL = 200   # Espace entre les deux icônes
 # 5. CONFIGURATION DES MONTAGES (IMPRESSION)
 # ==========================================
 
-# --- Mode STRIPS (Bandelettes) ---
-STRIP_MARGE_HAUT     = 40    # Espace tout en haut de la bande
-STRIP_MARGE_LATERALE = 30   # Espace vide à gauche et à droite de chaque photo
-STRIP_ESPACE_PHOTOS  = 40    # Espace entre les photos
+# --- CONFIGURATION DYNAMIQUE DES BANDELETTES ---
 
-# --- REGLAGES DYNAMIQUES ---
-# Ratio de la photo (Hauteur / Largeur)
-# 0.66 pour le format standard 3:2 (Canon natif, rectangulaire)
-# 0.80 pour le format 5:4 (Un peu plus carré)
-# 1.00 pour le format 1:1 (Parfaitement carré)
-STRIP_PHOTO_RATIO = 0.80
+# Choix du profil : "WIDE", "MEDIUM", "SQUARE", "NO_LOGO"  (voir rendu les templates dans dosssier "assets/backgrounds/templates" pour visualiser les formats)
+STRIP_FORMAT_MODE = "SQUARE" 
+#---------------------------------------------------------------------
+# Dictionnaire des profils de mise en page (a modifier si format specifique autre que les 4 proposés)
+#---------------------------------------------------------------------
+STRIP_PROFILES = {
+    # ratio     : Proportion de la photo (Hauteur / Largeur). 1.0 = Carré, 0.8 = Paysage.
+    # marge_lat : Espace vide à gauche et à droite de chaque photo (en pixels).
+    # espace    : Espace vide vertical entre les photos (en pixels).
+    # marge_h   : Distance entre le bord haut de la bandelette et la première photo.
+    "WIDE":    {"ratio": 0.66, "marge_lat": 30, "espace": 40, "marge_h": 40},
+    "MEDIUM":  {"ratio": 0.80, "marge_lat": 30, "espace": 40, "marge_h": 40},
+    "SQUARE":  {"ratio": 1.00, "marge_lat": 60, "espace": 20, "marge_h": 20},
+    "NO_LOGO": {"ratio": 1.00, "marge_lat": 40, "espace": 50, "marge_h": 60}
+}
+
+# Extraction automatique : on injecte directement les valeurs dans l'espace global
+_p = STRIP_PROFILES.get(STRIP_FORMAT_MODE, STRIP_PROFILES["WIDE"])
+
+STRIP_PHOTO_RATIO    = _p["ratio"]
+STRIP_MARGE_LATERALE = _p["marge_lat"]
+STRIP_ESPACE_PHOTOS  = _p["espace"]
+STRIP_MARGE_HAUT     = _p["marge_h"]
+#---------------------------------------------------------------------------
+
+
+# --- CALIBRATION DECOUPE BANDELETTE IMPRIMANTE DNP (Pixels) ---
+# Définit la zone réelle d'impression pour éviter le rognage et centrer la coupe
+# Ratio calculé : 1 mm ≈ 11.74 px (basé sur 600px = 51.1mm)
+# Formule : pixel / 11.74 = mm
+PRINT_CALIB_TOP    = 18
+PRINT_CALIB_BOTTOM = 12
+PRINT_CALIB_LEFT   = 3
+PRINT_CALIB_RIGHT  = 17
+
 
 
 # --- Mode 10x15 (Photo Unique) ---
@@ -206,10 +238,13 @@ MONTAGE_10X15_FINAL_PHOTO_FIT      = (1640, 1040)
 MONTAGE_10X15_FINAL_PHOTO_OFFSET   = (80, 80)
 MONTAGE_10X15_FINAL_QUALITY        = 98
 
+
+
+
 # --- Dimensions de preview écran (mode strip) ---
-STRIP_PREVIEW_PHOTO_LARGEUR = 520
-STRIP_PREVIEW_ESPACEMENT    = 40
-STRIP_PREVIEW_MARGE_HB      = 20     # marge haut/bas de la bande
+STRIP_PREVIEW_PHOTO_LARGEUR = 300   #520
+STRIP_PREVIEW_ESPACEMENT    = 40       #40
+STRIP_PREVIEW_MARGE_HB      = 40     # 20  marge haut/bas de la bande
 STRIP_PREVIEW_CANVAS_LARGEUR = 600
 STRIP_PREVIEW_THUMBNAIL_MAX = (400, 800)
 STRIP_PREVIEW_QUALITY       = 90
@@ -279,6 +314,14 @@ DUREE_ECRAN_ERREUR = 4.0   # Timeout auto des écrans d'erreur (secondes)
 DUREE_CONFIRM_ABANDON = 3.0  # Fenêtre de confirmation abandon (secondes)
 TIMEOUT_SPLASH_CAMERA = 10.0  # Timeout max splash connexion caméra (secondes)
 
+# --- Filigrane "photos restantes" en mode strip ---
+# Grand chiffre semi-transparent en fond pendant le décompte : indique combien
+# de photos restent à prendre (3 → 2 → 1). Utile aux invités pour situer leur
+# position dans la bandelette. Désactivable.
+STRIP_FILIGRANE_ENABLED = True
+STRIP_FILIGRANE_ALPHA   = 50    # Transparence 0–255 (50 = très discret)
+STRIP_FILIGRANE_TAILLE  = 600   # Taille de la police (gros caractère fond)
+
 # --- Mode burst strip : auto-validation entre photos en mode bandelettes ---
 # Si activé, les photos 1 et 2 d'un strip s'auto-valident après STRIP_BURST_DELAI_S
 # secondes d'aperçu (pas besoin d'appuyer sur valider entre chaque). La 3e photo reste
@@ -291,6 +334,14 @@ TXT_BURST_COUNTDOWN  = "Photo suivante dans"
 SEUIL_DISQUE_CRITIQUE_MB   = 500    # alerte si < 500 Mo libres pendant un événement
 INTERVALLE_CHECK_DISQUE_S  = 30.0   # fréquence de check (en secondes) pendant l'accueil
 
+# --- Monitoring température CPU (Raspberry Pi) ---
+# Lit /sys/class/thermal/thermal_zone0/temp (standard Pi / Linux). Sur
+# macOS/Windows ou fichier absent, le monitor est inerte silencieusement.
+# Le Pi throttle à ~80 °C ; 75 °C est un bon signal précoce à l'utilisateur.
+SEUIL_TEMP_CRITIQUE_C      = 75.0
+INTERVALLE_CHECK_TEMP_S    = 30.0
+TEMP_PATH                  = "/sys/class/thermal/thermal_zone0/temp"
+
 # --- Slideshow d'attente sur l'accueil (Sprint 6.2) ---
 # Après N secondes sans activité sur l'accueil, les montages passés défilent en plein écran
 # pour attirer les invités.
@@ -301,36 +352,154 @@ TXT_SLIDESHOW_INVITATION  = "Approchez pour commencer !"
 
 
 
+# --- Watermark événement sur montages finaux ---
+# Petit texte discret ajouté en bas à droite des impressions (10x15 et strip).
+# Désactivé par défaut : laisser à False si pas d'événement ciblé.
+# Note strip : la bande est pré-rotée 180° pour l'imprimante tête-bêche,
+# donc le "bas-droite" du canvas = "haut-gauche" de l'impression. Ajuster
+# WATERMARK_POSITION_STRIP si besoin (voir docs/CONFIG.md).
+WATERMARK_ENABLED          = False
+WATERMARK_TEXT             = "Événement — 20/04/2026"
+WATERMARK_COULEUR          = (255, 255, 255)   # Blanc
+WATERMARK_ALPHA            = 180               # 0–255 (180 = lisible mais discret)
+WATERMARK_TAILLE_10X15     = 28
+WATERMARK_TAILLE_STRIP     = 20
+WATERMARK_POSITION_10X15   = "bottom-right"    # "bottom-right" / "bottom-left" / "bottom-center"
+WATERMARK_POSITION_STRIP   = "bottom-right"
+WATERMARK_MARGE_PX         = 20                # Distance en px depuis le bord
+
+
+# --- Grain de pellicule (film grain) sur montages finaux ---
+# Bruit gaussien superposé à l'image finale pour un effet argentique discret.
+# Ne s'applique qu'au rendu FINAL (pas aux previews écran) : le grain n'est
+# pertinent qu'à la résolution d'impression, et économise le CPU en kiosque.
+# Désactivé par défaut — à activer pour les événements à ambiance rétro.
+GRAIN_ENABLED      = False
+GRAIN_INTENSITE    = 8       # Force du mélange en % (0–100). 5–15 reste subtil.
+GRAIN_SIGMA        = 30.0    # Écart-type du bruit gaussien (bas = uniforme, haut = tacheté)
+
+
 # ==========================================
 # 8. CONFIGURATION IMPRESSION
 # ==========================================
 ACTIVER_IMPRESSION = True          # Permet de tester sans gâcher de papier
-NOM_IMPRIMANTE_10X15 = "DNP_10x15"
-NOM_IMPRIMANTE_STRIP = "DNP_STRIP"
-TEMPS_ATTENTE_IMP    = 20  # Secondes d'affichage de la roue avant retour accueil
+NOM_IMPRIMANTE_10X15 = "DNP_10x15"  #Par défaut "DNP_10x15",  Pour tets de developpement sans impression mettre "PDF"
+NOM_IMPRIMANTE_STRIP = "DNP_STRIP"   #Par défaut "DNP_STRIP",   Pour tets de developpement sans impression mettre "PDF"
+TEMPS_ATTENTE_IMP    = 15  # Secondes d'affichage de la roue avant retour accueil
 
 
 
 # --- CONFIGURATION ANIMATION ROUE DE CHARGEMENT ---
-ANIM_COULEUR_TETE  = (255, 0, 150) # Magenta
-ANIM_COULEUR_QUEUE = (0, 200, 255) # Cyan
-ANIM_TAILLE_ROUE   = 100           
+ANIM_COULEUR_TETE  = (27, 161, 70) # Magenta (255, 0, 150)    
+ANIM_COULEUR_QUEUE = (194, 196, 37) # Cyan (0, 200, 255) 
+ANIM_TAILLE_ROUE   = 100            #100      
+
+# --- Tailles des polices pour l'écran d'attente ---
+TAILLE_TEXTE_IMP_COURANT = 80   # Pour "Impression en cours..."
+TAILLE_COMPTEUR_IMP = 120       # Pour le gros chiffre "15s"
+
 
 # Physique
-ANIM_V_BASE        = 4.0           
-ANIM_V_MAX_ADD     = 8             
-ANIM_FREQ          = 1.5           
+ANIM_V_BASE        = 4.0       #4.0              # Vitesse de rotation de base (points par frame)       
+ANIM_V_MAX_ADD     = 8       #8.0              # Vitesse max additionnelle (accélération) quand la roue tourne vite  
+ANIM_FREQ          = 1.5       #1.5              # Fréquence de variation de la vitesse (Hz) : plus haut = oscillations plus rapides
 
 # Structure
-ANIM_NB_POINTS     = 300           
-ANIM_RAYON_POINT   = 28            
-ANIM_V_ELASTIQUE   = 5.0
+ANIM_NB_POINTS     = 120          # 120
+ANIM_RAYON_POINT   = 28             #28
+ANIM_V_ELASTIQUE   = 5.0        #5.0              # Force de rappel élastique vers la position idéale (plus haut = roue plus rigide)
+
+# Framerate de rafraîchissement du spinner (écrans loader / attente impression).
+# Distinct de FPS (boucle principale) pour réduire la charge CPU sur Pi.
+SPINNER_FPS        = 30
 
 FPS = 60
 
 
 # ==========================================
-# 9. VALIDATION AU CHARGEMENT (Sprint 4.7)
+# 9. OVERRIDES OPTIONNELS (interface admin web)
+# ==========================================
+# L'interface admin web écrit dans `data/config_overrides.json` un sous-ensemble
+# de réglages modifiables sans édition de code. Seules les clés de la whitelist
+# ci-dessous peuvent être surchargées, avec un contrôle de type strict. Toute
+# valeur incohérente est ignorée (et loggée dans logs/config_overrides.log si
+# le dossier existe) ; la validation finale `_valider_config()` s'exécute
+# ensuite sur le résultat fusionné.
+#
+# Clés hors whitelist (résolutions, géométrie des montages, tailles de preview)
+# restent figées dans ce fichier : les modifier casserait les invariants du
+# pipeline de rendu.
+
+# (clé: type Python attendu)
+_CONFIG_OVERRIDES_WHITELIST = {
+    "TEMPS_DECOMPTE": int,
+    "DELAI_SECURITE": float,
+    "NOM_IMPRIMANTE_10X15": str,
+    "NOM_IMPRIMANTE_STRIP": str,
+    "ACTIVER_IMPRESSION": bool,
+    "TEMPS_ATTENTE_IMP": int,
+    "DUREE_IDLE_SLIDESHOW": float,
+    "DUREE_PAR_IMAGE_SLIDESHOW": float,
+    "NB_MAX_IMAGES_SLIDESHOW": int,
+    "STRIP_MODE_BURST": bool,
+    "STRIP_BURST_DELAI_S": float,
+    "WATERMARK_ENABLED": bool,
+    "WATERMARK_TEXT": str,
+    "GRAIN_ENABLED": bool,
+    "GRAIN_INTENSITE": int,
+    "SEUIL_DISQUE_CRITIQUE_MB": float,
+    "SEUIL_TEMP_CRITIQUE_C": float,
+    "ARDUINO_ENABLED": bool,
+}
+
+CONFIG_OVERRIDES_PATH = os.path.join(PATH_DATA, "config_overrides.json")
+
+
+def _appliquer_overrides():
+    """Lit CONFIG_OVERRIDES_PATH et surcharge les globals autorisés.
+
+    Silencieux si le fichier n'existe pas (cas nominal sans admin web).
+    Une clé non whitelistée ou un type incompatible est ignoré sans faire
+    planter l'import.
+    """
+    import json as _json
+    if not os.path.exists(CONFIG_OVERRIDES_PATH):
+        return
+    try:
+        with open(CONFIG_OVERRIDES_PATH, encoding="utf-8") as f:
+            overrides = _json.load(f)
+    except (OSError, _json.JSONDecodeError):
+        return
+    if not isinstance(overrides, dict):
+        return
+    g = globals()
+    for cle, valeur in overrides.items():
+        type_attendu = _CONFIG_OVERRIDES_WHITELIST.get(cle)
+        if type_attendu is None:
+            continue
+        # bool est un sous-type de int en Python : à tester en premier.
+        if type_attendu is bool:
+            if not isinstance(valeur, bool):
+                continue
+        elif type_attendu is float:
+            # tolérer int pour float
+            if not isinstance(valeur, (int, float)) or isinstance(valeur, bool):
+                continue
+            valeur = float(valeur)
+        elif type_attendu is int:
+            if not isinstance(valeur, int) or isinstance(valeur, bool):
+                continue
+        elif type_attendu is str:
+            if not isinstance(valeur, str) or not valeur:
+                continue
+        g[cle] = valeur
+
+
+_appliquer_overrides()
+
+
+# ==========================================
+# 10. VALIDATION AU CHARGEMENT (Sprint 4.7)
 # ==========================================
 # On vérifie au premier import que la config est cohérente. Un AssertionError
 # au démarrage est bien plus clair qu'un bug visuel à mi-événement.
@@ -344,6 +513,8 @@ def _valider_config():
     assert TEMPS_DECOMPTE >= 1, f"TEMPS_DECOMPTE doit être >= 1 (actuel : {TEMPS_DECOMPTE})"
     assert DELAI_SECURITE >= 0.5, f"DELAI_SECURITE trop court : {DELAI_SECURITE}"
     assert FPS > 0, f"FPS invalide : {FPS}"
+    assert SPINNER_FPS > 0, f"SPINNER_FPS invalide : {SPINNER_FPS}"
+    assert ANIM_NB_POINTS >= 1, f"ANIM_NB_POINTS invalide : {ANIM_NB_POINTS}"
     assert TEMPS_ATTENTE_IMP > 0, f"TEMPS_ATTENTE_IMP invalide : {TEMPS_ATTENTE_IMP}"
 
     # Alpha channels
@@ -361,6 +532,14 @@ def _valider_config():
     assert DUREE_IDLE_SLIDESHOW > 0, f"DUREE_IDLE_SLIDESHOW invalide : {DUREE_IDLE_SLIDESHOW}"
     assert DUREE_PAR_IMAGE_SLIDESHOW > 0
     assert NB_MAX_IMAGES_SLIDESHOW > 0
+
+    # Monitoring température
+    assert SEUIL_TEMP_CRITIQUE_C > 0, f"SEUIL_TEMP_CRITIQUE_C invalide : {SEUIL_TEMP_CRITIQUE_C}"
+    assert INTERVALLE_CHECK_TEMP_S > 0
+
+    # Grain de pellicule
+    assert 0 <= GRAIN_INTENSITE <= 100, f"GRAIN_INTENSITE hors [0,100] : {GRAIN_INTENSITE}"
+    assert GRAIN_SIGMA > 0, f"GRAIN_SIGMA invalide : {GRAIN_SIGMA}"
 
     # Strip dimensions cohérentes
     assert 0.3 <= STRIP_PHOTO_RATIO <= 1.2, f"STRIP_PHOTO_RATIO suspect : {STRIP_PHOTO_RATIO}"

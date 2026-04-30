@@ -119,3 +119,50 @@ class TestCLI:
         assert result.returncode in (0, 1)
         # Au minimum, le header doit apparaître
         assert "Photobooth" in result.stdout
+
+
+# --- Tests in-process pour la couverture ---
+
+
+class TestCheckTemperature:
+    def test_fichier_absent_retourne_true_non_bloquant(self, monkeypatch, capsys):
+        """Sur macOS/Windows, pas de /sys/class/thermal → pas un échec."""
+        monkeypatch.setattr(status, "TEMP_PATH", "/nonexistent/thermal")
+        assert status.check_temperature() is True
+        assert "non disponible" in capsys.readouterr().out
+
+    def test_temperature_normale(self, tmp_path, monkeypatch, capsys):
+        f = tmp_path / "temp"
+        f.write_text("42000")
+        monkeypatch.setattr(status, "TEMP_PATH", str(f))
+        monkeypatch.setattr(status, "SEUIL_TEMP_CRITIQUE_C", 75.0)
+        assert status.check_temperature() is True
+        assert "42.0 °C" in capsys.readouterr().out
+
+    def test_temperature_critique(self, tmp_path, monkeypatch, capsys):
+        f = tmp_path / "temp"
+        f.write_text("82000")
+        monkeypatch.setattr(status, "TEMP_PATH", str(f))
+        monkeypatch.setattr(status, "SEUIL_TEMP_CRITIQUE_C", 75.0)
+        assert status.check_temperature() is False
+        assert "AU-DESSUS" in capsys.readouterr().out
+
+
+class TestCheckPythonDeps:
+    def test_module_present(self, capsys):
+        """PIL est dans les deps dev — doit être trouvé."""
+        # check_python_deps vérifie ["pygame", "cv2", "gphoto2", "PIL", "numpy"]
+        # En CI, certains manquent → on accepte True ou False mais la fonction
+        # ne doit pas crasher.
+        result = status.check_python_deps()
+        assert isinstance(result, bool)
+        assert "Module Python : PIL" in capsys.readouterr().out
+
+
+class TestMainInProcess:
+    def test_main_retourne_0_ou_1(self, capsys):
+        """Exécute main() en process : couvre les branches non-CLI restantes."""
+        rc = status.main()
+        assert rc in (0, 1)
+        out = capsys.readouterr().out
+        assert "diagnostic" in out

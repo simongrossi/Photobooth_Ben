@@ -4,7 +4,7 @@
 > effets exotiques, hardware, brainstorm), voir [IDEAS.md](IDEAS.md).
 > Pour l'historique de ce qui a été fait, voir [CHANGELOG.md](CHANGELOG.md).
 
-Dernière mise à jour : 2026-04-20
+Dernière mise à jour : 2026-04-24 (post interface admin web v1)
 
 ---
 
@@ -14,30 +14,43 @@ Dernière mise à jour : 2026-04-20
 
 **UX événementiel** : splash caméra, flash + shutter sound, beep décompte, écran "Préparation...", confirmation abandon, slideshow d'attente, compteur photo strip, mode burst.
 
-**Architecture modulaire** : SessionState dataclass, UIContext singleton, split en `core/` + `ui/`, 4 render functions extraites (DECOMPTE/VALIDATION/FIN), MontageGenerator/CameraManager/PrinterManager encapsulés.
+**Architecture modulaire** : split en `core/` + `ui/` — `core/session` (Etat+SessionState+metadata), `core/monitoring` (DiskMonitor+slideshow), UIContext singleton, render functions extraites (DECOMPTE/VALIDATION/FIN/ACCUEIL), event handlers par état, MontageGenerator/CameraManager/PrinterManager encapsulés. `Photobooth_start.py` est importable sans lancer le kiosque ; `main()` initialise le runtime.
 
-**Performance** : threading spinner génération montage, cache des surfaces statiques, loader GC optim, purge temp + check disque continu.
+**Hardware** : contrôleur Arduino Nano (`core/arduino.py`) — 3 boutons-poussoirs à LED intégrée via pyserial, pilotage LED selon `Etat`, fallback clavier si pyserial absent. `core/camera.py` dégrade proprement si `gphoto2`/`cv2`/`numpy`/`pygame` manque. Firmware `arduino/photobooth_buttons/`.
+
+**Performance** : threading spinner génération montage, cache des surfaces statiques + ASSETS cache, capture HQ async (subprocess.Popen + polling), loader GC optim, purge temp + check disque continu, profiling mémoire (`profile_mem.py`, `profile.py`).
 
 **Observabilité** : logging rotatif, `sessions.jsonl` metadata, `status.py` (diagnostic), `stats.py` (rapport avec histogramme horaire), monitoring disque avec bandeau rouge.
 
-**Code quality** : `from config import *` → imports explicites (96 noms), dead code nettoyé, ruff clean, type hints sur classes publiques, log_error → log_info/warning/critical, tests pytest 18/18.
+**Code quality** : `from config import *` → imports explicites (96 noms), dead code nettoyé, ruff clean, type hints sur classes publiques + docstrings, log_error → log_info/warning/critical.
+
+**Tests & CI** : pytest (tests unitaires + intégration, `test_status.py`, `test_stats.py`, `test_integration.py`), GitHub Actions CI (`.github/workflows/ci.yml`), coverage (`pyproject.toml`), pre-commit hook (`.pre-commit-config.yaml`).
+
+**Déploiement** : guide Raspberry Pi complet (`docs/DEPLOYMENT.md`), doc architecture (`docs/ARCHITECTURE.md`), doc Arduino (`docs/ARDUINO.md`), changelog (`docs/CHANGELOG.md`).
+
+**Admin web optionnelle** (v1) : service systemd séparé (`photobooth-admin.service`), Flask + SQLite, Basic Auth. Dashboard stats, galerie `data/print/`, upload/activation de templates overlays, éditeur d'un sous-ensemble whitelisté de `config.py` (18 clés via `data/config_overrides.json`). Isolation stricte — `web/*` n'importe jamais `Photobooth_start` ni `ui/*`. Voir [ADMIN.md](ADMIN.md).
 
 ---
 
 ## Court terme — 30 min à 1 h chacun
 
-### Tests & CI
-
-- [ ] **Tests status.py + stats.py** — fixtures JSONL synthétiques, vérif retour codes
-- [ ] **GitHub Actions CI** — `pytest` + `ruff check` à chaque push sur main
-- [ ] **Coverage report** — `pytest --cov=core`, cible 60% puis 80%
-- [ ] **pre-commit hook** — ruff auto-fix + pytest avant chaque commit
-
 ### UX micro
 
-- [ ] Bip sonore **différent** pour la dernière seconde du décompte (tension)
-- [ ] Countdown en **filigrane** pendant la capture en mode strip (3 → 2 → 1)
-- [ ] **Watermark** discret configurable "Événement XYZ — 20/04/2026"
+_Les 3 items historiques (beep dernière seconde, filigrane strip, watermark)
+sont livrés — voir [CHANGELOG.md](CHANGELOG.md) et [CONFIG.md](CONFIG.md)._
+
+### Tests & qualité
+
+_Coverage `core/camera.py` livré : 90 % via mocks gphoto2/cv2/numpy/pygame,
+147 tests, couverture globale 92,8 %._
+
+### Optimisations rapides
+
+_Monitoring température CPU livré — voir [CHANGELOG.md](CHANGELOG.md)._
+
+_Cache masque décompte, spinner pré-rendu + `SPINNER_FPS` configurable,
+microbench `bench_spinner.py` + protocole `docs/PROFILING.md` livrés — voir
+[CHANGELOG.md](CHANGELOG.md). Reste à relever les mesures sur Pi réel._
 
 ---
 
@@ -50,17 +63,12 @@ Dernière mise à jour : 2026-04-20
 - [ ] **6.5 Overlays thématiques** sélectionnables (mariage, anniversaire, Noël, Halloween...) — scan `assets/overlays/<theme>/`, écran choix avant décompte
 - [ ] Mode **timer 10s** — compte à rebours sans appui clavier pour groupes (3e mode accueil ou toggle depuis strip/10x15)
 
-### Architecture (finitions du split)
-
-- [ ] **Extraction event handlers** par état (`handle_accueil_event`, `handle_validation_event`, `handle_fin_event`) — items 9 non terminés. Demande de refactor les nombreux `continue` en retour de signal
-- [ ] **Extraction render_accueil** — idem, complexité slideshow `continue` à gérer
-
 ### Robustesse & infra
 
-- [ ] **Watchdog `systemd`** — unit file `photobooth.service` qui relance si crash
-- [ ] **Kiosk mode** — désactiver Alt+Tab, souris, raccourcis système, plein écran forcé
+_Watchdog systemd + kiosk mode livrés — voir [deploy/README.md](../deploy/README.md)
+et [CHANGELOG.md](CHANGELOG.md)._
+
 - [ ] **Auto-upload nightly** vers NAS / Dropbox / Nextcloud (cron job rsync)
-- [ ] **Monitoring température Raspberry** — alerte écran si > 75°C
 
 ---
 
@@ -77,26 +85,26 @@ Dernière mise à jour : 2026-04-20
 2. **Captive portal** (`nodogsplash`) : redirection auto vers la galerie web
 3. **Mini-serveur FastAPI** sur port 80 : galerie temps réel, téléchargement direct
 4. **QR code à l'écran** après impression → URL directe du montage
-5. **Admin dashboard web** : stats live, toggle imprimante, maintenance, config live
+5. ✅ **Admin dashboard web** : livré en v1 (voir [ADMIN.md](ADMIN.md)) — stats, galerie, templates, réglages. Reste à câbler : config live sans redémarrage, queue imprimante, QR de partage.
 
 **Sous-tâches** :
+- ✅ Admin dashboard v1 (Flask + SQLite + Basic Auth) — dashboard, galerie, templates, réglages whitelistés
+- [ ] **v2 admin** — configuration WiFi depuis l'UI (edit `wpa_supplicant.conf` ou `nmcli` via sudoers ciblé), bouton "redémarrer service kiosque", export CSV stats, tail `logs/systemd.log` dans l'UI
 - [ ] Install / config `hostapd` + `dnsmasq` avec SSID + DHCP local
-- [ ] FastAPI app `server.py` : `/` galerie, `/photo/<id>`, `/qr/<id>`
-- [ ] `qrcode` Python : affiche QR après impression (nouvel écran)
+- [ ] Extension galerie → mode **LAN public** : route publique sans auth pour téléchargement des montages du jour (à exposer uniquement via l'AP captif)
+- [ ] `qrcode` Python : affiche QR après impression (nouvel écran côté kiosque)
 - [ ] Captive portal `nodogsplash` ou redirection DNS catchall
 - [ ] Certificat self-signed HTTPS (éviter warnings iOS)
-- [ ] Admin dashboard : config live, stats, queue imprimante, maintenance
-- [ ] Auth basique admin (PIN ou mot de passe simple)
+- [ ] Config live reload (file watcher sur `data/config_overrides.json`) — évite le `systemctl restart` après chaque réglage
 
-**Effort total** : ~1 semaine dédiée.
+**Effort restant** : ~3-4 jours (l'admin v1 a défriché le plus gros : auth, serveur, galerie, SQLite).
 **Inspirations** : voir [IDEAS.md § Références open-source](IDEAS.md#références-open-source-à-étudier) — `photobooth-app` et `RaspAP` notamment.
 
 ### Autres gros chantiers
 
-- [ ] **Email / SMS delivery** — après impression, écran "Entrez votre email/numéro" (clavier virtuel tactile) → photo envoyée en PJ. SMTP + formulaire
+- [ ] **Email / SMS delivery** — après impression, écran "Entrez votre email/numéro" (clavier virtuel tactile) → photo envoyée en PJ. SMTP + formulaire. Peut s'implémenter soit côté kiosque (tactile sur place) soit côté admin v2 (envoi différé depuis la galerie).
 - [ ] **Multi-langue** (EN/FR/ES) — toutes les strings extraites dans `i18n/*.json`, toggle sur l'accueil
-- [ ] **3.1 Capture HQ async** — `subprocess.Popen` + polling, UI fluide pendant les 2-3 s de capture. Restructure la machine d'état DECOMPTE
-- [ ] **Branding par événement** — dossier `events/mariage-smith-2026/` qui surcharge assets + overlays + textes + config
+- [ ] **Branding par événement** — dossier `events/mariage-smith-2026/` qui surcharge assets + overlays + textes + config. Pourrait s'intégrer à l'admin (sélecteur d'événement actif).
 
 ---
 

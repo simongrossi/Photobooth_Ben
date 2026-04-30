@@ -3,6 +3,7 @@ from __future__ import annotations
 # Imports explicites depuis config (plus de `import *` pour dépendances visibles).
 # Liste triée alphabétiquement, mise à jour en ajoutant de nouvelles constantes.
 from config import (
+    ACTIVER_IMPRESSION,
     ALPHA_TEXTE_REPOS, ARDUINO_BAUDRATE, ARDUINO_ENABLED, ARDUINO_PORT,
     BANDEAU_10X15, BANDEAU_ACCUEIL, BANDEAU_ALPHA,
     BANDEAU_COULEUR, BANDEAU_HAUTEUR, BANDEAU_STRIP, COULEUR_DECOMPTE,
@@ -10,7 +11,7 @@ from config import (
     DELAI_SECURITE,
     DUREE_CONFIRM_ABANDON, DUREE_FLASH_BLANC, DUREE_IDLE_SLIDESHOW, DUREE_PAR_IMAGE_SLIDESHOW,
     FILE_BG_ACCUEIL, FORMAT_TIMESTAMP, HEIGHT,
-    INTERVALLE_CHECK_DISQUE_S, LARGEUR_ICONE_10X15, LARGEUR_ICONE_STRIP, MARGE_ACCUEIL,
+    INTERVALLE_CHECK_DISQUE_S, INTERVALLE_CHECK_TEMP_S, LARGEUR_ICONE_10X15, LARGEUR_ICONE_STRIP, MARGE_ACCUEIL,
     MODE_10x15, MODE_STRIP, NB_MAX_IMAGES_SLIDESHOW,
     NOM_IMPRIMANTE_10X15, NOM_IMPRIMANTE_STRIP, OFFSET_DROITE_10X15, OFFSET_DROITE_STRIP,
     PATH_DATA, PATH_IMG_10X15, PATH_IMG_STRIP, PATH_PRINT,
@@ -18,77 +19,42 @@ from config import (
     PATH_SKIPPED_DELETED, PATH_SKIPPED_RETAKE, PATH_SOUNDS, PATH_TEMP,
     POLICE_FICHIER, PREFIXE_DELETED, PREFIXE_PRINT_10X15, PREFIXE_PRINT_STRIP,
     PREFIXE_RAW, PREFIXE_RETAKE, PULSE_LENT_MAX, PULSE_LENT_MIN, PULSE_LENT_VITESSE, PULSE_MAX,
-    PULSE_MIN, PULSE_VITESSE, SEUIL_DISQUE_CRITIQUE_MB, STRIP_BURST_DELAI_S,
-    STRIP_MODE_BURST, TAILLE_DECOMPTE, TAILLE_TEXTE_BANDEAU,
+    PULSE_MIN, PULSE_VITESSE,
+    SEUIL_DISQUE_CRITIQUE_MB, SEUIL_TEMP_CRITIQUE_C,
+    STRIP_BURST_DELAI_S, STRIP_MODE_BURST,
+    TAILLE_DECOMPTE, TAILLE_TEXTE_BANDEAU,
+    TEMP_PATH,
     TAILLE_TEXTE_BOUTON, TAILLE_TITRE_ACCUEIL, TEMPS_DECOMPTE, TEXTE_PHOTO_COUNT,
     TOUCHE_DROITE, TOUCHE_GAUCHE, TOUCHE_MILIEU,
-    TXT_BURST_COUNTDOWN, TXT_CONFIRM_ABANDON_1, TXT_CONFIRM_ABANDON_2, TXT_ERREUR_CAPTURE,
+    TXT_BURST_COUNTDOWN, TXT_ERREUR_CAPTURE,
     TXT_ERREUR_IMPRIMANTE, TXT_PREPARATION_IMP, TXT_SLIDESHOW_INVITATION, WIDTH, ZOOM_FACTOR,
 )
 import config  # accès qualifié `config.X` dans les render functions
-import pygame
+try:
+    import pygame
+except ImportError:
+    pygame = None  # type: ignore[assignment]
 import os
+import signal
 import sys
 import time
-import json
 import shutil
 import math
-from dataclasses import dataclass, field
-from enum import Enum
 from typing import Optional
 
 from PIL import Image, ImageOps
 from datetime import datetime
 
 
-# ========================================================================================================
-# --- MACHINE D'ÉTAT (Sprint 4.5) ---
-# Les états de la boucle principale étaient des strings ("ACCUEIL", "DECOMPTE", ...),
-# vulnérables aux typos et sans support IDE. On passe à un Enum pour gagner la sécurité
-# de typage sans toucher à la structure de la boucle elle-même.
-# ========================================================================================================
-
-class Etat(Enum):
-    ACCUEIL = "ACCUEIL"
-    DECOMPTE = "DECOMPTE"
-    VALIDATION = "VALIDATION"
-    FIN = "FIN"
-
 
 # ========================================================================================================
-# --- ÉTAT DE SESSION (Sprint item 10) ---
-# Toutes les variables mutables de session sont encapsulées dans un dataclass.
-# Évite la dizaine de `global x` dispersés et rend le state machine explicitable.
-# Les subsystèmes indépendants (slideshow, monitoring disque) gardent leurs propres
-# globals pour rester modulaires.
+# --- MACHINE D'ÉTAT + SESSION STATE (extraits dans core/session.py) ---
 # ========================================================================================================
-
-@dataclass
-class SessionState:
-    """État mutable d'une session photobooth + état transverse (idle, confirm abandon)."""
-
-    etat: Etat = Etat.ACCUEIL
-    mode_actuel: str | None = None
-    photos_validees: list = field(default_factory=list)
-    id_session_timestamp: str = ""
-    session_start_ts: float = 0.0
-    path_montage: str = ""
-    img_preview_cache: object = None   # pygame.Surface | None
-    dernier_clic_time: float = 0.0
-    abandon_confirm_until: float = 0.0  # timestamp limite de la fenêtre de confirmation
-    last_activity_ts: float = 0.0       # pour déclenchement slideshow idle
-
-    def reset_pour_accueil(self):
-        """Reset complet après fin de session (printed/abandoned/capture_failed).
-        Préserve les compteurs temporels (last_activity_ts, etc.)."""
-        self.etat = Etat.ACCUEIL
-        self.mode_actuel = None
-        self.photos_validees = []
-        self.id_session_timestamp = ""
-        self.img_preview_cache = None
-        self.path_montage = ""
-
-
+from core.session import (  # noqa: E402
+    Etat,
+    SessionState,
+    terminer_session_et_revenir_accueil as _terminer_session_et_revenir_accueil,
+)
 
 
 # ========================================================================================================
@@ -104,13 +70,22 @@ dossiers_requis = [
     "logs"
 ]
 
-for d in dossiers_requis:
-    if not os.path.exists(d):
-        os.makedirs(d, exist_ok=True)
-        print(f"📁 Dossier créé : {d}")
-
 # Logging : extrait dans logger.py (Sprint 4.6). On importe les 4 helpers.
 from core.logger import log_info, log_warning, log_critical  # noqa: E402
+
+
+def _preparer_dossiers_et_logs() -> None:
+    """Crée les dossiers requis, purge les temporaires et trace le démarrage."""
+    for d in dossiers_requis:
+        if not os.path.exists(d):
+            os.makedirs(d, exist_ok=True)
+            print(f"📁 Dossier créé : {d}")
+
+    _purger_temp_et_verifier_disque()
+
+    log_info("====================================================")
+    log_info("DÉMARRAGE DU PHOTOBOOTH (Dossiers OK)")
+    log_info("====================================================")
 
 
 def _purger_temp_et_verifier_disque() -> None:
@@ -118,7 +93,7 @@ def _purger_temp_et_verifier_disque() -> None:
     et log l'espace disque disponible. Avertit si < 1 Go.
 
     Appelé une seule fois au démarrage. Pour le monitoring continu pendant
-    l'événement, voir `verifier_disque_periodiquement()`."""
+    l'événement, voir `DiskMonitor` dans core/monitoring.py."""
     # Purge des fichiers temporaires résiduels
     nb_supprimes = 0
     try:
@@ -146,15 +121,6 @@ def _purger_temp_et_verifier_disque() -> None:
     except Exception as e:
         print(f"⚠️ Impossible de vérifier l'espace disque : {e}")
 
-
-_purger_temp_et_verifier_disque()
-
-
-log_info("====================================================")
-log_info("DÉMARRAGE DU PHOTOBOOTH (Dossiers OK)")
-log_info("====================================================")
-
-
 # ========================================================================================================
 # --- GESTION CANON (Sprint 4.1 + 4.6 : CameraManager extrait dans camera.py) ---
 # La classe CameraManager vit désormais dans camera.py. Import + wrappers de compat.
@@ -163,16 +129,14 @@ log_info("====================================================")
 from core.camera import CameraManager  # noqa: E402
 
 
-# Singleton global
-camera_mgr = CameraManager()
-camera_mgr.init()
-if camera_mgr.is_connected:
-    camera_mgr.set_liveview(1)
+camera_mgr: CameraManager | None = None
 
 
 # Wrapper de compat — seul `get_canon_frame` est encore appelé (dans render_decompte).
-def get_canon_frame() -> Optional[pygame.Surface]:
+def get_canon_frame() -> Optional[pygame.Surface]:  # type: ignore
     """Retourne la frame preview caméra courante sous forme de pygame.Surface, ou None."""
+    if camera_mgr is None:
+        return None
     return camera_mgr.get_preview_frame()
 
 
@@ -180,7 +144,7 @@ def get_canon_frame() -> Optional[pygame.Surface]:
 # --- 2. FONCTIONS TECHNIQUES --- ########################################################################
 # ========================================================================================================
 
-def capturer_hq(id_session: str, index_photo: int) -> Optional[str]:
+def capturer_hq(id_session: str, index_photo: int) -> Optional[str]: 
     """Procédure de capture : UI (flash + SOURIEZ animé) + appel CameraManager.capture_hq().
 
     La capture subprocess (2-3 s) tourne dans un thread daemon pendant qu'on anime
@@ -210,6 +174,9 @@ def capturer_hq(id_session: str, index_photo: int) -> Optional[str]:
 
     def _worker():
         try:
+            if camera_mgr is None:
+                resultat["success"] = False
+                return
             resultat["success"] = camera_mgr.capture_hq(chemin_complet)
         except BaseException as exc:
             resultat["error"] = exc
@@ -285,43 +252,8 @@ printer_mgr = PrinterManager(NOM_IMPRIMANTE_10X15, NOM_IMPRIMANTE_STRIP)
 # ========================================================================================================
 # ========================================================================================================
 
-pygame.init()
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-clock = pygame.time.Clock()
-pygame.font.init()
-
-try:
-    if os.path.exists(POLICE_FICHIER):
-        font_titre        = pygame.font.Font(POLICE_FICHIER, TAILLE_TITRE_ACCUEIL)
-        font_boutons    = pygame.font.Font(POLICE_FICHIER, TAILLE_TEXTE_BOUTON)  # <--- Nouveau
-        font_bandeau    = pygame.font.Font(POLICE_FICHIER, TAILLE_TEXTE_BANDEAU) # <--- Nouveau
-        font_decompte   = pygame.font.Font(POLICE_FICHIER, TAILLE_DECOMPTE)
-    else:
-        raise FileNotFoundError
-except Exception:
-    # Fallback Arial
-    font_titre       = pygame.font.SysFont("Arial", TAILLE_TITRE_ACCUEIL, bold=True)
-    font_boutons    = pygame.font.SysFont("Arial", TAILLE_TEXTE_BOUTON)
-    font_bandeau    = pygame.font.SysFont("Arial", TAILLE_TEXTE_BANDEAU, bold=True)
-    font_decompte   = pygame.font.SysFont("Arial", TAILLE_DECOMPTE, bold=True)
-
-
-# ========================================================================================================
-# --- UI : extrait dans ui.py (item 7) ---
-# Le contexte UI (screen, clock, fontes) est injecté dans UIContext après l'init pygame.
-# Les helpers (jouer_son, afficher_message_plein_ecran, executer_avec_spinner, ecran_erreur,
-# splash_connexion_camera, ecran_attente_impression) sont importés depuis ui.py.
-# ========================================================================================================
-
-from ui import (  # noqa: E402
-    UIContext, AccueilAssets, setup_sounds, jouer_son,
-    draw_text_shadow_soft, inserer_background, executer_avec_spinner,
-    ecran_erreur, ecran_attente_impression,
-    splash_connexion_camera,
-)
-
-UIContext.setup(screen, clock, font_titre, font_boutons, font_bandeau, font_decompte)
-setup_sounds()
+def _ui_non_initialisee(*args, **kwargs):
+    raise RuntimeError("UI pygame non initialisée : appeler main() pour lancer le photobooth")
 
 
 # ========================================================================================================
@@ -333,148 +265,253 @@ setup_sounds()
 # ========================================================================================================
 from core.arduino import ArduinoController  # noqa: E402
 
-arduino_ctrl = ArduinoController(
-    port=ARDUINO_PORT if ARDUINO_ENABLED else None,
-    baudrate=ARDUINO_BAUDRATE,
-    key_left=TOUCHE_GAUCHE,
-    key_mid=TOUCHE_MILIEU,
-    key_right=TOUCHE_DROITE,
-)
-arduino_ctrl.start()
+
+# --- Monitoring disque + slideshow listing (extraits dans core/monitoring.py) ---
+from core.monitoring import DiskMonitor, TempMonitor, lister_images_slideshow  # noqa: E402
 
 
-_dernier_check_disque_ts = 0.0
-_disque_critique = False
-_disque_libre_mb = None
+screen = None
+clock = None
+font_titre = None
+font_boutons = None
+font_bandeau = None
+font_decompte = None
+font_filigrane = None
+UIContext = None
+AccueilAssets = None
+setup_sounds = _ui_non_initialisee
+jouer_son = _ui_non_initialisee
+draw_text_shadow_soft = _ui_non_initialisee
+inserer_background = _ui_non_initialisee
+afficher_message_plein_ecran = _ui_non_initialisee
+executer_avec_spinner = _ui_non_initialisee
+ecran_erreur = _ui_non_initialisee
+ecran_attente_impression = _ui_non_initialisee
+splash_connexion_camera = _ui_non_initialisee
+arduino_ctrl: ArduinoController | None = None
+disk_monitor: DiskMonitor | None = None
+temp_monitor: TempMonitor | None = None
+BANDEAU_CACHE = None
+session = SessionState(last_activity_ts=0.0)
+running = True
+slideshow_images = []
+slideshow_last_refresh = 0.0
+slideshow_cached_surface = None
+slideshow_cached_for_idx = -1
+fond_accueil = None
+icon_10x15_norm = None
+icon_10x15_select = None
+icon_strip_norm = None
+icon_strip_select = None
 
 
-def verifier_disque_periodiquement() -> None:
-    """Check périodique (INTERVALLE_CHECK_DISQUE_S) de l'espace disque libre.
-
-    Met à jour les flags module-level `_disque_critique` et `_disque_libre_mb`
-    lus par le rendu ACCUEIL pour afficher un bandeau rouge si on descend sous
-    SEUIL_DISQUE_CRITIQUE_MB. Non-bloquant, silencieux sauf sur la transition
-    OK→critique où on log un warning."""
-    global _dernier_check_disque_ts, _disque_critique, _disque_libre_mb
-    maintenant = time.time()
-    if maintenant - _dernier_check_disque_ts < INTERVALLE_CHECK_DISQUE_S:
-        return
-    _dernier_check_disque_ts = maintenant
+def _charger_polices():
+    """Charge les polices pygame ou bascule sur Arial si l'asset manque."""
     try:
-        _disque_libre_mb = shutil.disk_usage(PATH_DATA).free / (1024 ** 2)
-        etait_critique = _disque_critique
-        _disque_critique = _disque_libre_mb < SEUIL_DISQUE_CRITIQUE_MB
-        # On n'alerte que sur la transition pour éviter le spam de log
-        if _disque_critique and not etait_critique:
-            log_warning(
-                f"Espace disque critique : {_disque_libre_mb:.0f} Mo libres "
-                f"(seuil : {SEUIL_DISQUE_CRITIQUE_MB} Mo)"
+        if os.path.exists(POLICE_FICHIER):
+            return (
+                pygame.font.Font(POLICE_FICHIER, TAILLE_TITRE_ACCUEIL),
+                pygame.font.Font(POLICE_FICHIER, TAILLE_TEXTE_BOUTON),
+                pygame.font.Font(POLICE_FICHIER, TAILLE_TEXTE_BANDEAU),
+                pygame.font.Font(POLICE_FICHIER, TAILLE_DECOMPTE),
+                pygame.font.Font(POLICE_FICHIER, config.STRIP_FILIGRANE_TAILLE),
             )
-    except Exception as e:
-        log_warning(f"Check disque périodique échoué : {e}")
+        raise FileNotFoundError
+    except Exception:
+        return (
+            pygame.font.SysFont("Arial", TAILLE_TITRE_ACCUEIL, bold=True),
+            pygame.font.SysFont("Arial", TAILLE_TEXTE_BOUTON),
+            pygame.font.SysFont("Arial", TAILLE_TEXTE_BANDEAU, bold=True),
+            pygame.font.SysFont("Arial", TAILLE_DECOMPTE, bold=True),
+            pygame.font.SysFont("Arial", config.STRIP_FILIGRANE_TAILLE, bold=True),
+        )
+
+
+def _initialiser_runtime() -> None:
+    """Initialise les singletons runtime. Aucun effet de bord lourd à l'import."""
+    global camera_mgr, screen, clock
+    global font_titre, font_boutons, font_bandeau, font_decompte, font_filigrane
+    global UIContext, AccueilAssets, setup_sounds, jouer_son, draw_text_shadow_soft
+    global inserer_background, afficher_message_plein_ecran, executer_avec_spinner
+    global ecran_erreur, ecran_attente_impression, splash_connexion_camera
+    global arduino_ctrl, disk_monitor, temp_monitor, BANDEAU_CACHE, session, running
+    global slideshow_images, slideshow_last_refresh, slideshow_cached_surface, slideshow_cached_for_idx
+    global fond_accueil, icon_10x15_norm, icon_10x15_select, icon_strip_norm, icon_strip_select
+
+    if pygame is None:
+        raise RuntimeError("pygame est requis pour lancer Photobooth_start.py")
+
+    _preparer_dossiers_et_logs()
+
+    from ui import (
+        UIContext as _UIContext,
+        AccueilAssets as _AccueilAssets,
+        setup_sounds as _setup_sounds,
+        jouer_son as _jouer_son,
+        draw_text_shadow_soft as _draw_text_shadow_soft,
+        inserer_background as _inserer_background,
+        afficher_message_plein_ecran as _afficher_message_plein_ecran,
+        executer_avec_spinner as _executer_avec_spinner,
+        ecran_erreur as _ecran_erreur,
+        ecran_attente_impression as _ecran_attente_impression,
+        splash_connexion_camera as _splash_connexion_camera,
+    )
+
+    UIContext = _UIContext
+    AccueilAssets = _AccueilAssets
+    setup_sounds = _setup_sounds
+    jouer_son = _jouer_son
+    draw_text_shadow_soft = _draw_text_shadow_soft
+    inserer_background = _inserer_background
+    afficher_message_plein_ecran = _afficher_message_plein_ecran
+    executer_avec_spinner = _executer_avec_spinner
+    ecran_erreur = _ecran_erreur
+    ecran_attente_impression = _ecran_attente_impression
+    splash_connexion_camera = _splash_connexion_camera
+
+    camera_mgr = CameraManager()
+    camera_mgr.init()
+    if camera_mgr.is_connected:
+        camera_mgr.set_liveview(1)
+
+    pygame.init()
+    _display_flags = (pygame.FULLSCREEN | pygame.NOFRAME) if config.KIOSK_FULLSCREEN else 0
+    screen = pygame.display.set_mode((WIDTH, HEIGHT), _display_flags)
+    if config.KIOSK_FULLSCREEN:
+        pygame.mouse.set_visible(False)
+    clock = pygame.time.Clock()
+    pygame.font.init()
+
+    font_titre, font_boutons, font_bandeau, font_decompte, font_filigrane = _charger_polices()
+    UIContext.setup(screen, clock, font_titre, font_boutons, font_bandeau, font_decompte)
+    setup_sounds()
+
+    arduino_ctrl = ArduinoController(
+        port=ARDUINO_PORT if ARDUINO_ENABLED else None,
+        baudrate=ARDUINO_BAUDRATE,
+        key_left=TOUCHE_GAUCHE,
+        key_mid=TOUCHE_MILIEU,
+        key_right=TOUCHE_DROITE,
+    )
+    arduino_ctrl.start()
+
+    disk_monitor = DiskMonitor(
+        path=PATH_DATA, seuil_mb=SEUIL_DISQUE_CRITIQUE_MB, intervalle_s=INTERVALLE_CHECK_DISQUE_S,
+    )
+    temp_monitor = TempMonitor(
+        path=TEMP_PATH, seuil_c=SEUIL_TEMP_CRITIQUE_C, intervalle_s=INTERVALLE_CHECK_TEMP_S,
+    )
+
+    BANDEAU_CACHE = pygame.Surface((WIDTH, BANDEAU_HAUTEUR))
+    BANDEAU_CACHE.set_alpha(BANDEAU_ALPHA)
+    BANDEAU_CACHE.fill(BANDEAU_COULEUR)
+
+    session = SessionState(last_activity_ts=time.time())
+    running = True
+    slideshow_images = []
+    slideshow_last_refresh = 0.0
+    slideshow_cached_surface = None
+    slideshow_cached_for_idx = -1
+
+    accueil_assets = AccueilAssets.charger(
+        bg_path=FILE_BG_ACCUEIL,
+        img_10x15_path=PATH_IMG_10X15,
+        img_strip_path=PATH_IMG_STRIP,
+        largeur_10x15=LARGEUR_ICONE_10X15,
+        largeur_strip=LARGEUR_ICONE_STRIP,
+        zoom_factor=ZOOM_FACTOR,
+        taille_ecran=(WIDTH, HEIGHT),
+    )
+    fond_accueil = accueil_assets.fond
+    icon_10x15_norm = accueil_assets.icon_10x15_norm
+    icon_10x15_select = accueil_assets.icon_10x15_select
+    icon_strip_norm = accueil_assets.icon_strip_norm
+    icon_strip_select = accueil_assets.icon_strip_select
+    print("✅ Interface chargée (AccueilAssets).")
+
+    session.abandon_confirm_until = 0.0
 
 
 def terminer_session_et_revenir_accueil(issue: str) -> None:
-    """Centralise la fin de session : écrit la metadata + reset du SessionState.
-
-    Args:
-        issue: "printed" | "abandoned" | "capture_failed" (consommé par stats.py).
-
-    Le caller reste responsable de `session.dernier_clic_time = maintenant`."""
-    ecrire_metadata_session(issue, len(session.photos_validees), time.time() - session.session_start_ts)
-    session.reset_pour_accueil()
+    """Wrapper module-local : délègue à core.session en passant le `session` global."""
+    _terminer_session_et_revenir_accueil(session, issue)
 
 
-def ecrire_metadata_session(issue: str, nb_photos: int, duree_s: float) -> None:
-    """Ajoute une ligne JSON dans data/sessions.jsonl.
+def _generer_montage_final(session: SessionState) -> str:
+    """Génère le montage HD adapté au mode courant et retourne son chemin."""
+    if session.mode_actuel == "strips":
+        return MontageGeneratorStrip.final(session.photos_validees, session.id_session_timestamp)
+    return MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp)
 
-    Format append-only : une ligne par session terminée. Facile à scanner
-    post-événement via `stats.py`. Non-bloquant — toute erreur est loggée
-    en warning."""
+
+def _destination_montage_imprime(session: SessionState) -> str:
+    """Chemin d'archive du montage final selon le mode courant."""
+    if session.mode_actuel == "strips":
+        # On pointe vers le sous-dossier et on ajoute le suffixe
+        return os.path.join(PATH_PRINT_STRIP, "READY_TO_PRINT", f"{PREFIXE_PRINT_STRIP}_{session.id_session_timestamp}_READY_TO_PRINT.jpg")
+    return os.path.join(PATH_PRINT_10X15, f"{PREFIXE_PRINT_10X15}_{session.id_session_timestamp}.jpg")
+
+
+def traiter_impression_session(session: SessionState) -> str:
+    """Génère, archive et imprime le montage final avec diagnostic précis."""
     try:
-        entry = {
-            "session_id": session.id_session_timestamp or None,
-            "mode": session.mode_actuel,
-            "issue": issue,          # "printed" | "retake" | "abandoned" | "capture_failed"
-            "nb_photos": nb_photos,
-            "duree_s": round(duree_s, 1),
-            "ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        }
-        chemin = os.path.join(PATH_DATA, "sessions.jsonl")
-        with open(chemin, "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        p = executer_avec_spinner(
+            lambda: _generer_montage_final(session),
+            TXT_PREPARATION_IMP,
+        )
+        destination = _destination_montage_imprime(session)
+
+        # Copie si nécessaire (Strips gèrent leur propre chemin)
+        if session.mode_actuel != "strips":
+            shutil.copy(p, destination)
+        else:
+            destination = p
+
+        if not ACTIVER_IMPRESSION:
+            log_info(f"Impression désactivée : montage enregistré ({destination})")
+            afficher_message_plein_ecran("Impression désactivée - montage enregistré", couleur=(255, 215, 0))
+            time.sleep(1.2)
+            return "print_disabled"
+
+        # --- MODIFICATION ANTI-FLASH ---
+        from ui import helpers
+        if hasattr(helpers, '_fond_impression_cache') and helpers._fond_impression_cache:
+            helpers.UIContext.screen.blit(helpers._fond_impression_cache, (0, 0))
+            pygame.display.flip()
+
+        # ===========================================================
+        # --- NOUVELLE VÉRIFICATION DE SÉCURITÉ (Saturations/État) ---
+        # ===========================================================
+        # On appelle is_ready qui renvoie désormais True ou False
+        if printer_mgr.is_ready(session.mode_actuel):
+            if printer_mgr.send(destination, session.mode_actuel):
+                jouer_son("success")
+                ecran_attente_impression()
+                return "printed"
+            else:
+                # En cas d'échec d'envoi, on affiche l'erreur stockée
+                ecran_erreur(printer_mgr.last_error or TXT_ERREUR_IMPRIMANTE)
+                return "print_failed"
+        else:
+            # ICI : Au lieu d'afficher "status" (qui est juste False),
+            # on affiche le message texte précis qu'on a mémorisé.
+            log_warning(f"Impression bloquée : {printer_mgr.last_error}")
+            ecran_erreur(printer_mgr.last_error) 
+            return "print_failed"
+        # ===========================================================
+
     except Exception as e:
-        log_warning(f"Écriture metadata session échouée : {e}")
+        log_critical(f"Erreur impression finale : {e}")
+        ecran_erreur(TXT_ERREUR_IMPRIMANTE)
+        return "print_failed"
 
+def demander_arret(signum=None, frame=None) -> None:
+    """Demande un arrêt propre de la boucle principale."""
+    global running
+    running = False
+    if signum is not None:
+        log_info(f"Signal d'arrêt reçu ({signum})")
 
-# --- CACHE DES SURFACES STATIQUES (Sprint 3.4) ---
-# Le bandeau noir semi-transparent est identique dans 3 états (ACCUEIL, VALIDATION, FIN).
-# Le construire une seule fois évite 30 allocations pygame.Surface / sec.
-BANDEAU_CACHE = pygame.Surface((WIDTH, BANDEAU_HAUTEUR))
-BANDEAU_CACHE.set_alpha(BANDEAU_ALPHA)
-BANDEAU_CACHE.fill(BANDEAU_COULEUR)
-
-
-def lister_images_slideshow() -> list[str]:
-    """Scan les dossiers d'impression (PATH_PRINT_10X15 + PATH_PRINT_STRIP) pour
-    alimenter le slideshow d'attente. Retourne les NB_MAX_IMAGES_SLIDESHOW fichiers
-    les plus récents, tri mtime décroissant."""
-    fichiers = []
-    for dossier in (PATH_PRINT_10X15, PATH_PRINT_STRIP):
-        try:
-            for nom in os.listdir(dossier):
-                chemin = os.path.join(dossier, nom)
-                if os.path.isfile(chemin) and nom.lower().endswith((".jpg", ".jpeg", ".png")):
-                    try:
-                        fichiers.append((os.path.getmtime(chemin), chemin))
-                    except OSError:
-                        continue
-        except FileNotFoundError:
-            continue
-    fichiers.sort(key=lambda x: x[0], reverse=True)  # plus récents d'abord
-    return [f[1] for f in fichiers[:NB_MAX_IMAGES_SLIDESHOW]]
-
-
-# --- ÉTAT DE SESSION (Sprint item 10) ---
-# Toutes les variables mutables encapsulées dans un dataclass.
-session = SessionState(last_activity_ts=time.time())
-
-# --- Contrôle de la boucle principale ---
-running = True
-
-# --- Slideshow d'attente (Sprint 6.2) ---
-# Subsystème indépendant : garde ses propres globals plutôt que d'alourdir SessionState.
-slideshow_images = []                 # liste de paths scannés à la demande
-slideshow_last_refresh = 0.0          # dernier scan disque (évite de scanner chaque frame)
-slideshow_cached_surface = None       # surface pygame de l'image courante
-slideshow_cached_for_idx = -1         # l'index pour lequel la surface est valide
-
-
-# --- CHARGEMENT DES SURFACES (cache boot-time via AccueilAssets) ---
-accueil_assets = AccueilAssets.charger(
-    bg_path=FILE_BG_ACCUEIL,
-    img_10x15_path=PATH_IMG_10X15,
-    img_strip_path=PATH_IMG_STRIP,
-    largeur_10x15=LARGEUR_ICONE_10X15,
-    largeur_strip=LARGEUR_ICONE_STRIP,
-    zoom_factor=ZOOM_FACTOR,
-    taille_ecran=(WIDTH, HEIGHT),
-)
-# Alias pour les render functions qui accèdent aux globals
-fond_accueil = accueil_assets.fond
-icon_10x15_norm = accueil_assets.icon_10x15_norm
-icon_10x15_select = accueil_assets.icon_10x15_select
-icon_strip_norm = accueil_assets.icon_strip_norm
-icon_strip_select = accueil_assets.icon_strip_select
-print("✅ Interface chargée (AccueilAssets).")
-
-# --- Splash de connexion caméra (Sprint 2.1) ---
-# Si `camera` a été obtenue à l'init top du fichier, le splash se ferme immédiatement.
-# Sinon on montre un écran visible avec retry jusqu'à TIMEOUT_SPLASH_CAMERA.
-splash_connexion_camera(camera_mgr)
-
-# Flag de fenêtre de confirmation d'abandon en état FIN (Sprint 2.8)
-session.abandon_confirm_until = 0.0
 
 
 # ========================================================================================================
@@ -493,7 +530,9 @@ def _render_accueil_slideshow(session: SessionState, idle_seconds: float) -> Non
 
     # Rafraîchit la liste tous les 30 s pour inclure les nouvelles impressions
     if time.time() - slideshow_last_refresh > 30.0 or not slideshow_images:
-        slideshow_images = lister_images_slideshow()
+        slideshow_images = lister_images_slideshow(
+            [PATH_PRINT_10X15, PATH_PRINT_STRIP], NB_MAX_IMAGES_SLIDESHOW,
+        )
         slideshow_last_refresh = time.time()
         slideshow_cached_for_idx = -1
 
@@ -537,7 +576,8 @@ def _render_accueil_normal(session: SessionState) -> None:
 
     L'icône sélectionnée (session.mode_actuel) est zoomée et pulse. Le bandeau
     indique le bouton à presser pour démarrer. Si l'espace disque est critique
-    (_disque_critique), on superpose un bandeau rouge d'alerte en haut."""
+    (disk_monitor.critique), on superpose un bandeau rouge d'alerte en haut.
+    Idem pour la température CPU (temp_monitor.critique), bandeau orange."""
     inserer_background(screen, fond_accueil)
     marge_centrale = MARGE_ACCUEIL
     axe_y_centre = (HEIGHT // 2) - 60
@@ -603,35 +643,70 @@ def _render_accueil_normal(session: SessionState) -> None:
     pos_y = (HEIGHT - BANDEAU_HAUTEUR // 2) - (msg_rendu.get_height() // 2)
     screen.blit(msg_rendu, (pos_x, pos_y))
 
-    # Indicateur disque critique (Sprint 5.6)
-    if _disque_critique and _disque_libre_mb is not None:
-        alerte_h = 40
+    # Indicateur disque critique (Sprint 5.6) + température CPU
+    alerte_h = 40
+    y_alerte = 0
+    if disk_monitor.critique and disk_monitor.libre_mb is not None:
         alerte = pygame.Surface((WIDTH, alerte_h), pygame.SRCALPHA)
         alerte.fill((180, 20, 20, 220))
-        screen.blit(alerte, (0, 0))
+        screen.blit(alerte, (0, y_alerte))
         txt_alerte = font_bandeau.render(
-            f"⚠ ESPACE DISQUE CRITIQUE — {_disque_libre_mb:.0f} Mo libres",
+            f"⚠ ESPACE DISQUE CRITIQUE — {disk_monitor.libre_mb:.0f} Mo libres",
             True, (255, 255, 255),
         )
         screen.blit(
             txt_alerte,
-            (WIDTH // 2 - txt_alerte.get_width() // 2, (alerte_h - txt_alerte.get_height()) // 2),
+            (WIDTH // 2 - txt_alerte.get_width() // 2,
+             y_alerte + (alerte_h - txt_alerte.get_height()) // 2),
+        )
+        y_alerte += alerte_h
+
+    if temp_monitor.critique and temp_monitor.temp_c is not None:
+        alerte = pygame.Surface((WIDTH, alerte_h), pygame.SRCALPHA)
+        alerte.fill((200, 120, 20, 220))
+        screen.blit(alerte, (0, y_alerte))
+        txt_alerte = font_bandeau.render(
+            f"🌡 CPU CHAUD — {temp_monitor.temp_c:.1f} °C",
+            True, (255, 255, 255),
+        )
+        screen.blit(
+            txt_alerte,
+            (WIDTH // 2 - txt_alerte.get_width() // 2,
+             y_alerte + (alerte_h - txt_alerte.get_height()) // 2),
         )
 
 
 def render_accueil(session: SessionState) -> None:
     """ACCUEIL : slideshow d'attente si idle > seuil ET mode_actuel is None,
-    sinon rendu normal (icônes + bandeau + alerte disque).
+    sinon rendu normal (icônes + bandeau + alertes disque/température).
 
     Dispatcher entre `_render_accueil_slideshow` et `_render_accueil_normal`.
-    Déclenche aussi le check disque périodique (rate-limité)."""
-    verifier_disque_periodiquement()
+    Déclenche aussi les checks monitoring périodiques (rate-limités)."""
+    disk_monitor.tick()
+    temp_monitor.tick()
 
     idle_seconds = time.time() - session.last_activity_ts
     if idle_seconds > DUREE_IDLE_SLIDESHOW and session.mode_actuel is None:
         _render_accueil_slideshow(session, idle_seconds)
     else:
         _render_accueil_normal(session)
+
+
+_masque_decompte_cache: dict[tuple[int, int], "pygame.Surface"] = {}  # type: ignore
+
+
+def _get_masque_decompte(bande_w: int, alpha: int) -> "pygame.Surface":  # type: ignore
+    """Retourne la bande noire latérale du décompte, mise en cache par (largeur, alpha).
+
+    Évite une allocation pygame.Surface par frame (≈60/s pendant le décompte)."""
+    key = (bande_w, alpha)
+    surf = _masque_decompte_cache.get(key)
+    if surf is None:
+        surf = pygame.Surface((bande_w, HEIGHT))
+        surf.fill((0, 0, 0))
+        surf.set_alpha(alpha)
+        _masque_decompte_cache[key] = surf
+    return surf
 
 
 def render_decompte(session: SessionState) -> None:
@@ -651,6 +726,15 @@ def render_decompte(session: SessionState) -> None:
         p_ratio = 0.66
         alpha_masque = 0
 
+    # Pré-calcul du masque latéral (indépendant de la frame)
+    masque_surf = None
+    bande_w = 0
+    if alpha_masque > 0:
+        largeur_visible = HEIGHT / p_ratio
+        bande_w = int((WIDTH - largeur_visible) // 2)
+        if bande_w > 0:
+            masque_surf = _get_masque_decompte(bande_w, alpha_masque)
+
     # Init id session si première photo
     if len(session.photos_validees) == 0:
         session.id_session_timestamp = datetime.now().strftime(FORMAT_TIMESTAMP)
@@ -659,22 +743,16 @@ def render_decompte(session: SessionState) -> None:
 
     # Boucle du décompte visuel
     for i in range(TEMPS_DECOMPTE, 0, -1):
-        jouer_son("beep")
+        jouer_son("beep_final" if i == 1 else "beep")
         t_start = time.time()
         while time.time() - t_start < 1:
             surf = get_canon_frame()
             if surf:
                 screen.blit(pygame.transform.scale(surf, (WIDTH, HEIGHT)), (0, 0))
 
-                if alpha_masque > 0:
-                    largeur_visible = HEIGHT / p_ratio
-                    bande_w = int((WIDTH - largeur_visible) // 2)
-                    if bande_w > 0:
-                        masque_surf = pygame.Surface((bande_w, HEIGHT))
-                        masque_surf.set_alpha(alpha_masque)
-                        masque_surf.fill((0, 0, 0))
-                        screen.blit(masque_surf, (0, 0))
-                        screen.blit(masque_surf, (WIDTH - bande_w, 0))
+                if masque_surf is not None:
+                    screen.blit(masque_surf, (0, 0))
+                    screen.blit(masque_surf, (WIDTH - bande_w, 0))
 
                 if session.mode_actuel == "strips":
                     txt_label = f"{TEXTE_PHOTO_COUNT} {len(session.photos_validees) + 1} / 3"
@@ -684,6 +762,15 @@ def render_decompte(session: SessionState) -> None:
                         screen, txt_label, font_boutons, COULEUR_DECOMPTE,
                         label_x, 30, shadow_alpha=180, offset=3,
                     )
+
+                    if config.STRIP_FILIGRANE_ENABLED:
+                        photos_restantes = 3 - len(session.photos_validees)
+                        fili_surf = font_filigrane.render(str(photos_restantes), True, COULEUR_DECOMPTE)
+                        fili_surf.set_alpha(config.STRIP_FILIGRANE_ALPHA)
+                        screen.blit(fili_surf, (
+                            WIDTH // 2 - fili_surf.get_width() // 2,
+                            HEIGHT // 2 - fili_surf.get_height() // 2,
+                        ))
 
                 num_surf = font_decompte.render(str(i), True, COULEUR_DECOMPTE)
                 screen.blit(num_surf, (WIDTH // 2 - num_surf.get_width() // 2, HEIGHT // 2 - num_surf.get_height() // 2))
@@ -803,65 +890,66 @@ def render_validation(session: SessionState) -> bool:
 
 
 def render_fin(session: SessionState) -> None:
-    """FIN : aperçu du montage final + bandeau 3 boutons + overlay confirmation abandon.
-
-    En mode strip, le montage est lu depuis `session.path_montage` (produit par
-    `MontageGeneratorStrip.preview()` à la transition VALIDATION→FIN). En mode
-    10x15, l'aperçu est chargé depuis PATH_TEMP/montage_prev.jpg."""
+    """FIN : aperçu du montage final + bandeau 3 boutons + overlay confirmation abandon."""
     inserer_background(screen, fond_accueil)
 
-    # Récupération de l'image
+    # 1. Récupération du chemin de l'image
     p_prev = session.path_montage if session.path_montage else os.path.join(
         getattr(config, 'PATH_TEMP', 'temp'), "montage_prev.jpg"
     )
 
-    if session.img_preview_cache is None:
-        if os.path.exists(p_prev):
-            try:
-                raw_m = pygame.image.load(p_prev).convert_alpha()
-                h_max_fin = 600 if session.mode_actuel == "strips" else 520
-                ratio_m = raw_m.get_width() / raw_m.get_height()
-                session.img_preview_cache = pygame.transform.smoothscale(raw_m, (int(h_max_fin * ratio_m), h_max_fin))
-            except Exception as e:
-                log_warning(f"Erreur chargement aperçu FIN : {e}")
+    # 2. Chargement et redimensionnement dynamique (respecte le ratio du fichier)
+    if session.img_preview_cache is None and os.path.exists(p_prev):
+        try:
+            raw_m = pygame.image.load(p_prev).convert_alpha()
+            ratio_reel = raw_m.get_width() / raw_m.get_height()
+            
+            h_max_fin = 650 if session.mode_actuel == "strips" else 520
+            w_ajustee = int(h_max_fin * ratio_reel)
 
-    # Application des décalages spécifiques
+            session.img_preview_cache = pygame.transform.smoothscale(raw_m, (w_ajustee, h_max_fin))
+        except Exception as e:
+            log_warning(f"Erreur chargement aperçu FIN : {e}")
+
+    # 3. Affichage de l'aperçu centré (Le cadre blanc est déjà dans l'image)
     if session.img_preview_cache:
-        if session.mode_actuel == "strips":
-            dec_y = getattr(config, 'DECALAGE_Y_MONTAGE_FINAL_STRIP', 0)
-        else:
-            dec_y = getattr(config, 'DECALAGE_Y_PREVISU_10X15', 0)
-
+        dec_y = getattr(config, 'DECALAGE_Y_MONTAGE_FINAL_STRIP', 0) if session.mode_actuel == "strips" else getattr(config, 'DECALAGE_Y_PREVISU_10X15', 0)
+        
         x_m = (WIDTH - session.img_preview_cache.get_width()) // 2
         y_m = (HEIGHT // 2 - session.img_preview_cache.get_height() // 2) + dec_y
-
-        pygame.draw.rect(screen, (255, 255, 255),
-                         (x_m - 10, y_m - 10, session.img_preview_cache.get_width() + 20, session.img_preview_cache.get_height() + 20))
+        
         screen.blit(session.img_preview_cache, (x_m, y_m))
 
-    # Bandeau de boutons
+    # 4. Bandeau de boutons
     y_b = HEIGHT - BANDEAU_HAUTEUR
     screen.blit(BANDEAU_CACHE, (0, y_b))
     y_t = y_b + (BANDEAU_HAUTEUR // 2) - (font_bandeau.get_height() // 2)
-    txt_g = config.TXT_BOUTON_REPRENDRE if session.mode_actuel == "10x15" else config.TXT_BOUTON_ACCUEIL
-    screen.blit(font_bandeau.render(txt_g, True, config.COULEUR_TEXTE_G), (80, y_t))
+    
+    # Bouton Reprendre (Gauche)
+    txt_g_surf = font_bandeau.render(config.TXT_BOUTON_REPRENDRE, True, config.COULEUR_TEXTE_G)
+    screen.blit(txt_g_surf, (80, y_t))
+    
+    # Bouton Imprimer (Milieu)
     t_m = font_bandeau.render(config.TXT_BOUTON_IMPRIMER, True, config.COULEUR_TEXTE_M)
     screen.blit(t_m, (WIDTH // 2 - t_m.get_width() // 2, y_t))
+    
+    # Bouton Supprimer (Droite)
     t_d = font_bandeau.render(config.TXT_BOUTON_SUPPRIMER, True, config.COULEUR_TEXTE_D)
     screen.blit(t_d, (WIDTH - 80 - t_d.get_width(), y_t))
 
-    # Overlay de confirmation d'abandon (Sprint 2.8)
-    if session.abandon_confirm_until:
-        if time.time() < session.abandon_confirm_until:
-            overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 170))
-            screen.blit(overlay, (0, 0))
-            t1 = font_titre.render(TXT_CONFIRM_ABANDON_1, True, (255, 120, 120))
-            screen.blit(t1, (WIDTH // 2 - t1.get_width() // 2, HEIGHT // 2 - 120))
-            t2 = font_bandeau.render(TXT_CONFIRM_ABANDON_2, True, (255, 255, 255))
-            screen.blit(t2, (WIDTH // 2 - t2.get_width() // 2, HEIGHT // 2 + 20))
-        else:
-            session.abandon_confirm_until = 0.0
+    # 5. Overlay de confirmation d'abandon
+    if session.abandon_confirm_until and time.time() < session.abandon_confirm_until:
+        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 170))
+        screen.blit(overlay, (0, 0))
+        
+        t1 = font_titre.render(config.TXT_CONFIRM_ABANDON_1, True, (255, 120, 120))
+        screen.blit(t1, (WIDTH // 2 - t1.get_width() // 2, HEIGHT // 2 - 120))
+        
+        t2 = font_bandeau.render(config.TXT_CONFIRM_ABANDON_2, True, (255, 255, 255))
+        screen.blit(t2, (WIDTH // 2 - t2.get_width() // 2, HEIGHT // 2 + 20))
+    elif session.abandon_confirm_until:
+        session.abandon_confirm_until = 0.0
 
 
 # ========================================================================================================
@@ -872,7 +960,7 @@ def render_fin(session: SessionState) -> None:
 # DECOMPTE n'a pas de handler car l'état est non-interactif (géré par render_decompte).
 # ========================================================================================================
 
-def handle_accueil_event(event: pygame.event.Event, session: SessionState,
+def handle_accueil_event(event: pygame.event.Event, session: SessionState,   # type: ignore
                          maintenant: float, ecoule: float) -> None:
     """ACCUEIL : G/D sélectionnent le mode, M valide et passe à DECOMPTE.
     Debounce via DELAI_SECURITE. Mute session en place."""
@@ -891,7 +979,7 @@ def handle_accueil_event(event: pygame.event.Event, session: SessionState,
         session.etat = Etat.DECOMPTE
 
 
-def _handle_validation_10x15(event: pygame.event.Event, session: SessionState,
+def _handle_validation_10x15(event: pygame.event.Event, session: SessionState,  # type: ignore
                              maintenant: float) -> None:
     """VALIDATION mode 10x15 : retake / imprimer / abandon (debounce géré par caller)."""
     if event.key == TOUCHE_GAUCHE:
@@ -913,24 +1001,9 @@ def _handle_validation_10x15(event: pygame.event.Event, session: SessionState,
     elif event.key == TOUCHE_MILIEU:
         # Imprimer direct + retour accueil
         print("LOG: [10x15] -> Impression directe et Accueil")
-        try:
-            p = executer_avec_spinner(
-                lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
-                TXT_PREPARATION_IMP,
-            )
-            dest = os.path.join(PATH_PRINT_10X15, f"{PREFIXE_PRINT_10X15}_{session.id_session_timestamp}.jpg")
-            shutil.copy(p, dest)
-            if printer_mgr.send(dest, "10x15"):
-                jouer_son("success")
-                ecran_attente_impression()
-            else:
-                ecran_erreur(TXT_ERREUR_IMPRIMANTE)
-        except Exception as e:
-            log_critical(f"Erreur 10x15 Print/Impression: {e}")
-            ecran_erreur(TXT_ERREUR_IMPRIMANTE)
-
+        issue = traiter_impression_session(session)
         pygame.event.clear()
-        terminer_session_et_revenir_accueil("printed")
+        terminer_session_et_revenir_accueil(issue)
         session.dernier_clic_time = maintenant
 
     elif event.key == TOUCHE_DROITE:
@@ -949,7 +1022,7 @@ def _handle_validation_10x15(event: pygame.event.Event, session: SessionState,
         session.dernier_clic_time = maintenant
 
 
-def _handle_validation_strips(event: pygame.event.Event, session: SessionState,
+def _handle_validation_strips(event: pygame.event.Event, session: SessionState,  # type: ignore
                               maintenant: float) -> None:
     """VALIDATION mode strips : retake dernière / valider-continue / annuler."""
     if event.key == TOUCHE_GAUCHE:
@@ -976,7 +1049,7 @@ def _handle_validation_strips(event: pygame.event.Event, session: SessionState,
         session.dernier_clic_time = maintenant
 
 
-def handle_validation_event(event: pygame.event.Event, session: SessionState,
+def handle_validation_event(event: pygame.event.Event, session: SessionState,  # type: ignore
                             maintenant: float, ecoule: float) -> None:
     """VALIDATION : dispatch selon mode (10x15 vs strips). Debounce 0.5 s."""
     if ecoule < 0.5:
@@ -987,7 +1060,7 @@ def handle_validation_event(event: pygame.event.Event, session: SessionState,
         _handle_validation_strips(event, session, maintenant)
 
 
-def handle_fin_event(event: pygame.event.Event, session: SessionState,
+def handle_fin_event(event: pygame.event.Event, session: SessionState,   # type: ignore
                      maintenant: float, ecoule: float) -> None:
     """FIN : recommencer / imprimer / abandon (double-press confirm). Debounce 1 s.
 
@@ -1029,37 +1102,9 @@ def handle_fin_event(event: pygame.event.Event, session: SessionState,
         # Imprimer : génère HD, copie en PRINT_<mode>, envoie CUPS
         print(f"LOG: [FIN] -> Impression ({session.mode_actuel})")
         session.abandon_confirm_until = 0.0
-        try:
-            if session.mode_actuel == "strips":
-                p = executer_avec_spinner(
-                    lambda: MontageGeneratorStrip.final(session.photos_validees, session.id_session_timestamp),
-                    TXT_PREPARATION_IMP,
-                )
-                destination = os.path.join(
-                    PATH_PRINT_STRIP, f"{PREFIXE_PRINT_STRIP}_{session.id_session_timestamp}.jpg",
-                )
-            else:
-                p = executer_avec_spinner(
-                    lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
-                    TXT_PREPARATION_IMP,
-                )
-                destination = os.path.join(
-                    PATH_PRINT_10X15, f"{PREFIXE_PRINT_10X15}_{session.id_session_timestamp}.jpg",
-                )
-
-            shutil.copy(p, destination)
-
-            if printer_mgr.send(destination, session.mode_actuel):
-                jouer_son("success")
-                ecran_attente_impression()
-            else:
-                ecran_erreur(TXT_ERREUR_IMPRIMANTE)
-        except Exception as e:
-            log_critical(f"Erreur Impression finale : {e}")
-            ecran_erreur(TXT_ERREUR_IMPRIMANTE)
-
+        issue = traiter_impression_session(session)
         pygame.event.clear()
-        terminer_session_et_revenir_accueil("printed")
+        terminer_session_et_revenir_accueil(issue)
         session.dernier_clic_time = maintenant
         return
 
@@ -1098,75 +1143,93 @@ def handle_fin_event(event: pygame.event.Event, session: SessionState,
 # --- BOUCLE PRINCIPALE --- ##############################################################################
 # ========================================================================================================
 
-while running:
-    screen.fill((10, 10, 10))    
-    
-    # ----------------------------------------------------------------------------------------------------
-    # --- 1 ------ GESTION DES ÉVÉNEMENTS (TOUCHES) --- ##################################################
-    # ----------------------------------------------------------------------------------------------------
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-            
-        # ON VÉRIFIE QUE C'EST UNE TOUCHE CLAVIER
-        if event.type == pygame.KEYDOWN:
-            maintenant = time.time()
-            ecoule = maintenant - session.dernier_clic_time
+def main() -> None:
+    """Point d'entrée runtime. Importer ce module ne lance plus le kiosque."""
+    signal.signal(signal.SIGTERM, demander_arret)
+    signal.signal(signal.SIGINT, demander_arret)
+    _initialiser_runtime()
 
-            # Sprint 6.2 : si le slideshow était actif (idle > seuil en ACCUEIL), la 1re
-            # touche ne déclenche aucune action — elle réveille juste l'interface.
-            slideshow_etait_actif = (
-                session.etat is Etat.ACCUEIL
-                and session.mode_actuel is None
-                and (maintenant - session.last_activity_ts) > DUREE_IDLE_SLIDESHOW
-            )
-            session.last_activity_ts = maintenant
-            if slideshow_etait_actif:
+    try:
+        # --- Splash de connexion caméra (Sprint 2.1) ---
+        # Si `camera` a été obtenue à l'init top du fichier, le splash se ferme immédiatement.
+        # Sinon on montre un écran visible avec retry jusqu'à TIMEOUT_SPLASH_CAMERA.
+        splash_connexion_camera(camera_mgr)
+
+        while running:
+            screen.fill((10, 10, 10))
+
+            # --------------------------------------------------------------------------------------------
+            # --- 1 ------ GESTION DES ÉVÉNEMENTS (TOUCHES) --- ##########################################
+            # --------------------------------------------------------------------------------------------
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    demander_arret()
+
+                # ON VÉRIFIE QUE C'EST UNE TOUCHE CLAVIER
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        demander_arret()
+                        continue
+
+                    maintenant = time.time()
+                    ecoule = maintenant - session.dernier_clic_time
+
+                    # Sprint 6.2 : si le slideshow était actif (idle > seuil en ACCUEIL), la 1re
+                    # touche ne déclenche aucune action — elle réveille juste l'interface.
+                    slideshow_etait_actif = (
+                        session.etat is Etat.ACCUEIL
+                        and session.mode_actuel is None
+                        and (maintenant - session.last_activity_ts) > DUREE_IDLE_SLIDESHOW
+                    )
+                    session.last_activity_ts = maintenant
+                    if slideshow_etait_actif:
+                        continue
+
+                    # Dispatch par état vers le handler approprié
+                    if session.etat is Etat.ACCUEIL:
+                        handle_accueil_event(event, session, maintenant, ecoule)
+                    elif session.etat is Etat.VALIDATION:
+                        handle_validation_event(event, session, maintenant, ecoule)
+                    elif session.etat is Etat.FIN:
+                        handle_fin_event(event, session, maintenant, ecoule)
+
+            # --------------------------------------------------------------------------------------------
+            # --- 2 ------ DESSIN A L'ECRAN --- ##########################################################
+            # --------------------------------------------------------------------------------------------
+
+            if session.etat is Etat.ACCUEIL:
+                render_accueil(session)
+
+            elif session.etat is Etat.DECOMPTE:
+                render_decompte(session)
                 continue
 
-            # Dispatch par état vers le handler approprié
-            if session.etat is Etat.ACCUEIL:
-                handle_accueil_event(event, session, maintenant, ecoule)
             elif session.etat is Etat.VALIDATION:
-                handle_validation_event(event, session, maintenant, ecoule)
+                if render_validation(session):
+                    continue  # auto-advance burst → on saute au prochain tour
+
             elif session.etat is Etat.FIN:
-                handle_fin_event(event, session, maintenant, ecoule)
+                render_fin(session)
+
+            # --- Synchronisation des LEDs Arduino avec l'état courant ---
+            # Les messages série ne sont émis que lors des transitions (mémorisation interne),
+            # donc l'appel est quasi-gratuit à 30 FPS.
+            if arduino_ctrl is not None:
+                arduino_ctrl.tick(
+                    etat_name=session.etat.value,
+                    mode_actuel=session.mode_actuel,
+                    abandon_armed=(session.abandon_confirm_until and time.time() < session.abandon_confirm_until),
+                )
+
+            pygame.display.flip()
+            clock.tick(30)
+    finally:
+        if arduino_ctrl is not None:
+            arduino_ctrl.close()
+        if camera_mgr is not None:
+            camera_mgr.close()
+        pygame.quit()
 
 
-    # ----------------------------------------------------------------------------------------------------
-    # ----------------------------------------------------------------------------------------------------
-    # ----------------------------------------------------------------------------------------------------
-    # ----------------------------------------------------------------------------------------------------
-    # --- 2 ------ DESSIN A L'ECRAN --- ##################################################################
-    # ----------------------------------------------------------------------------------------------------
-
-    if session.etat is Etat.ACCUEIL:
-        render_accueil(session)
-
-    elif session.etat is Etat.DECOMPTE:
-        render_decompte(session)
-        continue
-
-
-    elif session.etat is Etat.VALIDATION:
-        if render_validation(session):
-            continue  # auto-advance burst → on saute au prochain tour
-
-    elif session.etat is Etat.FIN:
-        render_fin(session)
-
-    # --- Synchronisation des LEDs Arduino avec l'état courant ---
-    # Les messages série ne sont émis que lors des transitions (mémorisation interne),
-    # donc l'appel est quasi-gratuit à 30 FPS.
-    arduino_ctrl.tick(
-        etat_name=session.etat.value,
-        mode_actuel=session.mode_actuel,
-        abandon_armed=(session.abandon_confirm_until and time.time() < session.abandon_confirm_until),
-    )
-
-    pygame.display.flip()
-    clock.tick(30)
-
-arduino_ctrl.close()
-pygame.quit()
-
+if __name__ == "__main__":
+    main()

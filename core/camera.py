@@ -14,14 +14,32 @@ import os
 import subprocess
 import threading
 import time
-from typing import Optional
+from typing import Any, Optional
 
-import cv2
-import gphoto2 as gp
-import numpy as np
-import pygame
+try:
+    import cv2
+except ImportError:
+    cv2 = None  # type: ignore[assignment]
+
+try:
+    import gphoto2 as gp
+except ImportError:
+    gp = None  # type: ignore[assignment]
+
+try:
+    import numpy as np
+except ImportError:
+    np = None  # type: ignore[assignment]
+
+try:
+    import pygame
+except ImportError:
+    pygame = None  # type: ignore[assignment]
 
 from core.logger import log_info, log_warning, log_critical
+
+
+_GPHOTO2_ERROR = gp.GPhoto2Error if gp is not None else Exception
 
 
 class CameraManager:
@@ -31,8 +49,9 @@ class CameraManager:
 
     def __init__(self) -> None:
         self._lock: threading.Lock = threading.Lock()
-        self._cam: Optional[gp.Camera] = None
+        self._cam: Optional[Any] = None
         self._last_init_attempt: float = 0.0
+        self._deps_warning_logged: bool = False
 
     # ---- API publique ----
     @property
@@ -40,7 +59,7 @@ class CameraManager:
         return self._cam is not None
 
     @property
-    def raw_camera(self) -> Optional[gp.Camera]:
+    def raw_camera(self) -> Optional[Any]:
         """Accès bas niveau à l'objet gphoto2.Camera (pour compat avec code legacy)."""
         return self._cam
 
@@ -54,9 +73,12 @@ class CameraManager:
         with self._lock:
             self._set_liveview_unlocked(state)
 
-    def get_preview_frame(self) -> Optional[pygame.Surface]:
+    def get_preview_frame(self) -> Optional[Any]:
         """Retourne une pygame.Surface du preview courant, ou None.
         Applique rate-limit sur les tentatives de reconnexion (évite de marteler gphoto2)."""
+        if cv2 is None or np is None or pygame is None:
+            self._log_deps_absentes()
+            return None
         with self._lock:
             # Si pas de caméra : tentative de reconnexion discrète (rate-limitée)
             if self._cam is None:
@@ -79,7 +101,7 @@ class CameraManager:
                     frame = cv2.flip(frame, 1)
                     frame = np.rot90(frame)
                     return pygame.surfarray.make_surface(frame)
-            except gp.GPhoto2Error:
+            except _GPHOTO2_ERROR:
                 # perte gphoto2 → on force la reconnexion au prochain appel
                 self._cam = None
             except Exception:
@@ -135,8 +157,27 @@ class CameraManager:
 
             return capture_ok and os.path.exists(chemin_complet)
 
+    def close(self) -> None:
+        """Ferme proprement la session caméra si elle est ouverte."""
+        with self._lock:
+            if not self._cam:
+                return
+            try:
+                self._set_liveview_unlocked(0)
+                self._cam.exit()
+                log_info("Session caméra fermée proprement.")
+            except Exception as e:
+                log_warning(f"Fermeture caméra : {e}")
+            finally:
+                self._cam = None
+
     # ---- Privés (supposent lock tenu) ----
     def _init_unlocked(self) -> bool:
+        if gp is None:
+            self._log_deps_absentes()
+            self._cam = None
+            return False
+
         # Nettoyage des processus système qui bloquent souvent l'USB sur Linux
         subprocess.run(["pkill", "-f", "gvfs-gphoto2-volume-monitor"], capture_output=True)
         subprocess.run(["pkill", "-f", "gphoto2"], capture_output=True)
@@ -161,3 +202,23 @@ class CameraManager:
             self._cam.set_config(cfg)
         except Exception as e:
             log_warning(f"Impossible de régler le LiveView : {e}")
+
+    def _log_deps_absentes(self) -> None:
+        """Loggue une seule fois les dépendances optionnelles caméra manquantes."""
+        if self._deps_warning_logged:
+            return
+        manquantes = []
+        if gp is None:
+            manquantes.append("gphoto2")
+        if cv2 is None:
+            manquantes.append("cv2")
+        if np is None:
+            manquantes.append("numpy")
+        if pygame is None:
+            manquantes.append("pygame")
+        if manquantes:
+            log_warning(
+                "CameraManager désactivé : dépendance(s) optionnelle(s) absente(s) "
+                f"({', '.join(manquantes)})"
+            )
+        self._deps_warning_logged = True

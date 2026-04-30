@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block titre %}Réglages · Photobooth{% endblock %}
+{% block contenu %}
+<h1>Réglages</h1>
+<p class="muted">
+  Surcharges écrites dans <code>{{ overrides_path }}</code>. Les modifications
+  prennent effet au prochain redémarrage du service kiosque.
+</p>
+
+<form class="form form--settings" method="post" action="{{ url_for('settings.save') }}">
+  <table class="reglages">
+    <thead>
+      <tr>
+        <th>Clé</th>
+        <th>Type</th>
+        <th>Valeur</th>
+        <th>État</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in reglages %}
+        <tr>
+          <td><code>{{ r.cle }}</code></td>
+          <td>{{ r.type_nom }}</td>
+          <td>
+            {% if r.type_nom == 'bool' %}
+              <input type="checkbox" name="{{ r.cle }}" {% if r.valeur_actuelle %}checked{% endif %}>
+            {% elif r.type_nom == 'int' %}
+              <input type="number" step="1" name="{{ r.cle }}" value="{{ r.valeur_actuelle }}">
+            {% elif r.type_nom == 'float' %}
+              <input type="number" step="0.1" name="{{ r.cle }}" value="{{ r.valeur_actuelle }}">
+            {% else %}
+              <input type="text" name="{{ r.cle }}" value="{{ r.valeur_actuelle }}">
+            {% endif %}
+          </td>
+          <td>
+            {% if r.overridee %}
+              <span class="badge badge--actif">surchargée</span>
+            {% else %}
+              <span class="muted">défaut</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="actions">
+    <button type="submit" class="btn btn--primary">Enregistrer</button>
+  </div>
+</form>
+
+<form class="form" method="post" action="{{ url_for('settings.reset') }}" onsubmit="return confirm('Supprimer toutes les surcharges et revenir aux valeurs par défaut ?');">
+  <button type="submit" class="btn btn--danger">Réinitialiser tous les réglages</button>
+</form>
+{% endblock %}

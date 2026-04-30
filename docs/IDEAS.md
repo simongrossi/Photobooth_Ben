@@ -59,7 +59,7 @@ Une idée passe en roadmap uniquement quand :
 - [ ] **Auto-correction exposition** (CLAHE) — `cv2.createCLAHE` ou PIL
 - [ ] **Remplacement de fond** (greenscreen) — nécessite tissu vert + OpenCV color keying
 - [ ] **Effet miroir / kaléidoscope** pour mode fun
-- [ ] **Grain / texture film** ajouté à la passe finale
+- [x] **Grain / texture film** ajouté à la passe finale — livré, voir [CHANGELOG.md](CHANGELOG.md) et [CONFIG.md](CONFIG.md#grain-de-pellicule-montages-finaux)
 - [ ] **Colorisation sélective** (N&B sauf rouge, par exemple)
 - [ ] **Cartoonify / paint effect** via ImageMagick (`convert -paint 4` ou `-charcoal`)
 
@@ -118,11 +118,13 @@ Une idée passe en roadmap uniquement quand :
 
 ## Features méta / admin
 
-- [ ] **Remote admin dashboard** — webapp FastAPI sur le réseau local : stats temps réel, toggle imprimante on/off, déclencher maintenance
+- ✅ **Remote admin dashboard** — livré en v1 (Flask, pas FastAPI — voir [ADMIN.md](ADMIN.md)) : dashboard stats, galerie, gestion templates, réglages whitelistés. Reste à faire : toggle imprimante on/off, maintenance (ex: purge `data/temp/`).
+- ✅ **Web-based config editor** — livré en v1 via `/settings/` et `data/config_overrides.json` (whitelist de 18 clés). Toute clé hors whitelist (résolutions, géométrie) reste figée dans le code par sécurité.
 - [ ] **Mode self-service multi-stations** — 2 photobooths en parallèle qui partagent stockage + imprimante
-- [ ] **Config live reload** — file watcher sur `config.py` ; modifications appliquées sans restart
-- [ ] **Web-based config editor** — formulaire web qui édite `config.py` (remplace édition texte manuelle)
-- [ ] **API d'export stats** — endpoint JSON pour feed dans Grafana ou similaire
+- [ ] **Config live reload** — file watcher sur `data/config_overrides.json` ; modifications appliquées sans `systemctl restart photobooth.service`
+- [ ] **API d'export stats** — endpoint JSON dans l'admin pour feed dans Grafana ou similaire (les données sont déjà là côté admin, manque la route `/api/stats.json`)
+- [ ] **Configuration WiFi depuis l'admin** — edit `wpa_supplicant.conf` ou `nmcli` via sudoers ciblé. Reporté en v2 de l'admin (surface d'attaque à cadrer).
+- [ ] **Partage post-impression** (QR, email, cloud) — reporté en v2 de l'admin ; nécessite choix de backend (Nextcloud ? SMTP ? S3 ?).
 - [ ] **Plugins system** à la PIBOOTH — permettre des extensions sans toucher au core
 
 ---

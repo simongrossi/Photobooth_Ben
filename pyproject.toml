@@ -24,17 +24,18 @@ addopts = [
 ]
 
 [tool.coverage.run]
-# On mesure seulement les modules métier (core/) + les scripts standalone.
+# On mesure seulement les modules métier (core/, web/) + les scripts standalone.
 # Photobooth_start.py demande pygame/gphoto2 — pas couvrable en CI sans runtime.
-source = ["core", "stats", "status"]
+source = ["core", "web", "stats", "status"]
 omit = [
     "*/test_*.py",
     "*/__pycache__/*",
 ]
 
 [tool.coverage.report]
-# Seuil minimum — actuellement 30% (monter à 50+ après ajout tests status/stats).
-fail_under = 30
+# Seuil minimum : 75 %. core/camera.py (0 %) pèse lourd car cv2/gphoto2 sont
+# injoignables en CI — le reste des modules mesurés dépasse 87 %.
+fail_under = 75
 show_missing = true
 skip_covered = false
 exclude_lines = [

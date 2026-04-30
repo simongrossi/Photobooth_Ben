@@ -155,13 +155,115 @@ class TestMontageGeneratorStrip:
     def test_final_dimensions_600x1800(self, isoler_paths, trois_photos):
         path = MontageGeneratorStrip.final(trois_photos, "test_session")
         with Image.open(path) as img:
-            assert img.size == (600, 1800)
+            assert img.size == (1800, 1200)
 
     def test_final_session_id_dans_nom(self, isoler_paths, trois_photos):
         id_sess = "2026-04-20_22h10_01"
         path = MontageGeneratorStrip.final(trois_photos, id_sess)
         assert id_sess in path
         assert os.path.exists(path)
+
+
+# --- Tests watermark ---
+
+class TestWatermark:
+    def test_disabled_par_defaut_no_op(self, isoler_paths, photo_factice, monkeypatch):
+        """WATERMARK_ENABLED=False → pas d'altération du canvas final."""
+        monkeypatch.setattr(montage, "WATERMARK_ENABLED", False)
+        path = MontageGenerator10x15.final([photo_factice], "sans_wm")
+        assert os.path.exists(path)
+        with Image.open(path) as img:
+            assert img.size == (1800, 1200)
+
+    def test_enabled_altere_canvas_bottom_right(self, isoler_paths, photo_factice, monkeypatch):
+        """WATERMARK_ENABLED=True + texte non-vide → pixels différents en bas à droite."""
+        monkeypatch.setattr(montage, "WATERMARK_ENABLED", False)
+        path_sans = MontageGenerator10x15.final([photo_factice], "sans")
+        with Image.open(path_sans) as img_sans:
+            img_sans_copy = img_sans.copy()
+
+        monkeypatch.setattr(montage, "WATERMARK_ENABLED", True)
+        monkeypatch.setattr(montage, "WATERMARK_TEXT", "TEST WATERMARK")
+        monkeypatch.setattr(montage, "WATERMARK_COULEUR", (255, 0, 0))  # rouge, visible sur blanc
+        path_avec = MontageGenerator10x15.final([photo_factice], "avec")
+        with Image.open(path_avec) as img_avec:
+            # Zone bas-droite : doit avoir au moins un pixel différent
+            region_w, region_h = 300, 50
+            box = (1800 - region_w, 1200 - region_h, 1800, 1200)
+            crop_sans = img_sans_copy.crop(box)
+            crop_avec = img_avec.crop(box)
+            assert list(crop_sans.getdata()) != list(crop_avec.getdata())
+
+    def test_texte_vide_equivaut_disabled(self, isoler_paths, photo_factice, monkeypatch):
+        """WATERMARK_TEXT='' est un no-op même si ENABLED=True."""
+        monkeypatch.setattr(montage, "WATERMARK_ENABLED", True)
+        monkeypatch.setattr(montage, "WATERMARK_TEXT", "")
+        path = MontageGenerator10x15.final([photo_factice], "vide")
+        assert os.path.exists(path)
+
+    def test_strip_accepte_watermark(self, isoler_paths, trois_photos, monkeypatch):
+        """Le watermark s'applique aussi sur les strips sans crash."""
+        monkeypatch.setattr(montage, "WATERMARK_ENABLED", True)
+        monkeypatch.setattr(montage, "WATERMARK_TEXT", "Strip WM")
+        path = MontageGeneratorStrip.final(trois_photos, "strip_wm")
+        with Image.open(path) as img:
+            assert img.size == (1800, 1200)
+
+
+# --- Tests grain de pellicule ---
+
+class TestGrain:
+    def test_disabled_par_defaut_no_op(self, isoler_paths, photo_factice, monkeypatch):
+        """GRAIN_ENABLED=False → sortie identique à une génération sans grain."""
+        monkeypatch.setattr(montage, "GRAIN_ENABLED", False)
+        path = MontageGenerator10x15.final([photo_factice], "sans_grain")
+        assert os.path.exists(path)
+        with Image.open(path) as img:
+            assert img.size == (1800, 1200)
+
+    def test_enabled_altere_canvas(self, isoler_paths, photo_factice, monkeypatch):
+        """GRAIN_ENABLED=True → les pixels diffèrent (bruit gaussien superposé)."""
+        monkeypatch.setattr(montage, "GRAIN_ENABLED", False)
+        path_sans = MontageGenerator10x15.final([photo_factice], "sans")
+        with Image.open(path_sans) as img_sans:
+            img_sans_copy = img_sans.copy()
+
+        monkeypatch.setattr(montage, "GRAIN_ENABLED", True)
+        monkeypatch.setattr(montage, "GRAIN_INTENSITE", 20)
+        path_avec = MontageGenerator10x15.final([photo_factice], "avec")
+        with Image.open(path_avec) as img_avec:
+            # Le bruit est global : au moins un pixel doit différer
+            assert list(img_sans_copy.getdata()) != list(img_avec.getdata())
+
+    def test_intensite_zero_equivaut_disabled(self, isoler_paths, photo_factice, monkeypatch):
+        """GRAIN_INTENSITE=0 est un no-op même si ENABLED=True."""
+        monkeypatch.setattr(montage, "GRAIN_ENABLED", True)
+        monkeypatch.setattr(montage, "GRAIN_INTENSITE", 0)
+        path = MontageGenerator10x15.final([photo_factice], "grain_nul")
+        assert os.path.exists(path)
+        with Image.open(path) as img:
+            assert img.size == (1800, 1200)
+
+    def test_strip_accepte_grain(self, isoler_paths, trois_photos, monkeypatch):
+        """Le grain s'applique aussi sur les strips sans crash."""
+        monkeypatch.setattr(montage, "GRAIN_ENABLED", True)
+        monkeypatch.setattr(montage, "GRAIN_INTENSITE", 15)
+        path = MontageGeneratorStrip.final(trois_photos, "strip_grain")
+        with Image.open(path) as img:
+            assert img.size == (1800, 1200)
+
+    def test_preview_jamais_altere_par_grain(self, isoler_paths, photo_factice, monkeypatch):
+        """Le grain ne s'applique qu'au FINAL, pas à la preview écran."""
+        monkeypatch.setattr(montage, "GRAIN_ENABLED", False)
+        path_sans = MontageGenerator10x15.preview([photo_factice])
+        with Image.open(path_sans) as img_sans:
+            pixels_sans = list(img_sans.getdata())
+
+        monkeypatch.setattr(montage, "GRAIN_ENABLED", True)
+        monkeypatch.setattr(montage, "GRAIN_INTENSITE", 50)
+        path_avec = MontageGenerator10x15.preview([photo_factice])
+        with Image.open(path_avec) as img_avec:
+            assert list(img_avec.getdata()) == pixels_sans
 
 
 # --- Test de régression : dimensions config = dimensions générées ---
@@ -176,4 +278,4 @@ class TestCoherenceConfig:
     def test_dimensions_strip_final_correspondent_config(self, isoler_paths, trois_photos):
         path = MontageGeneratorStrip.final(trois_photos, "cohérence")
         with Image.open(path) as img:
-            assert img.size == MontageGeneratorStrip.FINAL_SIZE
+            assert img.size == (1800, 1200)

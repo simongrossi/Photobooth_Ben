@@ -5,7 +5,211 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
 ---
 
-## `WIP` — Boîtier Arduino : 3 boutons-poussoirs à LED intégrée
+## `WIP` — Interface admin web optionnelle (v1)
+
+### Added
+- Module `web/` autonome : app Flask + Jinja2 + HTMX, service systemd séparé
+  (`deploy/photobooth-admin.service`, port 8080, Basic Auth via
+  `PHOTOBOOTH_ADMIN_PASS`). Communication avec le kiosque **uniquement** par
+  filesystem — zéro import de `Photobooth_start` ou `ui/*`.
+- 4 blueprints :
+  - `/dashboard/` — sessions (réemploie `stats.calculer_stats`), disque + temp
+    (réemploie `core/monitoring.DiskMonitor/TempMonitor`), histogramme horaire
+  - `/galerie/` — parcours `data/print/` (10×15 + strips), miniatures PIL à la
+    volée, pagination, protection path-traversal
+  - `/templates/` — upload PNG → `assets/overlays/`, activation exclusive par
+    mode (copie vers `OVERLAY_10X15`/`OVERLAY_STRIPS`), suppression guardée
+  - `/settings/` — éditeur de `data/config_overrides.json` (whitelist stricte)
+- `config.py::_appliquer_overrides()` + `_CONFIG_OVERRIDES_WHITELIST` : 18 clés
+  surchargeables sans éditer le code (timings, imprimantes, slideshow,
+  watermark, grain, Arduino, seuils disque/temp). Les résolutions et géométrie
+  de montage restent figées. Typage strict (bool ≠ int).
+- `web/db.py` : SQLite stdlib (`data/admin.db`) pour métadonnées de templates
+  (id, nom, type, fichier, actif, uploaded_at). Source de vérité des fichiers
+  reste `assets/overlays/`.
+- `deploy/install-admin.sh` : installeur idempotent (apt/pip Flask, génère un
+  mot de passe aléatoire dans `/etc/photobooth-admin.env` chmod 640, crée le
+  service systemd). Indépendant de `deploy/install.sh`.
+- `docs/ADMIN.md` : architecture, installation, variables d'env, liste des
+  réglages whitelistés, sécurité.
+- Tests : `test_web_app.py`, `test_web_gallery.py`, `test_web_templates.py`,
+  `test_web_settings.py`, `test_config_overrides.py` — 32 tests couvrant auth,
+  routing, upload/validation, activation exclusive, path-traversal, fusion
+  d'overrides (whitelist, typage strict, JSON corrompu).
+
+### Changed
+- `.github/workflows/ci.yml` : ajoute `flask` aux deps CI (pas de `pygame` /
+  `gphoto2` / `cv2` / `pyserial` toujours).
+- `pyproject.toml` : `[tool.coverage.run] source` inclut `web/`.
+- `CLAUDE.md`, `docs/ARCHITECTURE.md` : graphe de dépendances mis à jour pour
+  refléter l'isolation de `web/*`.
+- `docs/CONFIG.md` : mention des overrides et de leur whitelist.
+
+### Stats
+- Tests : 147 → **179** (+32)
+- Coverage : `web/*` entre 77 % et 100 %, global 90,74 % (seuil 75 %)
+- Zéro régression sur la suite existante (`ruff check .` propre)
+
+### Sécurité
+- Fail closed : sans `PHOTOBOOTH_ADMIN_PASS`, toutes les routes répondent 503.
+- `hmac.compare_digest` pour la comparaison mdp.
+- Upload PNG uniquement + `Image.verify()` pour rejeter les fichiers malformés.
+- Path-traversal bloqué via `os.path.realpath` avec garde de racine.
+
+---
+
+## `WIP` — Perf court terme : décompte + spinner + profiling Pi
+
+### Added
+- `Photobooth_start.py::_get_masque_decompte(bande_w, alpha)` + cache module
+  `_masque_decompte_cache` : la bande noire latérale du DECOMPTE (mode strips)
+  est allouée une seule fois par (largeur, alpha) au lieu d'une `pygame.Surface`
+  par frame
+- `config.py::SPINNER_FPS=30` : framerate dédié au rafraîchissement du spinner
+  (`executer_avec_spinner`, `ecran_attente_impression`), distinct de `FPS`
+- `bench_spinner.py` : microbench autonome du `LoaderAnimation` (FPS moyen,
+  ms/frame p50/p95/p99), override `--points` pour comparer avant/après optim,
+  fallback SDL dummy si pas de display
+- `docs/PROFILING.md` : protocole de profiling sur Pi (cProfile, tracemalloc,
+  microbench spinner, checklist post-optim, baselines attendues)
+
+### Changed
+- `ui/helpers.py::LoaderAnimation` pré-rend `ANIM_NB_POINTS` sprites au boot
+  (couleur + alpha figés par index) : la boucle de rendu ne fait plus qu'un
+  `blit` par point au lieu de `fill` + `draw.circle` + `blit` → allocations
+  par frame divisées par `ANIM_NB_POINTS`
+- `config.py::ANIM_NB_POINTS` : 300 → **120** par défaut (suffisant visuellement,
+  ~2,5× moins de blits/frame)
+- `docs/CONFIG.md` : nouvelles entrées `ANIM_NB_POINTS` et `SPINNER_FPS` dans
+  le tableau animation
+- `docs/DEVELOPMENT.md` : pointeur vers `docs/PROFILING.md` + `bench_spinner.py`
+  dans l'arbo
+
+---
+
+## `WIP` — Priorités stabilité exploitation
+
+### Added
+- `Photobooth_start.py::main()` : le module est importable sans lancer pygame,
+  caméra ni Arduino ; le runtime n'est initialisé qu'en exécution directe
+- Arrêt propre via Échap, SIGTERM et SIGINT, avec fermeture caméra/Arduino/Pygame
+  dans un `finally`
+- `core/camera.py::CameraManager.close()` pour libérer explicitement la session Canon
+- Tests `test_camera.py` : 9 tests CameraManager avec mocks gphoto2/cv2/numpy/pygame
+- Tests d'intégration : import `Photobooth_start.py` sans runtime + caméra sans dépendances
+
+### Changed
+- `ACTIVER_IMPRESSION=False` devient un vrai mode sans papier : montage archivé
+  dans `data/print/`, aucun job CUPS envoyé, metadata `issue=print_disabled`
+- Échec CUPS/imprimante : metadata `issue=print_failed` au lieu de `printed`
+- `stats.py` affiche et exporte `print_failed` / `print_disabled`
+- `core/camera.py` tolère l'absence de `gphoto2`, `cv2`, `numpy` ou `pygame`
+
+### Stats
+- Tests : 136 → **147** (+11)
+- Coverage : 79,9 % → **92,8 %** ; `core/camera.py` : 0 % → **90 %**
+
+---
+
+## `WIP` — Grain de pellicule sur montages finaux
+
+### Added
+- `core/montage.py::MontageBase._appliquer_grain()` : bruit gaussien superposé
+  via `Image.effect_noise` + `Image.blend`, niveaux de gris projetés sur les
+  3 canaux (pas de dérive de teinte)
+- `config.py` : `GRAIN_ENABLED=False`, `GRAIN_INTENSITE=8` (% mélange),
+  `GRAIN_SIGMA=30.0`, avec validation assert au chargement
+- Tests : 5 nouveaux tests `TestGrain` (disabled no-op, enabled altère canvas,
+  intensité 0 ≡ disabled, strip accepte grain, preview jamais altérée)
+- `docs/CONFIG.md` : section « Grain de pellicule » à côté du watermark
+
+### Changed
+- `MontageGenerator10x15.final()` et `MontageGeneratorStrip.final()` appellent
+  `_appliquer_grain()` après le watermark (le grain couvre aussi le texte)
+
+### Pourquoi
+- Effet argentique discret demandé dans [IDEAS.md](IDEAS.md#effets-image--expérimentaux),
+  activable selon l'ambiance de l'événement (mariage rétro, etc.)
+- Isolé au rendu final : pas d'impact CPU sur les previews pendant la session,
+  pas de régression visible quand désactivé
+
+### Stats
+- Tests : 131 → **136** (+5)
+- Coverage : 80.6 % → **80.9 %** ; `core/montage.py` : 88 % → **93 %**
+
+---
+
+## `WIP` — Watchdog systemd + mode kiosque
+
+### Added
+- `deploy/photobooth.service` : unit systemd templatisé (`@USER@`, `@HOME@`)
+  avec watchdog (`Restart=on-failure`, `StartLimitBurst=5/60s`, `MemoryMax=1G`,
+  `TimeoutStopSec=30`)
+- `deploy/kiosk.sh` : wrapper de démarrage (xset off, unclutter, export
+  `PHOTOBOOTH_KIOSK=1`, venv, exec python)
+- `deploy/install.sh` : installeur idempotent (apt install unclutter, sed
+  substitution placeholders, systemctl enable)
+- `deploy/uninstall.sh` : retrait propre du service
+- `deploy/README.md` : guide complet d'installation + dépannage
+
+### Changed
+- `Photobooth_start.py` : `pygame.display.set_mode()` prend `FULLSCREEN | NOFRAME`
+  si `config.KIOSK_FULLSCREEN=True`, curseur caché en kiosque
+- `config.py` : `KIOSK_FULLSCREEN = os.environ.get("PHOTOBOOTH_KIOSK") == "1"`
+  — auto-activation depuis l'env posé par `kiosk.sh`
+- `docs/DEPLOYMENT.md` : sections 8 (systemd) et 9 (kiosque) remplacées par
+  des pointeurs vers `deploy/`, plus de heredoc inline
+- `docs/RUNBOOK.md` : commande de rearm watchdog (`systemctl reset-failed`)
+
+### Pourquoi
+- Fichiers d'infra versionnés (testables, reviewables) plutôt que heredocs
+  enfouis dans la doc
+- Watchdog complet avec limite anti-boucle + memory cap + stop gracieux
+- Mode kiosque activable via env sans modification de config.py (dev/prod
+  même base)
+
+---
+
+## `e60ec6c` — Monitoring température CPU (Raspberry Pi)
+
+### Added
+- `core/monitoring.py::TempMonitor` — même pattern que DiskMonitor,
+  lit `/sys/class/thermal/thermal_zone0/temp`, inerte silencieux hors Pi
+- `config.py` : `SEUIL_TEMP_CRITIQUE_C=75.0`, `INTERVALLE_CHECK_TEMP_S=30.0`,
+  `TEMP_PATH`
+- `status.py::check_temperature()` — diagnostic pré-événement non-bloquant
+- `Photobooth_start.py` : bandeau orange en ACCUEIL si CPU ≥ 75 °C
+- Tests : 7 nouveaux tests TempMonitor + 3 tests check_temperature
+
+### Stats
+- Tests : 121 → **131** (+10)
+- Coverage : 80.1 % → **80.6 %**
+
+---
+
+## `fb704ab` — Split Photobooth_start.py : core/session + core/monitoring
+
+### Added
+- `core/session.py` : `Etat` enum, `SessionState` dataclass, `ecrire_metadata_session()`,
+  `terminer_session_et_revenir_accueil()` — module pur, testable isolément
+- `core/monitoring.py` : `DiskMonitor` (classe rate-limitée, remplace 3 globals
+  module-level), `lister_images_slideshow(dossiers, nb_max)` (pure)
+- `test_session.py` (11 tests) + `test_monitoring.py` (14 tests)
+
+### Changed
+- `Photobooth_start.py` : imports depuis `core.session` et `core.monitoring`,
+  suppression de 190 lignes déplacées. 1183 → 1071 L.
+- `docs/ARCHITECTURE.md` : modules session + monitoring ajoutés au graphe
+- `docs/DEVELOPMENT.md` : arborescence mise à jour
+- `docs/TESTING.md` : nouveaux tests inventoriés, couverture actualisée
+
+### Stats
+- Coverage : 78 % → **80 %** (seuil via `core/session` 100 % et `core/monitoring` 95 %)
+- Tests totaux : 96 → **121** (+25)
+
+---
+
+## `19973c3` (PR #1) — Boîtier Arduino : 3 boutons-poussoirs à LED intégrée
 
 ### Added
 - `core/arduino.py` : `ArduinoController` (thread pyserial → `pygame.KEYDOWN`,

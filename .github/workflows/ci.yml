@@ -18,10 +18,11 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
-      - name: Install deps (pure Python modules)
-        # Les tests isolent les modules purs (montage, stats, status) ; inutile
-        # d'installer pygame/gphoto2/cv2 qui demandent des bindings système.
-        run: pip install Pillow pytest pytest-cov ruff
+      - name: Install deps (pure Python modules + web admin)
+        # Les tests isolent les modules purs (montage, stats, status, web/) ;
+        # inutile d'installer pygame/gphoto2/cv2 qui demandent des bindings
+        # système. Flask est requis pour les tests de l'interface admin web.
+        run: pip install Pillow flask pytest pytest-cov ruff
 
       - name: Ruff check
         run: python -m ruff check .

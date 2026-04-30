@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block titre %}Templates · Photobooth{% endblock %}
+{% block contenu %}
+<h1>Templates (overlays)</h1>
+
+<section class="panel">
+  <h2>Uploader un nouveau template</h2>
+  <form class="form" method="post" action="{{ url_for('templates.upload') }}" enctype="multipart/form-data">
+    <label>
+      Nom affiché
+      <input type="text" name="nom" maxlength="80" placeholder="ex : Mariage Camille &amp; Paul">
+    </label>
+    <label>
+      Type
+      <select name="type" required>
+        <option value="10x15">10×15 (grand format)</option>
+        <option value="strip">Bandelette (strip)</option>
+      </select>
+    </label>
+    <label>
+      Fichier PNG (transparence)
+      <input type="file" name="fichier" accept="image/png" required>
+    </label>
+    <button type="submit">Uploader</button>
+  </form>
+  <p class="muted">
+    Les fichiers sont stockés dans <code>{{ path_overlays }}</code>.
+    Le format attendu : PNG RGBA, aux dimensions finales du montage (1800×1200 pour 10×15, 600×1800 pour strip).
+  </p>
+</section>
+
+<section class="panel">
+  <h2>Templates existants</h2>
+  {% if templates %}
+    <ul class="templates">
+      {% for t in templates %}
+        <li class="templates__item {% if t.actif %}templates__item--actif{% endif %}">
+          <img src="{{ url_for('templates.thumb', template_id=t.id) }}" alt="{{ t.nom }}">
+          <div class="templates__info">
+            <h3>{{ t.nom }}</h3>
+            <p>
+              <span class="badge badge--{{ t.type }}">{{ t.type }}</span>
+              {% if t.actif %}<span class="badge badge--actif">Actif</span>{% endif %}
+              <span class="muted">{{ t.taille_ko }} Ko — {{ t.uploaded_at }}</span>
+            </p>
+            <div class="actions">
+              {% if not t.actif %}
+                <form method="post" action="{{ url_for('templates.activer', template_id=t.id) }}">
+                  <button type="submit" class="btn btn--primary">Activer</button>
+                </form>
+                <form method="post" action="{{ url_for('templates.supprimer', template_id=t.id) }}" onsubmit="return confirm('Supprimer ce template ?');">
+                  <button type="submit" class="btn btn--danger">Supprimer</button>
+                </form>
+              {% else %}
+                <span class="muted">Utilisé par le kiosque actuellement.</span>
+              {% endif %}
+            </div>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="muted">Aucun template enregistré. Uploade un PNG ci-dessus pour commencer.</p>
+  {% endif %}
+</section>
+{% endblock %}

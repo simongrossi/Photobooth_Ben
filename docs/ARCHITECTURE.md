@@ -21,6 +21,14 @@ de données. Document à mettre à jour lors des refactors structurels majeurs.
      │      │  └─────────────────┘   │
      │      │                        │
      │      │  ┌─────────────────┐   │
+     │      │  │ session         │   │  ◄── Etat enum + SessionState + metadata JSONL
+     │      │  └─────────────────┘   │
+     │      │                        │
+     │      │  ┌─────────────────┐   │
+     │      │  │ monitoring      │   │  ◄── DiskMonitor + lister_images_slideshow
+     │      │  └─────────────────┘   │
+     │      │                        │
+     │      │  ┌─────────────────┐   │
      │      │  │ camera          │   │
      │      │  │ (gphoto2 + lock)│   │
      │      │  └─────────────────┘   │
@@ -51,8 +59,15 @@ de données. Document à mettre à jour lors des refactors structurels majeurs.
 - `core/*.py` n'importe **jamais** `ui.*` ni `Photobooth_start` (pas de pygame display).
 - `ui/helpers.py` peut importer depuis `core.*` mais **pas** depuis `Photobooth_start`.
 - `Photobooth_start.py` peut importer **tout** le reste.
+- `Photobooth_start.py` est importable sans lancer le kiosque : les singletons
+  hardware/UI sont initialisés uniquement dans `main()`.
 - `config.py` n'importe rien (sauf `pygame` en tolérant pour `status.py`).
 - Scripts standalone (`status.py`, `stats.py`) n'importent que `config`.
+- `web/*` (admin web optionnelle) importe `core/*`, `config`, `stats` — mais
+  **jamais** `Photobooth_start` ni `ui/*`. Tourne dans un process systemd
+  séparé ; la communication avec le kiosque passe uniquement par le
+  filesystem (`data/sessions.jsonl` en lecture, `assets/overlays/` et
+  `data/config_overrides.json` en écriture). Voir `docs/ADMIN.md`.
 
 ---
 
@@ -141,13 +156,15 @@ et `session.mode_actuel is None`. Première touche réveille sans déclencher d'
            │
  5.        ▼  Impression
     • MontageGenerator*.final() dans thread avec spinner animé
-    • printer_mgr.is_ready(mode) ?
-        - oui → lp -d nom -o fit-to-page chemin
-        - non → ecran_erreur(TXT_ERREUR_IMPRIMANTE)
+    • ACTIVER_IMPRESSION ?
+        - non → montage archivé, metadata issue=print_disabled
+        - oui → printer_mgr.is_ready(mode) ?
+            - oui → lp -d nom -o fit-to-page chemin, issue=printed
+            - non → ecran_erreur(TXT_ERREUR_IMPRIMANTE), issue=print_failed
     • ecran_attente_impression() (TEMPS_ATTENTE_IMP secondes)
            │
  6.        ▼
-    • ecrire_metadata_session(issue=printed, nb_photos, duree_s)
+    • ecrire_metadata_session(issue=<résultat impression>, nb_photos, duree_s)
     • session.reset_pour_accueil()
     • Retour ACCUEIL
 ```
@@ -196,8 +213,17 @@ Pour tests unitaires, `monkeypatch` suffit (voir test_montage.py).
 wrapper vers `camera_mgr.get_preview_frame()` car lisible et massivement
 utilisé dans `render_decompte`. Les autres wrappers ont été inlinés.
 
-**SessionState ne contient pas les globals slideshow** : `slideshow_images`,
-`_disque_critique` etc. restent en module-level car ce sont des subsystèmes
+**Sous-systèmes indépendants dans `core/monitoring.py`** : `DiskMonitor` et
+`lister_images_slideshow` ne dépendent pas de `SessionState`. Rate-limit interne
+à DiskMonitor, slideshow listing sans state. Testables en isolation.
+
+**Entrée runtime explicite** : importer `Photobooth_start.py` ne crée plus de
+fenêtre pygame et ne démarre ni caméra ni Arduino. `main()` initialise les
+singletons, installe les handlers SIGTERM/SIGINT, lance la boucle, puis ferme
+caméra/Arduino/Pygame dans un `finally`.
+
+**SessionState ne contient pas les globals slideshow** : `slideshow_images` et
+cie restent en module-level de `Photobooth_start.py` car ce sont des subsystèmes
 indépendants du cycle de session.
 
 **Render functions ne sont pas toutes extraites** : `render_accueil` et les

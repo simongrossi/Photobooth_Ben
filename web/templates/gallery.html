@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block titre %}Galerie · Photobooth{% endblock %}
+{% block contenu %}
+<h1>Galerie <span class="muted">— {{ total }} montage{{ 's' if total > 1 }}</span></h1>
+
+{% if items %}
+  <div class="galerie">
+    {% for item in items %}
+      <a class="galerie__item" href="{{ url_for('gallery.image', mode=item.mode, nom=item.nom) }}" target="_blank" rel="noopener">
+        <img loading="lazy" src="{{ url_for('gallery.thumb', mode=item.mode, nom=item.nom) }}" alt="{{ item.nom }}">
+        <div class="galerie__meta">
+          <span class="badge badge--{{ item.mode }}">{{ item.mode }}</span>
+          <span class="galerie__taille">{{ item.taille_ko }} Ko</span>
+        </div>
+      </a>
+    {% endfor %}
+  </div>
+
+  <nav class="pagination">
+    {% if page > 1 %}
+      <a href="{{ url_for('gallery.index', page=page-1) }}">◀ Précédent</a>
+    {% endif %}
+    <span>Page {{ page }} / {{ total_pages }}</span>
+    {% if page < total_pages %}
+      <a href="{{ url_for('gallery.index', page=page+1) }}">Suivant ▶</a>
+    {% endif %}
+  </nav>
+{% else %}
+  <p class="muted">Aucun montage trouvé dans <code>{{ print_path }}</code>.</p>
+{% endif %}
+{% endblock %}

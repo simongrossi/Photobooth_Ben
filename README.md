@@ -57,7 +57,7 @@ assets/
 
 ```
 Photobooth_Ben/
-├── Photobooth_start.py   # entrée + boucle principale + state + renders + event handlers
+├── Photobooth_start.py   # entrée : main() + boucle principale + state + renders + event handlers
 ├── config.py             # constantes + validation au chargement
 ├── core/                 # logique métier (testable sans pygame display)
 │   ├── logger.py         # logging rotatif + log_info/warning/critical
@@ -72,13 +72,25 @@ Photobooth_Ben/
 │   └── __init__.py       # re-exporte pour `from ui import X`
 ├── status.py             # diagnostic autonome pré-événement
 ├── stats.py              # rapport fin de soirée (sessions.jsonl)
-├── test_montage.py       # 18 tests pytest (isolation via monkeypatch)
+├── test_*.py             # suite pytest à la racine (147 tests)
 ├── README.md
+├── deploy/                 # infra Pi (systemd + kiosque)
+│   ├── photobooth.service  # unit systemd avec watchdog
+│   ├── kiosk.sh            # wrapper démarrage (xset, unclutter, venv)
+│   ├── install.sh          # installeur idempotent
+│   └── README.md           # guide d'installation
 ├── docs/
-│   ├── ROADMAP.md
-│   ├── IDEAS.md
-│   ├── CHANGELOG.md
-│   └── ARCHITECTURE.md
+│   ├── ROADMAP.md          # items actionnables priorisés
+│   ├── IDEAS.md            # idées en vrac
+│   ├── CHANGELOG.md        # historique des sprints
+│   ├── ARCHITECTURE.md     # graphe de dépendances + machine d'état
+│   ├── DEPLOYMENT.md       # install Raspberry Pi pas-à-pas
+│   ├── ARDUINO.md          # câblage, flash firmware, protocole
+│   ├── DEVELOPMENT.md      # setup dev local, CI, conventions
+│   ├── TESTING.md          # lancer et écrire les tests
+│   ├── CONFIG.md           # référence des constantes de config.py
+│   ├── PROFILING.md        # protocole de profiling Pi + microbench spinner
+│   └── RUNBOOK.md          # checklist événementiel J-1 / J / J+1
 └── .gitignore
 ```
 
@@ -90,9 +102,9 @@ Photobooth_Ben/
 
 ### Modules avec dépendances pygame
 
-- [core/camera.py](core/camera.py) — utilise `pygame.surfarray.make_surface` pour convertir les frames gphoto2
+- [core/camera.py](core/camera.py) — imports optionnels `gphoto2`/`cv2`/`numpy`/`pygame`, fallback sans caméra
 - [ui/helpers.py](ui/helpers.py) — `UIContext`, rendus, animations, sons
-- [Photobooth_start.py](Photobooth_start.py) — boucle principale, fontes, état de session, renders par état
+- [Photobooth_start.py](Photobooth_start.py) — `main()` initialise le runtime ; l'import seul ne lance ni pygame ni le matériel
 
 Voir [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) pour le graphe de dépendances + machine d'état + flow de données.
 
@@ -113,7 +125,8 @@ Chaque fin de session écrit une ligne JSON dans `data/sessions.jsonl` :
  "ts": "2026-04-20 14:30:45"}
 ```
 
-`issue` vaut `printed` / `abandoned` / `capture_failed` — consommé par `stats.py`.
+`issue` vaut `printed` / `abandoned` / `capture_failed` / `print_failed` /
+`print_disabled` — consommé par `stats.py`.
 
 ---
 
@@ -175,6 +188,7 @@ Validation automatique au chargement — un `AssertionError` explicite au démar
 - 🚀 **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** — **installation Raspberry Pi** (apt, CUPS, systemd, kiosk, troubleshooting)
 - 🎛 **[docs/ARDUINO.md](docs/ARDUINO.md)** — boîtier 3 boutons + LEDs (câblage, flash firmware, protocole)
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — diagramme des modules + machine d'état + flow de données
+- [docs/PROFILING.md](docs/PROFILING.md) — protocole de profiling sur Pi (cProfile, tracemalloc, `bench_spinner.py`)
 - [docs/ROADMAP.md](docs/ROADMAP.md) — items dev à faire, priorisés court/moyen/long terme
 - [docs/IDEAS.md](docs/IDEAS.md) — pool d'idées + références open-source (PIBOOTH, photobooth-app, RaspAP)
 - [docs/CHANGELOG.md](docs/CHANGELOG.md) — historique des commits par sprint
