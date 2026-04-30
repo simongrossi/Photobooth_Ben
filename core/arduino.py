@@ -77,7 +77,7 @@ class ArduinoController:
         self._key_map = {POS_GAUCHE: key_left, POS_MILIEU: key_mid, POS_DROITE: key_right}
         self._connect_timeout_s = connect_timeout_s
 
-        self._ser: Optional["serial.Serial"] = None
+        self._ser: Optional["serial.Serial"] = None  # type: ignore
         self._reader: Optional[threading.Thread] = None
         self._stop = threading.Event()
         self._write_lock = threading.Lock()
