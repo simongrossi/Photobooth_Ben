@@ -431,7 +431,7 @@ def ecran_erreur(message, timeout=None):
         # Note : On suppose que ctx.font_path contient le chemin vers ton fichier .ttf
         # Si tu n'as pas font_path, on utilise le nom de la police chargée
         font_inter = pygame.font.Font(ctx.font_path, 65) 
-    except:
+    except Exception:
         # Solution de secours si le chemin n'est pas accessible
         font_inter = pygame.font.Font("assets/fonts/WesternBangBang-Regular.ttf", 65)
 

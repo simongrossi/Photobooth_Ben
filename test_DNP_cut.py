@@ -60,7 +60,7 @@ def generer_test_dnp_cut():
         font_large = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 80)
         font_centre = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", TAILLE_POLICE_CENTRE)
         font_margins = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", TAILLE_POLICE_MARGINS)
-    except:
+    except Exception:
         font_large = ImageFont.load_default()
         font_centre = ImageFont.load_default()
         font_margins = ImageFont.load_default()
@@ -110,8 +110,8 @@ def generer_test_dnp_cut():
     
     canvas_final.save(OUTPUT_PATH, "JPEG", quality=100, subsampling=0)
     
-    print(f"\n[OK] Mire générée avec logique de variables synchronisée.")
-    print(f"Les variables TOP/BOTTOM/LEFT/RIGHT pilotent maintenant leurs bords respectifs sur la photo.")
+    print("\n[OK] Mire générée avec logique de variables synchronisée.")
+    print("Les variables TOP/BOTTOM/LEFT/RIGHT pilotent maintenant leurs bords respectifs sur la photo.")
 
 if __name__ == "__main__":
     generer_test_dnp_cut()

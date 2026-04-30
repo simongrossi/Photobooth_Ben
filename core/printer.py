@@ -6,11 +6,10 @@ Encapsule `lpstat` + `lp` dans un PrinterManager avec vérif d'état et 2 files
 Sprint 4.3 + 4.6 : extrait de Photobooth_start.py.
 """
 from __future__ import annotations
-import os 
 import subprocess
 from typing import Optional
 
-from core.logger import log_info, log_warning, log_critical
+from core.logger import log_info, log_critical
 
 
 class PrinterManager:
@@ -36,7 +35,7 @@ class PrinterManager:
             
             if nb_jobs >= 2: # Seuil de tolérance : 2 jobs en attente (ajustable selon les besoins)
                 return "FILE D'ATTENTE PLEINE" # Message spécifique
-        except:
+        except Exception:
             pass
 
         # --- 2. CHECK DE L'ÉTAT (Éteinte/Pause) ---
@@ -47,7 +46,7 @@ class PrinterManager:
             
             if not any(x in out for x in etats_ok):
                 return "IMPRIMANTE HORS LIGNE" # Message spécifique
-        except:
+        except Exception:
             return "ERREUR SYSTÈME CUPS"
 
         return True # Tout est OK
