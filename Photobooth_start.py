@@ -133,7 +133,7 @@ camera_mgr: CameraManager | None = None
 
 
 # Wrapper de compat — seul `get_canon_frame` est encore appelé (dans render_decompte).
-def get_canon_frame() -> Optional[pygame.Surface]:
+def get_canon_frame() -> Optional[pygame.Surface]:  # type: ignore
     """Retourne la frame preview caméra courante sous forme de pygame.Surface, ou None."""
     if camera_mgr is None:
         return None
@@ -144,7 +144,7 @@ def get_canon_frame() -> Optional[pygame.Surface]:
 # --- 2. FONCTIONS TECHNIQUES --- ########################################################################
 # ========================================================================================================
 
-def capturer_hq(id_session: str, index_photo: int) -> Optional[str]:
+def capturer_hq(id_session: str, index_photo: int) -> Optional[str]: 
     """Procédure de capture : UI (flash + SOURIEZ animé) + appel CameraManager.capture_hq().
 
     La capture subprocess (2-3 s) tourne dans un thread daemon pendant qu'on anime
@@ -693,10 +693,10 @@ def render_accueil(session: SessionState) -> None:
         _render_accueil_normal(session)
 
 
-_masque_decompte_cache: dict[tuple[int, int], "pygame.Surface"] = {}
+_masque_decompte_cache: dict[tuple[int, int], "pygame.Surface"] = {}  # type: ignore
 
 
-def _get_masque_decompte(bande_w: int, alpha: int) -> "pygame.Surface":
+def _get_masque_decompte(bande_w: int, alpha: int) -> "pygame.Surface":  # type: ignore
     """Retourne la bande noire latérale du décompte, mise en cache par (largeur, alpha).
 
     Évite une allocation pygame.Surface par frame (≈60/s pendant le décompte)."""
@@ -961,7 +961,7 @@ def render_fin(session: SessionState) -> None:
 # DECOMPTE n'a pas de handler car l'état est non-interactif (géré par render_decompte).
 # ========================================================================================================
 
-def handle_accueil_event(event: pygame.event.Event, session: SessionState,
+def handle_accueil_event(event: pygame.event.Event, session: SessionState,   # type: ignore
                          maintenant: float, ecoule: float) -> None:
     """ACCUEIL : G/D sélectionnent le mode, M valide et passe à DECOMPTE.
     Debounce via DELAI_SECURITE. Mute session en place."""
@@ -980,7 +980,7 @@ def handle_accueil_event(event: pygame.event.Event, session: SessionState,
         session.etat = Etat.DECOMPTE
 
 
-def _handle_validation_10x15(event: pygame.event.Event, session: SessionState,
+def _handle_validation_10x15(event: pygame.event.Event, session: SessionState,  # type: ignore
                              maintenant: float) -> None:
     """VALIDATION mode 10x15 : retake / imprimer / abandon (debounce géré par caller)."""
     if event.key == TOUCHE_GAUCHE:
@@ -1023,7 +1023,7 @@ def _handle_validation_10x15(event: pygame.event.Event, session: SessionState,
         session.dernier_clic_time = maintenant
 
 
-def _handle_validation_strips(event: pygame.event.Event, session: SessionState,
+def _handle_validation_strips(event: pygame.event.Event, session: SessionState,  # type: ignore
                               maintenant: float) -> None:
     """VALIDATION mode strips : retake dernière / valider-continue / annuler."""
     if event.key == TOUCHE_GAUCHE:
@@ -1050,7 +1050,7 @@ def _handle_validation_strips(event: pygame.event.Event, session: SessionState,
         session.dernier_clic_time = maintenant
 
 
-def handle_validation_event(event: pygame.event.Event, session: SessionState,
+def handle_validation_event(event: pygame.event.Event, session: SessionState,  # type: ignore
                             maintenant: float, ecoule: float) -> None:
     """VALIDATION : dispatch selon mode (10x15 vs strips). Debounce 0.5 s."""
     if ecoule < 0.5:
@@ -1061,7 +1061,7 @@ def handle_validation_event(event: pygame.event.Event, session: SessionState,
         _handle_validation_strips(event, session, maintenant)
 
 
-def handle_fin_event(event: pygame.event.Event, session: SessionState,
+def handle_fin_event(event: pygame.event.Event, session: SessionState,   # type: ignore
                      maintenant: float, ecoule: float) -> None:
     """FIN : recommencer / imprimer / abandon (double-press confirm). Debounce 1 s.
 

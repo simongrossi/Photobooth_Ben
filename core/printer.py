@@ -22,34 +22,41 @@ class PrinterManager:
         """Retourne le nom de la file CUPS pour ce mode, ou None."""
         return self._noms.get(mode)
 
-    def is_ready(self, mode: str): # On enlève -> bool car on peut renvoyer du texte
+    def is_ready(self, mode: str):
         nom_file = self._noms.get(mode)
         if not nom_file:
             return "MODE INCONNU"
 
-        # --- 1. CHECK DES JOBS (Trop de photos) ---
+        # --- 1. CHECK DES JOBS (Évite l'accumulation de photos) ---
         try:
             jobs_proc = subprocess.run(["lpstat", "-o", nom_file], capture_output=True, text=True, timeout=2)
-            lines = jobs_proc.stdout.strip().split('\n')
-            nb_jobs = len(lines) if (len(lines) > 0 and lines[0] != "") else 0
-            
-            if nb_jobs >= 2: # Seuil de tolérance : 2 jobs en attente (ajustable selon les besoins)
-                return "FILE D'ATTENTE PLEINE" # Message spécifique
+            # On filtre les lignes vides pour compter les vrais jobs
+            lines = [line for line in jobs_proc.stdout.strip().split('\n') if line]
+            if len(lines) >= 1: 
+                return "FILE D'ATTENTE PLEINE"
         except Exception:
             pass
 
-        # --- 2. CHECK DE L'ÉTAT (Éteinte/Pause) ---
+        # --- 2. CHECK DE L'ÉTAT PHYSIQUE ---
         try:
             result = subprocess.run(["lpstat", "-p", nom_file], capture_output=True, text=True, timeout=2)
             out = result.stdout.lower()
-            etats_ok = ("idle", "enabled", "activée", "printing", "paused", "en pause", "inoccupée")
             
+            # ATTENTION : On ne met PAS 'paused' ici, car CUPS met en pause quand c'est éteint
+            etats_ok = ("idle", "enabled", "activée", "printing", "inoccupée")
+            
+            # Si on détecte "paused", c'est que l'imprimante est offline
+            if "paused" in out or "en pause" in out:
+                return "IMPRIMANTE ÉTEINTE OU DÉBRANCHÉE"
+
             if not any(x in out for x in etats_ok):
-                return "IMPRIMANTE HORS LIGNE" # Message spécifique
+                return "IMPRIMANTE HORS LIGNE"
+                
         except Exception:
             return "ERREUR SYSTÈME CUPS"
 
-        return True # Tout est OK
+        return True
+
     def send(self, chemin: str, mode: str) -> bool:
         """Envoie à la file correspondante. Retourne True si l'envoi a démarré."""
         nom_file = self._noms.get(mode)
@@ -57,15 +64,20 @@ class PrinterManager:
             log_critical(f"Mode imprimante inconnu : {mode}")
             return False
             
-        # is_ready va maintenant bloquer ici si l'imprimante est éteinte
-        if not self.is_ready(mode):
-            log_critical(f"Imprimante {nom_file} non disponible (éteinte ou offline)")
+        status = self.is_ready(mode)
+        if status is not True:
+            # Maintenant, le message "IMPRIMANTE ÉTEINTE" sera bien loggé ici
+            log_critical(f"Annulation : {status} (File: {nom_file})")
             return False
             
         try:
-            subprocess.Popen(["lp", "-d", nom_file, "-o", "fit-to-page", chemin])
+            # check=True lève une erreur si la commande échoue
+            subprocess.run(["lp", "-d", nom_file, "-o", "fit-to-page", chemin], check=True, capture_output=True)
             log_info(f"🖨️ Impression lancée sur {nom_file}")
             return True
+        except subprocess.CalledProcessError as e:
+            log_critical(f"Erreur commande lp : {e.stderr.decode()}")
+            return False
         except Exception as e:
-            log_critical(f"Erreur impression : {e}")
+            log_critical(f"Erreur système impression : {e}")
             return False

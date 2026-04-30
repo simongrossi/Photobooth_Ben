@@ -266,6 +266,7 @@ class MontageGeneratorStrip(MontageBase):
 
         # --- 2. SAUVEGARDE DE LA BANDELETTE "CLEAN" ---
         path_clean = os.path.join(PATH_PRINT_STRIP, f"{PREFIXE_PRINT_STRIP}_{id_session}_CLEAN.jpg")
+        os.makedirs(os.path.dirname(path_clean), exist_ok=True)
         canvas.save(path_clean, "JPEG", quality=cls.FINAL_QUALITY)
 
         # --- 3. CRÉATION DU MONTAGE 10x15 (CALIBRATION DNP) ---
