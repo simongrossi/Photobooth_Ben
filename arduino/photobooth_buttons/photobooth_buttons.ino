@@ -129,7 +129,7 @@ void pollButtons() {
   const unsigned long now = millis();
   for (uint8_t i = 0; i < 3; i++) {
     Button& b = buttons[i];
-    bool raw = digitalRead(b.pin);
+    bool raw = digitalRead(b.pin);  // true = relâché (pullup), false = pressé
 
     if (raw != b.lastRaw) {
       b.lastRaw = raw;
@@ -138,7 +138,7 @@ void pollButtons() {
 
     if ((now - b.lastChangeMs) >= DEBOUNCE_MS && raw != b.lastStable) {
       b.lastStable = raw;
-      if (!raw) {
+      if (!raw) {  // front descendant → appui confirmé
         Serial.println(b.label);
       }
     }
@@ -154,12 +154,16 @@ uint8_t computePwm(LedMode mode, unsigned long nowMs) {
     case MODE_ON:
       return LED_MAX_PWM;
     case MODE_PULSE: {
-      float phase = (float)(nowMs % 4000) / 4000.0f;
+      // Respiration : sin² pour rester positif, mappé sur [20, 255].
+      float phase = (float)(nowMs % 4000) / 4000.0f;   // 1 cycle = 4 s → 0.25 Hz
+      // Utiliser directement PULSE_SPEED_HZ serait plus clair ; on reste en dur
+      // pour éviter une division float par frame. 0.25 Hz donne une respiration nette.
       float s = sin(phase * 2.0f * PI);
-      float v = 0.5f * (s + 1.0f);
+      float v = 0.5f * (s + 1.0f);                      // 0..1
       return (uint8_t)(20 + v * (LED_MAX_PWM - 20));
     }
     case MODE_FAST: {
+      // Carré 4 Hz : période 250 ms, allumé 125 ms.
       return ((nowMs / 125) & 1) ? LED_MAX_PWM : 0;
     }
   }
@@ -191,6 +195,10 @@ LedMode parseMode(const char* s) {
 }
 
 void handleCommand(char* line) {
+  // Format attendus :
+  //   LED:<L|M|R>:<OFF|ON|PULSE|FAST>
+  //   LED:ALL:OFF
+  //   PING
   if (!strcmp(line, "PING")) {
     Serial.println(F("PONG"));
     return;
@@ -208,6 +216,7 @@ void handleCommand(char* line) {
     ledMode[idx] = parseMode(p + 2);
     return;
   }
+  // inconnu : ignoré silencieusement
 }
 
 void pollSerial() {
@@ -221,6 +230,7 @@ void pollSerial() {
     } else if (rxLen < RX_BUF_SIZE - 1) {
       rxBuf[rxLen++] = c;
     } else {
+      // débordement → on jette la ligne en cours
       rxLen = 0;
     }
   }
