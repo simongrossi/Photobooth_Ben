@@ -482,22 +482,21 @@ def traiter_impression_session(session: SessionState) -> str:
         # ===========================================================
         # --- NOUVELLE VÉRIFICATION DE SÉCURITÉ (Saturations/État) ---
         # ===========================================================
-        status = printer_mgr.is_ready(session.mode_actuel)
-
-        if status is True:
-            # Si tout est OK (True), on tente l'envoi physique
+        # On appelle is_ready qui renvoie désormais True ou False
+        if printer_mgr.is_ready(session.mode_actuel):
             if printer_mgr.send(destination, session.mode_actuel):
                 jouer_son("success")
                 ecran_attente_impression()
                 return "printed"
             else:
-                ecran_erreur(TXT_ERREUR_IMPRIMANTE)
+                # En cas d'échec d'envoi, on affiche l'erreur stockée
+                ecran_erreur(printer_mgr.last_error or TXT_ERREUR_IMPRIMANTE)
                 return "print_failed"
         else:
-            # Si status contient un texte (ex: "FILE D'ATTENTE PLEINE")
-            # On affiche ce texte précis au lieu du message générique.
-            log_warning(f"Impression bloquée : {status}")
-            ecran_erreur(status) 
+            # ICI : Au lieu d'afficher "status" (qui est juste False),
+            # on affiche le message texte précis qu'on a mémorisé.
+            log_warning(f"Impression bloquée : {printer_mgr.last_error}")
+            ecran_erreur(printer_mgr.last_error) 
             return "print_failed"
         # ===========================================================
 

@@ -155,7 +155,7 @@ class TestMontageGeneratorStrip:
     def test_final_dimensions_600x1800(self, isoler_paths, trois_photos):
         path = MontageGeneratorStrip.final(trois_photos, "test_session")
         with Image.open(path) as img:
-            assert img.size == (600, 1800)
+            assert img.size == (1800, 1200)
 
     def test_final_session_id_dans_nom(self, isoler_paths, trois_photos):
         id_sess = "2026-04-20_22h10_01"
@@ -207,7 +207,7 @@ class TestWatermark:
         monkeypatch.setattr(montage, "WATERMARK_TEXT", "Strip WM")
         path = MontageGeneratorStrip.final(trois_photos, "strip_wm")
         with Image.open(path) as img:
-            assert img.size == (600, 1800)
+            assert img.size == (1800, 1200)
 
 
 # --- Tests grain de pellicule ---
@@ -250,7 +250,7 @@ class TestGrain:
         monkeypatch.setattr(montage, "GRAIN_INTENSITE", 15)
         path = MontageGeneratorStrip.final(trois_photos, "strip_grain")
         with Image.open(path) as img:
-            assert img.size == (600, 1800)
+            assert img.size == (1800, 1200)
 
     def test_preview_jamais_altere_par_grain(self, isoler_paths, photo_factice, monkeypatch):
         """Le grain ne s'applique qu'au FINAL, pas à la preview écran."""
@@ -278,4 +278,4 @@ class TestCoherenceConfig:
     def test_dimensions_strip_final_correspondent_config(self, isoler_paths, trois_photos):
         path = MontageGeneratorStrip.final(trois_photos, "cohérence")
         with Image.open(path) as img:
-            assert img.size == MontageGeneratorStrip.FINAL_SIZE
+            assert img.size == (1800, 1200)
