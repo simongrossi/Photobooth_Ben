@@ -1,19 +1,19 @@
 /*
  * photobooth_buttons.ino — firmware Arduino Nano pour 3 boutons-poussoirs
- * à LED intégrée (blanc à gauche, vert au centre, rouge à droite).
+ * à LED intégrée (rouge à gauche, vert au centre, blanc à droite).
  *
  * Cible matériel : Arduino Nano (ATmega328P, 16 MHz).
  * Liaison hôte   : port série USB (115200 bauds, 8N1).
  *
- * ─── Câblage ACTUALISÉ (Retour Pin 9) ────────────────────────────────────
+ * ─── Câblage ─────────────────────────────────────────────────────────────
  *
- *   Bouton GAUCHE (blanc)   ── D2 (INPUT_PULLUP, contact au GND)
+ *   Bouton GAUCHE (rouge)   ── D2 (INPUT_PULLUP, contact au GND)
  *   Bouton MILIEU (vert)    ── D3
- *   Bouton DROITE (rouge)   ── D4
+ *   Bouton DROITE (blanc)   ── D4
  *
- *   LED    GAUCHE (blanc)   ── D5  (PWM, anode via résistance série)
+ *   LED    GAUCHE (rouge)   ── D5  (PWM, anode via résistance série)
  *   LED    MILIEU (vert)    ── D6  (PWM)
- *   LED    DROITE (rouge)   ── D9  (PWM) <--- Retour sur la Pin 9
+ *   LED    DROITE (blanc)   ── D9  (PWM)
  *
  *   Toutes les masses communes (GND).
  *
@@ -24,21 +24,21 @@
  * ─── Protocole série ─────────────────────────────────────────────────────
  *
  *   Arduino  → PC  (émis par le firmware)
- *       READY\n            boot OK
- *       L\n                bouton gauche pressé
- *       M\n                bouton milieu pressé
- *       R\n                bouton droit pressé
- *       PONG\n             réponse à PING
+ *       READY\n           boot OK
+ *       L\n               bouton gauche pressé
+ *       M\n               bouton milieu pressé
+ *       R\n               bouton droit pressé
+ *       PONG\n            réponse à PING
  *
  *   PC       → Arduino   (commandes reçues)
- *       LED:L:OFF\n        éteint la LED gauche
- *       LED:L:ON\n         allume fixe
- *       LED:L:PULSE\n      respiration lente (invitation)
- *       LED:L:FAST\n       clignotement rapide (alerte)
- *       LED:M:...          idem pour la LED milieu
- *       LED:R:...          idem pour la LED droite
- *       LED:ALL:OFF\n      éteint les 3 d'un coup
- *       PING\n             demande de PONG (test de liaison)
+ *       LED:L:OFF\n       éteint la LED gauche
+ *       LED:L:ON\n        allume fixe
+ *       LED:L:PULSE\n     respiration lente (invitation)
+ *       LED:L:FAST\n      clignotement rapide (alerte)
+ *       LED:M:...         idem pour la LED milieu
+ *       LED:R:...         idem pour la LED droite
+ *       LED:ALL:OFF\n     éteint les 3 d'un coup
+ *       PING\n            demande de PONG (test de liaison)
  *
  *   La trame est terminée par '\n'. '\r' est toléré et ignoré.
  *
@@ -61,13 +61,13 @@ const uint8_t PIN_BTN_L = 2;
 const uint8_t PIN_BTN_M = 3;
 const uint8_t PIN_BTN_R = 4;
 
-const uint8_t PIN_LED_L = 5;  // PWM (Blanc - Gauche)
-const uint8_t PIN_LED_M = 6;  // PWM (Vert - Milieu)
-const uint8_t PIN_LED_R = 9;  // PWM (Rouge - Droite) <--- Remis sur 9
+const uint8_t PIN_LED_L = 5;  // PWM
+const uint8_t PIN_LED_M = 6;  // PWM
+const uint8_t PIN_LED_R = 9;  // PWM
 
 const unsigned long BAUDRATE     = 115200;
 const unsigned long DEBOUNCE_MS  = 30;     // anti-rebond logiciel
-const uint8_t        LED_MAX_PWM  = 255;
+const uint8_t       LED_MAX_PWM  = 255;
 
 // Vitesse des effets.
 const float PULSE_SPEED_HZ = 0.5f;   // respiration : 0.5 cycle/s (2 s par respiration)
@@ -159,7 +159,7 @@ uint8_t computePwm(LedMode mode, unsigned long nowMs) {
       // Utiliser directement PULSE_SPEED_HZ serait plus clair ; on reste en dur
       // pour éviter une division float par frame. 0.25 Hz donne une respiration nette.
       float s = sin(phase * 2.0f * PI);
-      float v = 0.5f * (s + 1.0f);                      // 0..1
+      float v = 0.5f * (s + 1.0f);                     // 0..1
       return (uint8_t)(20 + v * (LED_MAX_PWM - 20));
     }
     case MODE_FAST: {
