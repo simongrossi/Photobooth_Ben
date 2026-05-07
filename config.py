@@ -345,10 +345,10 @@ TEMP_PATH                  = "/sys/class/thermal/thermal_zone0/temp"
 # --- Slideshow d'attente sur l'accueil (Sprint 6.2) ---
 # Après N secondes sans activité sur l'accueil, les montages passés défilent en plein écran
 # pour attirer les invités.
-DUREE_IDLE_SLIDESHOW      = 30.0   # Secondes d'inactivité avant démarrage
+DUREE_IDLE_SLIDESHOW      = 30   # Secondes d'inactivité avant démarrage
 DUREE_PAR_IMAGE_SLIDESHOW = 3.5    # Durée d'affichage de chaque image
 NB_MAX_IMAGES_SLIDESHOW   = 40     # Plus récentes uniquement, pour éviter de scanner trop
-TXT_SLIDESHOW_INVITATION  = "Approchez pour commencer !"
+TXT_SLIDESHOW_INVITATION  = "Appuyez sur un bouton pour commencer !"
 
 
 

@@ -560,15 +560,23 @@ def _render_accueil_slideshow(session: SessionState, idle_seconds: float) -> Non
     else:
         inserer_background(screen, fond_accueil)
 
-    # Invitation pulsée + bandeau noir pour lisibilité
+    # --- CORRECTION : BANDEAU HARMONISÉ ---
+    # 1. On affiche le même bandeau que sur l'accueil normal
+    screen.blit(BANDEAU_CACHE, (0, HEIGHT - BANDEAU_HAUTEUR))
+
+    # 2. Rendu du texte avec pulsation
     alpha_inv = 150 + int(80 * math.sin(time.time() * 2))
-    inv_surf = font_titre.render(TXT_SLIDESHOW_INVITATION, True, (255, 255, 255))
+    inv_surf = font_bandeau.render(TXT_SLIDESHOW_INVITATION, True, (255, 255, 255))
     inv_surf.set_alpha(alpha_inv)
+    
+    # 3. Calcul du centrage parfait dans le bandeau
     inv_x = WIDTH // 2 - inv_surf.get_width() // 2
-    inv_bg = pygame.Surface((WIDTH, inv_surf.get_height() + 30), pygame.SRCALPHA)
-    inv_bg.fill((0, 0, 0, 130))
-    screen.blit(inv_bg, (0, HEIGHT - inv_surf.get_height() - 60))
-    screen.blit(inv_surf, (inv_x, HEIGHT - inv_surf.get_height() - 45))
+    
+    # On utilise la même logique de centrage vertical que _render_accueil_normal
+    # (Centre du bandeau - moitié de la hauteur du texte)
+    inv_y = (HEIGHT - BANDEAU_HAUTEUR // 2) - (inv_surf.get_height() // 2)
+    
+    screen.blit(inv_surf, (inv_x, inv_y))
 
 
 def _render_accueil_normal(session: SessionState) -> None:
