@@ -78,7 +78,7 @@ MASQUE = 200   # Transparance des bande latérale noire si ratio image modifié 
 
 
 
-TEMPS_DECOMPTE = 1
+TEMPS_DECOMPTE = 3
 
 # --- Contrôles Clavier ---
 # Les K_* de pygame pour les lettres minuscules correspondent à leur code ASCII.
@@ -153,6 +153,7 @@ TAILLE_DECOMPTE      = 300  # Chiffre 3, 2, 1...
 TAILLE_TITRE_ACCUEIL = 180  # Le nom du Photobooth ou gros messages
 TAILLE_TEXTE_BOUTON  = 60   # "GRAND FORMAT" / "BANDELETTES" (ecran choix du mode)
 TAILLE_TEXTE_BANDEAU = 40
+TAILLE_TEXTE_ALERTE = 120
 
 # --- Effets de Clignotement (Pulse) ---
 PULSE_MIN, PULSE_MAX, PULSE_VITESSE = 150, 255, 5      # Pulse rapide (sélection)
@@ -175,7 +176,7 @@ MARGE_ACCUEIL = 200   # Espace entre les deux icônes
 # --- CONFIGURATION DYNAMIQUE DES BANDELETTES ---
 
 # Choix du profil : "WIDE", "MEDIUM", "SQUARE", "NO_LOGO"  (voir rendu les templates dans dosssier "assets/backgrounds/templates" pour visualiser les formats)
-STRIP_FORMAT_MODE = "SQUARE" 
+STRIP_FORMAT_MODE = "MEDIUM" 
 #---------------------------------------------------------------------
 # Dictionnaire des profils de mise en page (a modifier si format specifique autre que les 4 proposés)
 #---------------------------------------------------------------------
@@ -185,7 +186,7 @@ STRIP_PROFILES = {
     # espace    : Espace vide vertical entre les photos (en pixels).
     # marge_h   : Distance entre le bord haut de la bandelette et la première photo.
     "WIDE":    {"ratio": 0.66, "marge_lat": 30, "espace": 40, "marge_h": 40},
-    "MEDIUM":  {"ratio": 0.80, "marge_lat": 30, "espace": 40, "marge_h": 40},
+    "MEDIUM":  {"ratio": 0.80, "marge_lat": 40, "espace": 40, "marge_h": 40},
     "SQUARE":  {"ratio": 1.00, "marge_lat": 60, "espace": 20, "marge_h": 20},
     "NO_LOGO": {"ratio": 1.00, "marge_lat": 40, "espace": 50, "marge_h": 60}
 }
@@ -234,8 +235,8 @@ MONTAGE_10X15_PREVIEW_QUALITY      = 80
 
 # --- Dimensions finales de montage (mode 10x15) ---
 # Photo + offset dans le canvas 1800×1200
-MONTAGE_10X15_FINAL_PHOTO_FIT      = (1640, 1040)
-MONTAGE_10X15_FINAL_PHOTO_OFFSET   = (80, 80)
+MONTAGE_10X15_FINAL_PHOTO_FIT      = (1500, 1000)   #(1350, 900)
+MONTAGE_10X15_FINAL_PHOTO_OFFSET   = (110, 90)    #(225, 120)
 MONTAGE_10X15_FINAL_QUALITY        = 98
 
 
@@ -319,7 +320,7 @@ TIMEOUT_SPLASH_CAMERA = 10.0  # Timeout max splash connexion caméra (secondes)
 # de photos restent à prendre (3 → 2 → 1). Utile aux invités pour situer leur
 # position dans la bandelette. Désactivable.
 STRIP_FILIGRANE_ENABLED = True
-STRIP_FILIGRANE_ALPHA   = 50    # Transparence 0–255 (50 = très discret)
+STRIP_FILIGRANE_ALPHA   =  0   # Transparence 0–255 (50 = très discret)
 STRIP_FILIGRANE_TAILLE  = 600   # Taille de la police (gros caractère fond)
 
 # --- Mode burst strip : auto-validation entre photos en mode bandelettes ---

@@ -159,6 +159,7 @@ def capturer_hq(id_session: str, index_photo: int) -> Optional[str]:
         Chemin complet du fichier JPEG si capture OK, None si échec.
     """
     import threading
+    import time
 
     nom_final = f"{PREFIXE_RAW}_{id_session}_{index_photo}.jpg"
     chemin_complet = os.path.join(PATH_RAW, nom_final)
@@ -168,6 +169,22 @@ def capturer_hq(id_session: str, index_photo: int) -> Optional[str]:
     pygame.display.flip()
     jouer_son("shutter")
     time.sleep(DUREE_FLASH_BLANC)
+
+    # --- CHARGEMENT DES CHEVRONS DU CHENILLARD ---
+    chevrons = []
+    try:
+        for i in range(1, 4):
+            img_origine = pygame.image.load(f"assets/interface/fleche_{i}.png").convert_alpha()
+            
+            # On force la taille exacte de ton fichier : 100 de large, 200 de haut
+            # et smoothscale s'occupe de rendre les contours des PNG ultra propres
+            img_propre = pygame.transform.smoothscale(img_origine, (100, 200))
+            
+            chevrons.append(img_propre)
+            
+    except pygame.error:
+        log_warning("Impossible de charger les images fleche_1, 2 ou 3.png")
+        chevrons = []
 
     # 2. Capture en thread + animation SOURIEZ pendant
     resultat: dict = {}
@@ -193,14 +210,32 @@ def capturer_hq(id_session: str, index_photo: int) -> Optional[str]:
                 sys.exit()
 
         screen.fill(COULEUR_FLASH)
+        
+        # --- ENTRÉE EN SCÈNE DU CHENILLARD ---
+        if chevrons:
+            cx = (WIDTH // 2) - (chevrons[0].get_width() // 2)
+            cy = (HEIGHT // 5) - (chevrons[0].get_height() // 2)
+
+            etape_animation = int(time.time() * 4) % 3
+
+            for index, chevron in enumerate(chevrons):
+                if index == etape_animation:
+                    chevron.set_alpha(255)
+                else:
+                    chevron.set_alpha(50)
+                
+                screen.blit(chevron, (cx, cy))
+
+        # --- AFFICHAGE DU TEXTE SOURIEZ ---
         try:
             dots = "." * (1 + (frame // 10) % 3)
             txt_flash = font_titre.render(f"SOURIEZ {dots}", True, COULEUR_SOURIEZ)
             text_x = (WIDTH // 2) - (txt_flash.get_width() // 2)
-            text_y = (HEIGHT // 2) - (txt_flash.get_height() // 2)
+            text_y = (HEIGHT // 2) - (txt_flash.get_height() // 2) + 100
             screen.blit(txt_flash, (text_x, text_y))
         except Exception as e:
             log_warning(f"Affichage SOURIEZ échoué : {e}")
+            
         pygame.display.flip()
         clock.tick(30)
         frame += 1
@@ -219,6 +254,8 @@ def capturer_hq(id_session: str, index_photo: int) -> Optional[str]:
         return chemin_complet
     log_critical(f"ÉCHEC : Le fichier {nom_final} est introuvable.")
     return None
+
+ 
 
 
 # Helpers de dessin (obtenir_couleur_pulse, draw_text_shadow_soft) : extraits dans ui.py (item 7)
@@ -758,7 +795,11 @@ def render_decompte(session: SessionState) -> None:
         while time.time() - t_start < 1:
             surf = get_canon_frame()
             if surf:
-                screen.blit(pygame.transform.scale(surf, (WIDTH, HEIGHT)), (0, 0))
+                # 1. On applique la symétrie horizontale sur l'image reçue (True = Horizontal, False = Vertical)
+                surf_miroir = pygame.transform.flip(surf, True, False)
+    
+                # 2. On redimensionne et on affiche l'image inversée
+                screen.blit(pygame.transform.scale(surf_miroir, (WIDTH, HEIGHT)), (0, 0))
 
                 if masque_surf is not None:
                     screen.blit(masque_surf, (0, 0))
