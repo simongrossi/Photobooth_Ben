@@ -78,7 +78,7 @@ MASQUE = 200   # Transparance des bande latérale noire si ratio image modifié 
 
 
 
-TEMPS_DECOMPTE = 3
+TEMPS_DECOMPTE = 5
 
 # --- Contrôles Clavier ---
 # Les K_* de pygame pour les lettres minuscules correspondent à leur code ASCII.
@@ -186,7 +186,7 @@ STRIP_PROFILES = {
     # espace    : Espace vide vertical entre les photos (en pixels).
     # marge_h   : Distance entre le bord haut de la bandelette et la première photo.
     "WIDE":    {"ratio": 0.66, "marge_lat": 30, "espace": 40, "marge_h": 40},
-    "MEDIUM":  {"ratio": 0.80, "marge_lat": 40, "espace": 40, "marge_h": 40},
+    "MEDIUM":  {"ratio": 0.80, "marge_lat": 62, "espace": 80, "marge_h": 100},
     "SQUARE":  {"ratio": 1.00, "marge_lat": 60, "espace": 20, "marge_h": 20},
     "NO_LOGO": {"ratio": 1.00, "marge_lat": 40, "espace": 50, "marge_h": 60}
 }
@@ -236,7 +236,7 @@ MONTAGE_10X15_PREVIEW_QUALITY      = 80
 # --- Dimensions finales de montage (mode 10x15) ---
 # Photo + offset dans le canvas 1800×1200
 MONTAGE_10X15_FINAL_PHOTO_FIT      = (1500, 1000)   #(1350, 900)
-MONTAGE_10X15_FINAL_PHOTO_OFFSET   = (110, 90)    #(225, 120)
+MONTAGE_10X15_FINAL_PHOTO_OFFSET   = (150, 90)    #(225, 120)
 MONTAGE_10X15_FINAL_QUALITY        = 98
 
 
