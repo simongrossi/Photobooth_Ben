@@ -159,6 +159,7 @@ def capturer_hq(id_session: str, index_photo: int) -> Optional[str]:
         Chemin complet du fichier JPEG si capture OK, None si échec.
     """
     import threading
+    import time
 
     nom_final = f"{PREFIXE_RAW}_{id_session}_{index_photo}.jpg"
     chemin_complet = os.path.join(PATH_RAW, nom_final)
@@ -168,6 +169,22 @@ def capturer_hq(id_session: str, index_photo: int) -> Optional[str]:
     pygame.display.flip()
     jouer_son("shutter")
     time.sleep(DUREE_FLASH_BLANC)
+
+    # --- CHARGEMENT DES CHEVRONS DU CHENILLARD ---
+    chevrons = []
+    try:
+        for i in range(1, 4):
+            img_origine = pygame.image.load(f"assets/interface/fleche_{i}.png").convert_alpha()
+            
+            # On force la taille exacte de ton fichier : 100 de large, 200 de haut
+            # et smoothscale s'occupe de rendre les contours des PNG ultra propres
+            img_propre = pygame.transform.smoothscale(img_origine, (100, 200))
+            
+            chevrons.append(img_propre)
+            
+    except pygame.error:
+        log_warning("Impossible de charger les images fleche_1, 2 ou 3.png")
+        chevrons = []
 
     # 2. Capture en thread + animation SOURIEZ pendant
     resultat: dict = {}
@@ -193,14 +210,32 @@ def capturer_hq(id_session: str, index_photo: int) -> Optional[str]:
                 sys.exit()
 
         screen.fill(COULEUR_FLASH)
+        
+        # --- ENTRÉE EN SCÈNE DU CHENILLARD ---
+        if chevrons:
+            cx = (WIDTH // 2) - (chevrons[0].get_width() // 2)
+            cy = (HEIGHT // 5) - (chevrons[0].get_height() // 2)
+
+            etape_animation = int(time.time() * 4) % 3
+
+            for index, chevron in enumerate(chevrons):
+                if index == etape_animation:
+                    chevron.set_alpha(255)
+                else:
+                    chevron.set_alpha(50)
+                
+                screen.blit(chevron, (cx, cy))
+
+        # --- AFFICHAGE DU TEXTE SOURIEZ ---
         try:
             dots = "." * (1 + (frame // 10) % 3)
             txt_flash = font_titre.render(f"SOURIEZ {dots}", True, COULEUR_SOURIEZ)
             text_x = (WIDTH // 2) - (txt_flash.get_width() // 2)
-            text_y = (HEIGHT // 2) - (txt_flash.get_height() // 2)
+            text_y = (HEIGHT // 2) - (txt_flash.get_height() // 2) + 100
             screen.blit(txt_flash, (text_x, text_y))
         except Exception as e:
             log_warning(f"Affichage SOURIEZ échoué : {e}")
+            
         pygame.display.flip()
         clock.tick(30)
         frame += 1
@@ -219,6 +254,8 @@ def capturer_hq(id_session: str, index_photo: int) -> Optional[str]:
         return chemin_complet
     log_critical(f"ÉCHEC : Le fichier {nom_final} est introuvable.")
     return None
+
+ 
 
 
 # Helpers de dessin (obtenir_couleur_pulse, draw_text_shadow_soft) : extraits dans ui.py (item 7)
@@ -315,6 +352,7 @@ def _charger_polices():
                 pygame.font.Font(POLICE_FICHIER, TAILLE_TEXTE_BANDEAU),
                 pygame.font.Font(POLICE_FICHIER, TAILLE_DECOMPTE),
                 pygame.font.Font(POLICE_FICHIER, config.STRIP_FILIGRANE_TAILLE),
+                pygame.font.Font(POLICE_FICHIER, config.TAILLE_TEXTE_ALERTE),
             )
         raise FileNotFoundError
     except Exception:
@@ -324,13 +362,14 @@ def _charger_polices():
             pygame.font.SysFont("Arial", TAILLE_TEXTE_BANDEAU, bold=True),
             pygame.font.SysFont("Arial", TAILLE_DECOMPTE, bold=True),
             pygame.font.SysFont("Arial", config.STRIP_FILIGRANE_TAILLE, bold=True),
+            pygame.font.SysFont("Arial", config.TAILLE_TEXTE_ALERTE, bold=True),
         )
 
 
 def _initialiser_runtime() -> None:
     """Initialise les singletons runtime. Aucun effet de bord lourd à l'import."""
     global camera_mgr, screen, clock
-    global font_titre, font_boutons, font_bandeau, font_decompte, font_filigrane
+    global font_titre, font_boutons, font_bandeau, font_decompte, font_filigrane, font_alerte
     global UIContext, AccueilAssets, setup_sounds, jouer_son, draw_text_shadow_soft
     global inserer_background, afficher_message_plein_ecran, executer_avec_spinner
     global ecran_erreur, ecran_attente_impression, splash_connexion_camera
@@ -342,6 +381,10 @@ def _initialiser_runtime() -> None:
         raise RuntimeError("pygame est requis pour lancer Photobooth_start.py")
 
     _preparer_dossiers_et_logs()
+
+
+#Purger file d'attent CUPS au démarrage pour éviter les blocages si des tâches résiduelles sont présentes.
+    printer_mgr.purger_file_attente()
 
     from ui import (
         UIContext as _UIContext,
@@ -382,7 +425,7 @@ def _initialiser_runtime() -> None:
     clock = pygame.time.Clock()
     pygame.font.init()
 
-    font_titre, font_boutons, font_bandeau, font_decompte, font_filigrane = _charger_polices()
+    font_titre, font_boutons, font_bandeau, font_decompte, font_filigrane, font_alerte = _charger_polices()
     UIContext.setup(screen, clock, font_titre, font_boutons, font_bandeau, font_decompte)
     setup_sounds()
 
@@ -560,15 +603,23 @@ def _render_accueil_slideshow(session: SessionState, idle_seconds: float) -> Non
     else:
         inserer_background(screen, fond_accueil)
 
-    # Invitation pulsée + bandeau noir pour lisibilité
+    # --- CORRECTION : BANDEAU HARMONISÉ ---
+    # 1. On affiche le même bandeau que sur l'accueil normal
+    screen.blit(BANDEAU_CACHE, (0, HEIGHT - BANDEAU_HAUTEUR))
+
+    # 2. Rendu du texte avec pulsation
     alpha_inv = 150 + int(80 * math.sin(time.time() * 2))
-    inv_surf = font_titre.render(TXT_SLIDESHOW_INVITATION, True, (255, 255, 255))
+    inv_surf = font_bandeau.render(TXT_SLIDESHOW_INVITATION, True, (255, 255, 255))
     inv_surf.set_alpha(alpha_inv)
+    
+    # 3. Calcul du centrage parfait dans le bandeau
     inv_x = WIDTH // 2 - inv_surf.get_width() // 2
-    inv_bg = pygame.Surface((WIDTH, inv_surf.get_height() + 30), pygame.SRCALPHA)
-    inv_bg.fill((0, 0, 0, 130))
-    screen.blit(inv_bg, (0, HEIGHT - inv_surf.get_height() - 60))
-    screen.blit(inv_surf, (inv_x, HEIGHT - inv_surf.get_height() - 45))
+    
+    # On utilise la même logique de centrage vertical que _render_accueil_normal
+    # (Centre du bandeau - moitié de la hauteur du texte)
+    inv_y = (HEIGHT - BANDEAU_HAUTEUR // 2) - (inv_surf.get_height() // 2)
+    
+    screen.blit(inv_surf, (inv_x, inv_y))
 
 
 def _render_accueil_normal(session: SessionState) -> None:
@@ -748,7 +799,11 @@ def render_decompte(session: SessionState) -> None:
         while time.time() - t_start < 1:
             surf = get_canon_frame()
             if surf:
-                screen.blit(pygame.transform.scale(surf, (WIDTH, HEIGHT)), (0, 0))
+                # 1. On applique la symétrie horizontale sur l'image reçue (True = Horizontal, False = Vertical)
+                surf_miroir = pygame.transform.flip(surf, True, False)
+    
+                # 2. On redimensionne et on affiche l'image inversée
+                screen.blit(pygame.transform.scale(surf_miroir, (WIDTH, HEIGHT)), (0, 0))
 
                 if masque_surf is not None:
                     screen.blit(masque_surf, (0, 0))
@@ -886,8 +941,25 @@ def render_validation(session: SessionState) -> bool:
             burst_bg.fill((0, 0, 0, 160))
             screen.blit(burst_bg, (bx - 20, by - 6))
             screen.blit(burst_surf, (bx, by))
-    return False
+    
+    # 4. Overlay de confirmation d'abandon (À insérer juste avant le return False)
+    if session.abandon_confirm_until and time.time() < session.abandon_confirm_until:
+        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 170))
+        screen.blit(overlay, (0, 0))
+        
+        # Message principal (Titre rouge doux)
+        t1 = font_alerte.render(config.TXT_CONFIRM_ABANDON_1, True, (255, 120, 120))
+        screen.blit(t1, (WIDTH // 2 - t1.get_width() // 2, HEIGHT // 2 - 100))
+        
+        # Message d'instruction (Petit texte blanc)
+        t2 = font_bandeau.render(config.TXT_CONFIRM_ABANDON_2, True, (255, 255, 255))
+        screen.blit(t2, (WIDTH // 2 - t2.get_width() // 2, HEIGHT // 2 + 40))
+        
+    elif session.abandon_confirm_until:
+        session.abandon_confirm_until = 0.0
 
+    return False
 
 def render_fin(session: SessionState) -> None:
     """FIN : aperçu du montage final + bandeau 3 boutons + overlay confirmation abandon."""
@@ -943,7 +1015,7 @@ def render_fin(session: SessionState) -> None:
         overlay.fill((0, 0, 0, 170))
         screen.blit(overlay, (0, 0))
         
-        t1 = font_titre.render(config.TXT_CONFIRM_ABANDON_1, True, (255, 120, 120))
+        t1 = font_alerte.render(config.TXT_CONFIRM_ABANDON_1, True, (255, 120, 120))
         screen.blit(t1, (WIDTH // 2 - t1.get_width() // 2, HEIGHT // 2 - 120))
         
         t2 = font_bandeau.render(config.TXT_CONFIRM_ABANDON_2, True, (255, 255, 255))
@@ -985,6 +1057,9 @@ def _handle_validation_10x15(event: pygame.event.Event, session: SessionState,  
     if event.key == TOUCHE_GAUCHE:
         # Retake : archive en RETAKE puis retourne au décompte
         print("LOG: [10x15] -> Refaire : Archivage RETAKE et relance")
+
+        session.img_preview_cache = None
+
         try:
             p = executer_avec_spinner(
                 lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
@@ -1001,24 +1076,31 @@ def _handle_validation_10x15(event: pygame.event.Event, session: SessionState,  
     elif event.key == TOUCHE_MILIEU:
         # Imprimer direct + retour accueil
         print("LOG: [10x15] -> Impression directe et Accueil")
+        session.abandon_confirm_until = 0.0
         issue = traiter_impression_session(session)
         pygame.event.clear()
         terminer_session_et_revenir_accueil(issue)
         session.dernier_clic_time = maintenant
 
     elif event.key == TOUCHE_DROITE:
-        # Abandon : archive en DELETED et retour accueil
-        print("LOG: [10x15] -> Abandon : Archivage DELETED et Accueil")
-        try:
-            p = executer_avec_spinner(
-                lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
-                TXT_PREPARATION_IMP,
-            )
-            dest = os.path.join(PATH_SKIPPED_DELETED, f"{PREFIXE_DELETED}_{session.id_session_timestamp}.jpg")
-            shutil.move(p, dest)
-        except Exception as e:
-            log_critical(f"Erreur 10x15 Deleted: {e}")
-        terminer_session_et_revenir_accueil("abandoned")
+        # Abandon avec confirmation double-press
+        if session.abandon_confirm_until and time.time() < session.abandon_confirm_until:
+            print("LOG: [10x15] -> Abandon confirmé : Archivage DELETED et Accueil")
+            session.abandon_confirm_until = 0.0
+            try:
+                p = executer_avec_spinner(
+                    lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
+                    TXT_PREPARATION_IMP,
+                )
+                dest = os.path.join(PATH_SKIPPED_DELETED, f"{PREFIXE_DELETED}_{session.id_session_timestamp}.jpg")
+                shutil.move(p, dest)
+            except Exception as e:
+                log_critical(f"Erreur 10x15 Deleted: {e}")
+            terminer_session_et_revenir_accueil("abandoned")
+        else:
+            print("LOG: [10x15] -> Demande de confirmation abandon")
+            session.abandon_confirm_until = time.time() + DUREE_CONFIRM_ABANDON
+        
         session.dernier_clic_time = maintenant
 
 

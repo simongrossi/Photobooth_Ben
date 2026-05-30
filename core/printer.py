@@ -81,3 +81,14 @@ class PrinterManager:
         except Exception as e:
             log_critical(f"Erreur système impression : {e}")
             return False
+
+
+    def purger_file_attente(self) -> None:
+        """Purge de manière sécurisée toutes les tâches d'impression CUPS en cours ou bloquées."""
+        try:
+            subprocess.run(["cancel", "-a"], capture_output=True, text=True, check=True)
+            log_info("🗑️ CUPS : Les tâches d'impression résiduelles ont été purgées avec succès.")
+        except subprocess.CalledProcessError as e:
+            log_critical(f"Impossible de purger la file d'attente d'impression (CUPS) : {e.stderr}")
+        except FileNotFoundError:
+            log_critical("La commande système Linux 'cancel' est introuvable. Pas de purge CUPS effectuée.")

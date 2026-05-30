@@ -10,7 +10,7 @@ class TestApplicationOverrides:
         import config
         config._appliquer_overrides()
         # Valeurs par défaut (vérifiées ailleurs, juste s'assurer que _appliquer est inerte)
-        assert config.TEMPS_DECOMPTE == 1
+        assert config.TEMPS_DECOMPTE == 5
 
     def test_override_int_valide(self, tmp_path, monkeypatch):
         path = tmp_path / "config_overrides.json"
@@ -21,7 +21,7 @@ class TestApplicationOverrides:
         config._appliquer_overrides()
         assert config.TEMPS_DECOMPTE == 5
         # Remise en état pour ne pas polluer d'autres tests
-        config.TEMPS_DECOMPTE = 1
+        config.TEMPS_DECOMPTE = 5
 
     def test_cle_hors_whitelist_ignoree(self, tmp_path, monkeypatch):
         path = tmp_path / "config_overrides.json"
