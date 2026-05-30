@@ -76,7 +76,8 @@ KIOSK_FULLSCREEN = os.environ.get("PHOTOBOOTH_KIOSK", "0") == "1"
 
 MASQUE = 200   # Transparance des bande latérale noire si ratio image modifié (valeur : 0 invisble à 255 opaque)
 
-
+# Nombre maximal de copies qu'un utilisateur peut demander sur l'écran dynamique
+MAX_COPIES_IMPRESSION = 3
 
 TEMPS_DECOMPTE = 5
 
