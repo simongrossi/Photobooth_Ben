@@ -187,7 +187,7 @@ STRIP_PROFILES = {
     # espace    : Espace vide vertical entre les photos (en pixels).
     # marge_h   : Distance entre le bord haut de la bandelette et la première photo.
     "WIDE":    {"ratio": 0.66, "marge_lat": 30, "espace": 40, "marge_h": 40},
-    "MEDIUM":  {"ratio": 0.80, "marge_lat": 62, "espace": 80, "marge_h": 100},
+    "MEDIUM":  {"ratio": 0.80, "marge_lat": 32, "espace": 40, "marge_h": 40},
     "SQUARE":  {"ratio": 1.00, "marge_lat": 60, "espace": 20, "marge_h": 20},
     "NO_LOGO": {"ratio": 1.00, "marge_lat": 40, "espace": 50, "marge_h": 60}
 }
@@ -236,8 +236,8 @@ MONTAGE_10X15_PREVIEW_QUALITY      = 80
 
 # --- Dimensions finales de montage (mode 10x15) ---
 # Photo + offset dans le canvas 1800×1200
-MONTAGE_10X15_FINAL_PHOTO_FIT      = (1500, 1000)   #(1350, 900)
-MONTAGE_10X15_FINAL_PHOTO_OFFSET   = (150, 90)    #(225, 120)
+MONTAGE_10X15_FINAL_PHOTO_FIT      = (1300, 866)   #(1350, 900)
+MONTAGE_10X15_FINAL_PHOTO_OFFSET   = (250, 175)    #Décaen X et Y (pour centrez la photo calculer (1800-largeur photo)/2   et  (1200-hauteur photo)/2  
 MONTAGE_10X15_FINAL_QUALITY        = 98
 
 
