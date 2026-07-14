@@ -1,7 +1,7 @@
 #!/bin/bash
 # Script de mise à jour et de redémarrage des services du Photobooth
 
-set -e
+set +e
 
 echo "=== Mise à jour du Photobooth depuis GitHub ==="
 git fetch origin
@@ -10,30 +10,45 @@ git pull origin main
 
 echo ""
 echo "=== Redémarrage des services systemd ==="
-echo "Redémarrage de l'application Photobooth (écran)..."
-sudo systemctl restart photobooth.service
 
-echo "Redémarrage de l'administration web..."
-sudo systemctl restart photobooth-admin.service
+# Gestion de photobooth.service (écran)
+if [[ $(systemctl show -p LoadState photobooth.service 2>/dev/null) == "LoadState=loaded" ]]; then
+    echo "Redémarrage de l'application Photobooth (écran)..."
+    sudo systemctl restart photobooth.service
+else
+    echo "ℹ photobooth.service n'est pas installé sous systemd (non trouvé)."
+fi
+
+# Gestion de photobooth-admin.service (web)
+if [[ $(systemctl show -p LoadState photobooth-admin.service 2>/dev/null) == "LoadState=loaded" ]]; then
+    echo "Redémarrage de l'administration web..."
+    sudo systemctl restart photobooth-admin.service
+else
+    echo "ℹ photobooth-admin.service n'est pas installé sous systemd (non trouvé)."
+fi
 
 echo ""
 echo "=== Vérification des statuts ==="
 sleep 2
 
-if systemctl is-active --quiet photobooth.service; then
-    echo "✔ photobooth.service est ACTIF"
-else
-    echo "❌ Erreur: photobooth.service n'a pas pu démarrer."
-    echo "Derniers logs :"
-    sudo journalctl -n 20 -u photobooth.service
+if [[ $(systemctl show -p LoadState photobooth.service 2>/dev/null) == "LoadState=loaded" ]]; then
+    if systemctl is-active --quiet photobooth.service; then
+        echo "✔ photobooth.service est ACTIF"
+    else
+        echo "❌ Erreur: photobooth.service n'a pas pu démarrer."
+        echo "Derniers logs :"
+        sudo journalctl -n 20 -u photobooth.service
+    fi
 fi
 
-if systemctl is-active --quiet photobooth-admin.service; then
-    echo "✔ photobooth-admin.service est ACTIF"
-else
-    echo "❌ Erreur: photobooth-admin.service n'a pas pu démarrer."
-    echo "Derniers logs :"
-    sudo journalctl -n 20 -u photobooth-admin.service
+if [[ $(systemctl show -p LoadState photobooth-admin.service 2>/dev/null) == "LoadState=loaded" ]]; then
+    if systemctl is-active --quiet photobooth-admin.service; then
+        echo "✔ photobooth-admin.service est ACTIF"
+    else
+        echo "❌ Erreur: photobooth-admin.service n'a pas pu démarrer."
+        echo "Derniers logs :"
+        sudo journalctl -n 20 -u photobooth-admin.service
+    fi
 fi
 
 echo ""
