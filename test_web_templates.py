@@ -160,3 +160,56 @@ class TestSuppression:
         with connexion() as conn:
             still = conn.execute("SELECT COUNT(*) AS n FROM template WHERE id = ?", (row["id"],)).fetchone()
         assert still["n"] == 1  # pas supprimé
+
+
+class TestMigrationCouche:
+    """La colonne `couche` doit être ajoutée aux bases créées avant son introduction."""
+
+    def _creer_ancienne_base(self, chemin: str) -> None:
+        import sqlite3
+        conn = sqlite3.connect(chemin)
+        conn.execute("""CREATE TABLE template (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nom TEXT NOT NULL,
+            type TEXT NOT NULL CHECK (type IN ('10x15', 'strip')),
+            fichier TEXT NOT NULL UNIQUE,
+            actif INTEGER NOT NULL DEFAULT 0,
+            uploaded_at TEXT NOT NULL DEFAULT (datetime('now')),
+            taille_octets INTEGER NOT NULL DEFAULT 0
+        )""")
+        conn.execute(
+            "INSERT INTO template (nom, type, fichier) VALUES ('Mariage', '10x15', 'm.png')"
+        )
+        conn.commit()
+        conn.close()
+
+    def test_ancienne_base_migree_en_overlay(self, tmp_path):
+        import sqlite3
+        db = str(tmp_path / "admin.db")
+        self._creer_ancienne_base(db)
+
+        from web.db import init_db
+        init_db(path=db)  # ne doit pas lever, et ajouter la colonne
+
+        conn = sqlite3.connect(db)
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT couche FROM template WHERE nom = 'Mariage'").fetchone()
+        conn.close()
+        assert row["couche"] == "overlay"
+
+    def test_init_db_idempotent_sur_base_migree(self, tmp_path):
+        db = str(tmp_path / "admin.db")
+        self._creer_ancienne_base(db)
+        from web.db import init_db
+        init_db(path=db)
+        init_db(path=db)  # 2e passage : ne doit pas lever
+
+    def test_base_neuve_a_la_colonne(self, tmp_path):
+        import sqlite3
+        db = str(tmp_path / "neuve.db")
+        from web.db import init_db
+        init_db(path=db)
+        conn = sqlite3.connect(db)
+        colonnes = {r[1] for r in conn.execute("PRAGMA table_info(template)")}
+        conn.close()
+        assert "couche" in colonnes

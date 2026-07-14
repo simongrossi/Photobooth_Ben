@@ -6,12 +6,13 @@ source de vérité des overrides config reste `data/config_overrides.json`
 `data/sessions.jsonl` (écrit par le kiosque).
 
 Une seule table aujourd'hui :
-- `template`  (id, nom, type, fichier, actif, uploaded_at, taille_octets)
+- `template`  (id, nom, type, couche, fichier, actif, uploaded_at, taille_octets)
 
-Les types sont "10x15" ou "strip". La colonne `actif` marque le template
-actuellement utilisé pour ce mode (un seul actif par type). Les fichiers
-eux-mêmes restent sur disque dans `assets/overlays/` — la DB ne stocke
-que la liste + flag actif.
+Les types sont "10x15" ou "strip" ; les couches "overlay" (PNG par-dessus la
+photo) ou "fond" (image sous les photos). La colonne `actif` marque le template
+actuellement utilisé (un seul actif par couple couche×type). Les fichiers
+eux-mêmes restent sur disque dans `assets/overlays/` et `assets/backgrounds/` —
+la DB ne stocke que la liste + flag actif.
 """
 from __future__ import annotations
 
@@ -29,6 +30,7 @@ CREATE TABLE IF NOT EXISTS template (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     nom TEXT NOT NULL,
     type TEXT NOT NULL CHECK (type IN ('10x15', 'strip')),
+    couche TEXT NOT NULL DEFAULT 'overlay',
     fichier TEXT NOT NULL UNIQUE,
     actif INTEGER NOT NULL DEFAULT 0,
     uploaded_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -46,11 +48,29 @@ def _ouvrir(path: str) -> sqlite3.Connection:
     return conn
 
 
+def _migrer(conn: sqlite3.Connection) -> None:
+    """Migrations idempotentes du schéma (bases créées avant l'ajout de colonnes).
+
+    L'index sur `couche` est créé dans init_db APRÈS cette fonction : sur une
+    base ancienne, la colonne doit exister avant l'index.
+    """
+    colonnes = {r["name"] for r in conn.execute("PRAGMA table_info(template)")}
+    if "couche" not in colonnes:
+        conn.execute(
+            "ALTER TABLE template ADD COLUMN couche TEXT NOT NULL DEFAULT 'overlay'"
+        )
+
+
 def init_db(path: str = DB_PATH) -> None:
-    """Crée la DB si absente, applique le schéma (idempotent)."""
+    """Crée la DB si absente, applique le schéma + migrations (idempotent)."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with _ouvrir(path) as conn:
         conn.executescript(_SCHEMA)
+        _migrer(conn)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_template_couche_type_actif "
+            "ON template (couche, type, actif)"
+        )
         conn.commit()
 
 
