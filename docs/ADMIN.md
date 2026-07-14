@@ -7,7 +7,10 @@ sur le même LAN, sans toucher au code.
 - **Dashboard** : stats de sessions, état disque/CPU, dossier d'impression.
 - **Galerie** : parcours des montages produits (10×15 et strips) avec
   miniatures à la volée.
-- **Templates** : upload de PNG d'overlay, sélection du template actif par mode.
+- **Templates** : bibliothèque des deux couches d'habillage — **overlays** (PNG
+  par-dessus la photo) et **fonds** (image sous les photos) — upload, activation
+  par format (10×15 / strip), et état « Aucun » par couche×format (photo nue /
+  fond blanc, effet à la photo suivante, sans redémarrage du kiosque).
 - **Réglages** : édition d'un sous-ensemble de `config.py` via
   `data/config_overrides.json` (timings, imprimantes, slideshow, watermark…).
 
@@ -26,8 +29,9 @@ sur le même LAN, sans toucher au code.
 | Donnée | Stockage | Écrit par | Lu par |
 |---|---|---|---|
 | Sessions | `data/sessions.jsonl` (append-only) | kiosque | kiosque + admin (dashboard) |
-| Overlays PNG | `assets/overlays/*.png` | admin | kiosque (montage) |
-| Overlay actif | `assets/overlays/10x15_overlay.png` et `strips_overlay.png` (copie du template activé) | admin | kiosque |
+| Overlays PNG (bibliothèque) | `assets/overlays/*.png` | admin | kiosque (montage) |
+| Fonds JPG/PNG (bibliothèque) | `assets/backgrounds/*` | admin | kiosque (montage) |
+| Couches actives | `assets/overlays/{10x15,strips}_overlay.png` et `assets/backgrounds/{10x15,strips}_background.jpg` (copies du template activé ; fichier absent = « aucun ») | admin | kiosque |
 | Métadonnées templates | `data/admin.db` (SQLite) | admin | admin |
 | Surcharges config | `data/config_overrides.json` | admin | kiosque (à chaque import de `config`) |
 
