@@ -11,7 +11,13 @@ import time
 import pytest
 
 from core import monitoring
-from core.monitoring import DiskMonitor, TempMonitor, lister_images_slideshow
+from core.monitoring import (
+    DiskMonitor,
+    TempMonitor,
+    formater_ligne_perf,
+    lire_rss_mb,
+    lister_images_slideshow,
+)
 
 
 # --- DiskMonitor ---
@@ -227,3 +233,55 @@ class TestListerImages:
 
         fichiers = lister_images_slideshow([str(d1), str(d2)], nb_max=10)
         assert len(fichiers) == 2
+
+
+# --- lire_rss_mb (instrumentation #20) ---
+
+
+class TestLireRssMb:
+    def test_lit_rss_depuis_statm(self, tmp_path):
+        # Format /proc/self/statm : size resident shared text lib data dt (en pages)
+        statm = tmp_path / "statm"
+        statm.write_text("1000 500 100 1 0 200 0\n")
+        # 500 pages * 4096 octets = 2 048 000 o = 1.953125 Mo
+        rss = lire_rss_mb(statm_path=str(statm), page_size=4096)
+        assert rss == pytest.approx(500 * 4096 / (1024 ** 2))
+
+    def test_fichier_absent_retourne_none(self, tmp_path):
+        # Hors Linux / pas de /proc → dégradation silencieuse
+        assert lire_rss_mb(statm_path=str(tmp_path / "inexistant"), page_size=4096) is None
+
+    def test_contenu_malforme_retourne_none(self, tmp_path):
+        statm = tmp_path / "statm"
+        statm.write_text("pas des nombres\n")
+        assert lire_rss_mb(statm_path=str(statm), page_size=4096) is None
+
+    def test_fichier_vide_retourne_none(self, tmp_path):
+        statm = tmp_path / "statm"
+        statm.write_text("")
+        assert lire_rss_mb(statm_path=str(statm), page_size=4096) is None
+
+
+# --- formater_ligne_perf (instrumentation #20) ---
+
+
+class TestFormaterLignePerf:
+    def test_ligne_complete(self):
+        ligne = formater_ligne_perf(
+            capture_num=12, preview_fps=24.3, capture_s=2.15,
+            rss_mb=980.0, gc_objs=45210,
+        )
+        assert ligne.startswith("[PERF]")
+        assert "capture#12" in ligne
+        assert "preview_fps=24.3" in ligne
+        assert "capture=2.15s" in ligne
+        assert "rss=980Mo" in ligne
+        assert "gc_objs=45210" in ligne
+
+    def test_rss_none_affiche_na(self):
+        ligne = formater_ligne_perf(
+            capture_num=1, preview_fps=None, capture_s=1.0,
+            rss_mb=None, gc_objs=100,
+        )
+        assert "rss=n/a" in ligne
+        assert "preview_fps=n/a" in ligne

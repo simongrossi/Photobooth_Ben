@@ -77,6 +77,40 @@ class TestIsReady:
         assert mgr.is_ready("10x15") is not True
 
 
+class TestLastError:
+    """Régression : `last_error` doit exister et refléter l'état (bug AttributeError)."""
+
+    def test_none_a_l_init(self, mgr):
+        assert mgr.last_error is None
+
+    def test_mode_inconnu_memorise(self, mgr):
+        mgr.is_ready("inconnu")
+        assert mgr.last_error == "MODE INCONNU"
+
+    def test_file_pleine_memorise(self, mgr, monkeypatch):
+        # lpstat -o renvoie une ligne de job → file pleine
+        monkeypatch.setattr(printer.subprocess, "run", _fake_run_factory(
+            "DNP_10x15-42 photobooth 1024 ..."
+        ))
+        assert mgr.is_ready("10x15") == "FILE D'ATTENTE PLEINE"
+        assert mgr.last_error == "FILE D'ATTENTE PLEINE"
+
+    def test_reset_a_none_si_pret(self, mgr, monkeypatch):
+        # D'abord en erreur (mémorise last_error)
+        mgr.is_ready("inconnu")
+        assert mgr.last_error is not None
+
+        # Puis prêt : lpstat -o vide (pas de job), lpstat -p "idle"
+        def _dispatch(cmd, **kw):
+            if "-o" in cmd:
+                return SimpleNamespace(stdout="", stderr="", returncode=0)
+            return SimpleNamespace(stdout="printer DNP_10x15 is idle. enabled", stderr="", returncode=0)
+        monkeypatch.setattr(printer.subprocess, "run", _dispatch)
+
+        assert mgr.is_ready("10x15") is True
+        assert mgr.last_error is None
+
+
 # --- send ---
 
 

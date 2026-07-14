@@ -35,6 +35,7 @@ try:
     import pygame
 except ImportError:
     pygame = None  # type: ignore[assignment]
+import gc
 import os
 import signal
 import sys
@@ -307,7 +308,13 @@ from core.arduino import ArduinoController  # noqa: E402
 
 
 # --- Monitoring disque + slideshow listing (extraits dans core/monitoring.py) ---
-from core.monitoring import DiskMonitor, TempMonitor, lister_images_slideshow  # noqa: E402
+from core.monitoring import (  # noqa: E402
+    DiskMonitor,
+    TempMonitor,
+    formater_ligne_perf,
+    lire_rss_mb,
+    lister_images_slideshow,
+)
 
 
 screen = None
@@ -338,6 +345,7 @@ slideshow_images = []
 slideshow_last_refresh = 0.0
 slideshow_cached_surface = None
 slideshow_cached_for_idx = -1
+_perf_capture_num = 0  # compteur de captures depuis le lancement (instrumentation #20)
 fond_accueil = None
 icon_10x15_norm = None
 icon_10x15_select = None
@@ -645,9 +653,13 @@ def traiter_impression_session(session) -> str:
         # ===========================================================
         # --- VERIFICATION DE SECURITE (Etat initial de la machine) ---
         # ===========================================================
-        if not printer_mgr.is_ready(session.mode_actuel):
-            log_warning("Impression bloquee : Imprimante non disponible ou deconnectee")
-            ecran_erreur(TXT_ERREUR_IMPRIMANTE) 
+        # is_ready renvoie True si prêt, sinon une chaîne décrivant le problème
+        # (mémorisée aussi dans last_error). Une chaîne est truthy : on teste
+        # `is not True` pour ne PAS partir imprimer sur « FILE D'ATTENTE PLEINE ».
+        etat_imprimante = printer_mgr.is_ready(session.mode_actuel)
+        if etat_imprimante is not True:
+            log_warning(f"Impression bloquée : {etat_imprimante}")
+            ecran_erreur(printer_mgr.last_error or TXT_ERREUR_IMPRIMANTE)
             return "print_failed"
 
         # ===========================================================
@@ -950,13 +962,17 @@ def render_decompte(session: SessionState) -> None:
         session.session_start_ts = time.time()
         log_info(f"🚀 NOUVELLE SESSION : {session.id_session_timestamp}")
 
-    # Boucle du décompte visuel
+    # Boucle du décompte visuel (+ instrumentation perf #20 : compte les frames
+    # preview pour mesurer le fps réel du LiveView pendant le décompte)
+    perf_frames_ok = 0
+    perf_t0 = time.time()
     for i in range(TEMPS_DECOMPTE, 0, -1):
         jouer_son("beep_final" if i == 1 else "beep")
         t_start = time.time()
         while time.time() - t_start < 1:
             surf = get_canon_frame()
             if surf:
+                perf_frames_ok += 1
                 # 1. On applique la symétrie horizontale sur l'image reçue (True = Horizontal, False = Vertical)
                 surf_miroir = pygame.transform.flip(surf, True, False)
     
@@ -991,9 +1007,25 @@ def render_decompte(session: SessionState) -> None:
             pygame.display.flip()
             pygame.event.pump()
 
-    # CAPTURE HQ + transition
+    # --- Instrumentation perf #20 : fps preview mesuré sur le décompte ---
+    perf_elapsed = time.time() - perf_t0
+    perf_fps = (perf_frames_ok / perf_elapsed) if perf_elapsed > 0 else None
+
+    # CAPTURE HQ + transition (chronométrée pour le log PERF)
     index_photo = len(session.photos_validees) + 1
+    perf_t_cap = time.time()
     chemin_photo = capturer_hq(session.id_session_timestamp, index_photo)
+    perf_capture_s = time.time() - perf_t_cap
+
+    global _perf_capture_num
+    _perf_capture_num += 1
+    log_info(formater_ligne_perf(
+        capture_num=_perf_capture_num,
+        preview_fps=perf_fps,
+        capture_s=perf_capture_s,
+        rss_mb=lire_rss_mb(),
+        gc_objs=len(gc.get_objects()),
+    ))
 
     if chemin_photo:
         session.photos_validees.append(chemin_photo)
