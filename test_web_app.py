@@ -66,8 +66,12 @@ def client(app):
 
 
 class TestAuth:
-    def test_sans_env_var_retourne_503(self, monkeypatch):
+    def test_sans_env_var_retourne_503(self, monkeypatch, tmp_path):
         monkeypatch.delenv("PHOTOBOOTH_ADMIN_PASS", raising=False)
+        # Isole la DB : create_app() appelle init_db(), qui ne doit jamais
+        # toucher la vraie data/admin.db depuis un test.
+        import web.db
+        monkeypatch.setattr(web.db, "DB_PATH", str(tmp_path / "admin.db"))
         app = create_app()
         c = app.test_client()
         r = c.get("/dashboard/")

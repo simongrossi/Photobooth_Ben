@@ -19,7 +19,7 @@ from __future__ import annotations
 import os
 import sqlite3
 from contextlib import contextmanager
-from typing import Iterator
+from typing import Iterator, Optional
 
 from config import PATH_DATA
 
@@ -61,8 +61,15 @@ def _migrer(conn: sqlite3.Connection) -> None:
         )
 
 
-def init_db(path: str = DB_PATH) -> None:
-    """Crée la DB si absente, applique le schéma + migrations (idempotent)."""
+def init_db(path: Optional[str] = None) -> None:
+    """Crée la DB si absente, applique le schéma + migrations (idempotent).
+
+    `path=None` → `DB_PATH` résolu à l'appel (et non à l'import) : indispensable
+    pour que les tests puissent monkeypatcher `web.db.DB_PATH` — sinon ils
+    écriraient dans la vraie base `data/admin.db`.
+    """
+    if path is None:
+        path = DB_PATH
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with _ouvrir(path) as conn:
         conn.executescript(_SCHEMA)
@@ -75,8 +82,12 @@ def init_db(path: str = DB_PATH) -> None:
 
 
 @contextmanager
-def connexion(path: str = DB_PATH) -> Iterator[sqlite3.Connection]:
-    """Context manager ouvrant une connexion commit-on-success."""
+def connexion(path: Optional[str] = None) -> Iterator[sqlite3.Connection]:
+    """Context manager ouvrant une connexion commit-on-success.
+
+    `path=None` → `DB_PATH` résolu à l'appel (voir init_db)."""
+    if path is None:
+        path = DB_PATH
     conn = _ouvrir(path)
     try:
         yield conn

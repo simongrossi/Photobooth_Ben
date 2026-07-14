@@ -25,31 +25,42 @@ def client(tmp_path, monkeypatch):
     data.mkdir()
     overlays = tmp_path / "overlays"
     overlays.mkdir()
+    fonds = tmp_path / "fonds"
+    fonds.mkdir()
     monkeypatch.setenv("PHOTOBOOTH_ADMIN_PASS", "test")
 
     import config
     monkeypatch.setattr(config, "PATH_DATA", str(data))
     monkeypatch.setattr(config, "PATH_OVERLAYS", str(overlays))
+    monkeypatch.setattr(config, "PATH_FONDS", str(fonds))
     monkeypatch.setattr(config, "OVERLAY_10X15", str(overlays / "10x15_overlay.png"))
     monkeypatch.setattr(config, "OVERLAY_STRIPS", str(overlays / "strips_overlay.png"))
+    monkeypatch.setattr(config, "BG_10X15_FILE", str(fonds / "10x15_background.jpg"))
+    monkeypatch.setattr(config, "BG_STRIPS_FILE", str(fonds / "strips_background.jpg"))
     import web.db
     import web.routes.templates_route as tr
     monkeypatch.setattr(web.db, "DB_PATH", str(data / "admin.db"))
     monkeypatch.setattr(tr, "_CIBLE_ACTIVE", {
-        "10x15": str(overlays / "10x15_overlay.png"),
-        "strip": str(overlays / "strips_overlay.png"),
+        ("overlay", "10x15"): str(overlays / "10x15_overlay.png"),
+        ("overlay", "strip"): str(overlays / "strips_overlay.png"),
+        ("fond", "10x15"): str(fonds / "10x15_background.jpg"),
+        ("fond", "strip"): str(fonds / "strips_background.jpg"),
+    })
+    monkeypatch.setattr(tr, "_RACINE_PAR_COUCHE", {
+        "overlay": str(overlays),
+        "fond": str(fonds),
     })
     # Les routes lisent PATH_OVERLAYS depuis le module importé — on patch aussi.
     monkeypatch.setattr(tr, "PATH_OVERLAYS", str(overlays))
 
     app = create_app()
     app.config["TESTING"] = True
-    return app.test_client(), str(overlays)
+    return app.test_client(), str(overlays), str(fonds)
 
 
 class TestUpload:
     def test_upload_png_valide(self, client):
-        c, _ = client
+        c, _, _ = client
         data = {
             "nom": "Mariage",
             "type": "10x15",
@@ -62,7 +73,7 @@ class TestUpload:
         assert b"Mariage" in r.data or b"uploade" in r.data.lower()
 
     def test_upload_refuse_mauvaise_extension(self, client):
-        c, _ = client
+        c, _, _ = client
         data = {
             "nom": "x",
             "type": "10x15",
@@ -75,7 +86,7 @@ class TestUpload:
         assert b"PNG uniquement" in r.data or b"invalide" in r.data.lower()
 
     def test_upload_refuse_fichier_corrompu(self, client):
-        c, _ = client
+        c, _, _ = client
         data = {
             "nom": "x",
             "type": "10x15",
@@ -88,7 +99,7 @@ class TestUpload:
         assert b"non reconnu" in r.data or b"valide" in r.data.lower()
 
     def test_upload_refuse_type_inconnu(self, client):
-        c, _ = client
+        c, _, _ = client
         data = {
             "nom": "x",
             "type": "wrong",
@@ -103,7 +114,7 @@ class TestUpload:
 
 class TestActivation:
     def test_activer_copie_le_fichier_vers_cible(self, client):
-        c, overlays = client
+        c, overlays, _ = client
         # Upload
         c.post("/templates/upload", data={
             "nom": "T1", "type": "10x15",
@@ -123,7 +134,7 @@ class TestActivation:
         assert actif["actif"] == 1
 
     def test_activer_exclusif_par_type(self, client):
-        c, _ = client
+        c, _, _ = client
         # Upload deux templates 10x15
         for nom, fichier in [("A", "a.png"), ("B", "b.png")]:
             c.post("/templates/upload", data={
@@ -146,7 +157,7 @@ class TestActivation:
 
 class TestSuppression:
     def test_suppression_bloquee_si_actif(self, client):
-        c, _ = client
+        c, _, _ = client
         c.post("/templates/upload", data={
             "nom": "X", "type": "10x15",
             "fichier": (io.BytesIO(_png_bytes()), "x.png"),

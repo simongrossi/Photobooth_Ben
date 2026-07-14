@@ -1,9 +1,12 @@
-"""templates_route.py — gestion des overlays PNG (upload, liste, activation).
+"""templates_route.py — gestion des templates deux couches (upload, liste, activation).
 
-Les fichiers vivent dans `assets/overlays/`. La DB SQLite maintient un registre
-(nom affiché, type, fichier actif). Le kiosque lit toujours le même chemin
-`OVERLAY_10X15` / `OVERLAY_STRIPS` (défini dans config.py) : activer un
-template = remplacer ce fichier par une copie du template choisi.
+Deux couches par format : `overlay` (PNG par-dessus la photo, dans
+`assets/overlays/`) et `fond` (image sous les photos, dans `assets/backgrounds/`).
+La DB SQLite maintient un registre (nom affiché, type, couche, fichier actif).
+Le kiosque lit toujours les 4 mêmes chemins (`OVERLAY_*`, `BG_*` définis dans
+config.py) : activer un template = remplacer la cible par une copie du template
+choisi ; désactiver (« Aucun ») = supprimer la cible (le moteur de montage gère
+nativement l'absence : fond → toile blanche, overlay → photo nue).
 """
 from __future__ import annotations
 
@@ -24,20 +27,40 @@ from flask import (
 )
 from PIL import Image
 
-from config import OVERLAY_10X15, OVERLAY_STRIPS, PATH_OVERLAYS
+from config import (
+    BG_10X15_FILE,
+    BG_STRIPS_FILE,
+    OVERLAY_10X15,
+    OVERLAY_STRIPS,
+    PATH_FONDS,
+    PATH_OVERLAYS,
+)
 from web.auth import require_auth
 from web.db import connexion
 
 bp = Blueprint("templates", __name__, url_prefix="/templates")
 
 TYPES_AUTORISES = ("10x15", "strip")
-EXTENSIONS_AUTORISEES = (".png",)
+COUCHES_AUTORISEES = ("overlay", "fond")
+# L'overlay exige la transparence (PNG) ; le fond est une image pleine.
+EXTENSIONS_PAR_COUCHE = {
+    "overlay": (".png",),
+    "fond": (".png", ".jpg", ".jpeg"),
+}
 THUMB_MAX = (240, 240)
 
-# Cible où le kiosque lit l'overlay effectivement utilisé.
+# Cibles fixes lues par le kiosque à chaque montage, par (couche, type).
 _CIBLE_ACTIVE = {
-    "10x15": OVERLAY_10X15,
-    "strip": OVERLAY_STRIPS,
+    ("overlay", "10x15"): OVERLAY_10X15,
+    ("overlay", "strip"): OVERLAY_STRIPS,
+    ("fond", "10x15"): BG_10X15_FILE,
+    ("fond", "strip"): BG_STRIPS_FILE,
+}
+
+# Dossier bibliothèque par couche.
+_RACINE_PAR_COUCHE = {
+    "overlay": PATH_OVERLAYS,
+    "fond": PATH_FONDS,
 }
 
 
@@ -46,6 +69,7 @@ class TemplateRow:
     id: int
     nom: str
     type: str
+    couche: str
     fichier: str
     actif: bool
     uploaded_at: str
@@ -59,9 +83,12 @@ def _safe_filename(nom: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]", "_", base)
 
 
-def _chemin_fichier(fichier: str) -> str:
-    chemin = os.path.realpath(os.path.join(PATH_OVERLAYS, fichier))
-    racine = os.path.realpath(PATH_OVERLAYS)
+def _chemin_fichier(fichier: str, couche: str) -> str:
+    racine_couche = _RACINE_PAR_COUCHE.get(couche)
+    if racine_couche is None:
+        abort(404)
+    chemin = os.path.realpath(os.path.join(racine_couche, fichier))
+    racine = os.path.realpath(racine_couche)
     if not chemin.startswith(racine + os.sep):
         abort(404)
     return chemin
@@ -70,12 +97,13 @@ def _chemin_fichier(fichier: str) -> str:
 def _lister() -> list[TemplateRow]:
     with connexion() as conn:
         rows = conn.execute(
-            "SELECT id, nom, type, fichier, actif, uploaded_at, taille_octets "
-            "FROM template ORDER BY type, uploaded_at DESC"
+            "SELECT id, nom, type, couche, fichier, actif, uploaded_at, taille_octets "
+            "FROM template ORDER BY couche, type, uploaded_at DESC"
         ).fetchall()
     return [
         TemplateRow(
-            id=r["id"], nom=r["nom"], type=r["type"], fichier=r["fichier"],
+            id=r["id"], nom=r["nom"], type=r["type"], couche=r["couche"],
+            fichier=r["fichier"],
             actif=bool(r["actif"]), uploaded_at=r["uploaded_at"],
             taille_ko=r["taille_octets"] // 1024,
         )
@@ -86,10 +114,16 @@ def _lister() -> list[TemplateRow]:
 @bp.route("/", methods=["GET"])
 @require_auth
 def index():
+    templates = _lister()
+    actifs = {(t.couche, t.type): t.nom for t in templates if t.actif}
     return render_template(
         "templates.html",
-        templates=_lister(),
+        templates=templates,
+        actifs=actifs,
+        couches=COUCHES_AUTORISEES,
+        types=TYPES_AUTORISES,
         path_overlays=PATH_OVERLAYS,
+        path_fonds=PATH_FONDS,
     )
 
 
@@ -98,34 +132,43 @@ def index():
 def upload():
     nom_affiche = (request.form.get("nom") or "").strip()
     type_template = request.form.get("type", "").strip()
+    # Défaut "overlay" : compat avec les formulaires/scripts d'avant les deux couches.
+    couche = (request.form.get("couche") or "overlay").strip()
     f = request.files.get("fichier")
 
+    if couche not in COUCHES_AUTORISEES:
+        flash("Couche invalide.", "error")
+        return redirect(url_for("templates.index"))
     if type_template not in TYPES_AUTORISES:
         flash("Type de template invalide.", "error")
         return redirect(url_for("templates.index"))
     if not f or not f.filename:
         flash("Aucun fichier fourni.", "error")
         return redirect(url_for("templates.index"))
-    if not f.filename.lower().endswith(EXTENSIONS_AUTORISEES):
-        flash("Extension non autorisée : PNG uniquement.", "error")
+    extensions = EXTENSIONS_PAR_COUCHE[couche]
+    if not f.filename.lower().endswith(extensions):
+        libelle = ", ".join(e.lstrip(".").upper() for e in extensions)
+        flash(f"Extension non autorisée : {libelle} uniquement.", "error")
         return redirect(url_for("templates.index"))
 
-    os.makedirs(PATH_OVERLAYS, exist_ok=True)
+    racine = _RACINE_PAR_COUCHE[couche]
+    os.makedirs(racine, exist_ok=True)
     nom_fichier = _safe_filename(f.filename)
     if not nom_fichier:
         flash("Nom de fichier invalide.", "error")
         return redirect(url_for("templates.index"))
-    # Préfixer avec le type pour éviter les collisions entre modes.
-    nom_fichier = f"{type_template}__{nom_fichier}"
-    cible = os.path.join(PATH_OVERLAYS, nom_fichier)
+    # Préfixe couche + type : évite les collisions entre modes ET entre couches
+    # (la colonne `fichier` est UNIQUE globalement).
+    nom_fichier = f"{couche}__{type_template}__{nom_fichier}"
+    cible = os.path.join(racine, nom_fichier)
 
-    # Sauvegarde + validation PIL (rejette les fichiers qui ne sont pas des PNG).
+    # Sauvegarde + validation PIL (rejette les fichiers qui ne sont pas des images).
     contenu = f.read()
     try:
         with Image.open(io.BytesIO(contenu)) as img:
             img.verify()
     except (OSError, Image.UnidentifiedImageError):
-        flash("Fichier non reconnu comme PNG valide.", "error")
+        flash("Fichier image non reconnu ou corrompu.", "error")
         return redirect(url_for("templates.index"))
 
     with open(cible, "wb") as out:
@@ -134,9 +177,9 @@ def upload():
     taille = os.path.getsize(cible)
     with connexion() as conn:
         conn.execute(
-            "INSERT OR REPLACE INTO template (nom, type, fichier, actif, taille_octets) "
-            "VALUES (?, ?, ?, 0, ?)",
-            (nom_affiche or nom_fichier, type_template, nom_fichier, taille),
+            "INSERT OR REPLACE INTO template (nom, type, couche, fichier, actif, taille_octets) "
+            "VALUES (?, ?, ?, ?, 0, ?)",
+            (nom_affiche or nom_fichier, type_template, couche, nom_fichier, taille),
         )
     flash(f"Template « {nom_affiche or nom_fichier} » uploadé.", "success")
     return redirect(url_for("templates.index"))
@@ -147,26 +190,29 @@ def upload():
 def activer(template_id: int):
     with connexion() as conn:
         row = conn.execute(
-            "SELECT type, fichier, nom FROM template WHERE id = ?", (template_id,),
+            "SELECT type, couche, fichier, nom FROM template WHERE id = ?", (template_id,),
         ).fetchone()
         if row is None:
             abort(404)
         type_t = row["type"]
+        couche = row["couche"]
         fichier = row["fichier"]
-        source = _chemin_fichier(fichier)
+        source = _chemin_fichier(fichier, couche)
         if not os.path.isfile(source):
             flash("Fichier source introuvable sur disque.", "error")
             return redirect(url_for("templates.index"))
 
-        cible_active = _CIBLE_ACTIVE.get(type_t)
+        cible_active = _CIBLE_ACTIVE.get((couche, type_t))
         if cible_active is None:
             abort(400)
         os.makedirs(os.path.dirname(cible_active), exist_ok=True)
         shutil.copyfile(source, cible_active)
 
-        conn.execute("UPDATE template SET actif = 0 WHERE type = ?", (type_t,))
+        conn.execute(
+            "UPDATE template SET actif = 0 WHERE couche = ? AND type = ?", (couche, type_t),
+        )
         conn.execute("UPDATE template SET actif = 1 WHERE id = ?", (template_id,))
-    flash(f"Template « {row['nom']} » activé pour le mode {type_t}.", "success")
+    flash(f"Template « {row['nom']} » activé ({couche} {type_t}).", "success")
     return redirect(url_for("templates.index"))
 
 
@@ -175,14 +221,14 @@ def activer(template_id: int):
 def supprimer(template_id: int):
     with connexion() as conn:
         row = conn.execute(
-            "SELECT fichier, actif FROM template WHERE id = ?", (template_id,),
+            "SELECT fichier, couche, actif FROM template WHERE id = ?", (template_id,),
         ).fetchone()
         if row is None:
             abort(404)
         if row["actif"]:
             flash("Impossible de supprimer un template actif — activez-en un autre d'abord.", "error")
             return redirect(url_for("templates.index"))
-        chemin = _chemin_fichier(row["fichier"])
+        chemin = _chemin_fichier(row["fichier"], row["couche"])
         try:
             os.remove(chemin)
         except FileNotFoundError:
@@ -197,11 +243,11 @@ def supprimer(template_id: int):
 def thumb(template_id: int):
     with connexion() as conn:
         row = conn.execute(
-            "SELECT fichier FROM template WHERE id = ?", (template_id,),
+            "SELECT fichier, couche FROM template WHERE id = ?", (template_id,),
         ).fetchone()
     if row is None:
         abort(404)
-    chemin = _chemin_fichier(row["fichier"])
+    chemin = _chemin_fichier(row["fichier"], row["couche"])
     if not os.path.isfile(chemin):
         abort(404)
     try:
