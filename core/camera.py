@@ -1,7 +1,7 @@
 """camera.py — gestion de la caméra Canon via gphoto2.
 
-Encapsule la caméra avec `threading.Lock` (thread-safe pour le capture en spinner
-thread), rate-limit de reconnexion USB, et API explicite (init, set_liveview,
+Encapsule la caméra avec `threading.Lock`, acquisition LiveView en arrière-plan,
+rate-limit de reconnexion USB, et API explicite (init, start_preview,
 get_preview_frame, capture_hq, is_connected).
 
 Sprint 4.1 + 4.6 : extrait de Photobooth_start.py. Dépendances : pygame.surfarray
@@ -49,9 +49,13 @@ class CameraManager:
 
     def __init__(self) -> None:
         self._lock: threading.Lock = threading.Lock()
+        self._preview_lock: threading.Lock = threading.Lock()
         self._cam: Optional[Any] = None
         self._last_init_attempt: float = 0.0
         self._deps_warning_logged: bool = False
+        self._latest_preview: Optional[Any] = None
+        self._preview_stop = threading.Event()
+        self._preview_thread: Optional[threading.Thread] = None
 
     # ---- API publique ----
     @property
@@ -73,44 +77,49 @@ class CameraManager:
         with self._lock:
             self._set_liveview_unlocked(state)
 
+    def start_preview(self) -> None:
+        """Démarre l'acquisition LiveView hors du thread Pygame.
+
+        Le worker ne crée aucune Surface : il conserve uniquement le tableau RGB
+        le plus récent. La conversion Pygame reste effectuée par le thread principal
+        dans :meth:`get_preview_frame`.
+        """
+        if cv2 is None or np is None:
+            self._log_deps_absentes()
+            return
+        if self._preview_thread is not None and self._preview_thread.is_alive():
+            return
+        self._preview_stop.clear()
+        self._preview_thread = threading.Thread(
+            target=self._preview_loop,
+            name="camera-liveview",
+            daemon=True,
+        )
+        self._preview_thread.start()
+
     def get_preview_frame(self) -> Optional[Any]:
-        """Retourne une pygame.Surface du preview courant, ou None.
-        Applique rate-limit sur les tentatives de reconnexion (évite de marteler gphoto2)."""
+        """Retourne immédiatement la dernière Surface disponible, ou None.
+
+        L'appel ne contacte jamais la caméra : l'I/O gphoto2 potentiellement lente
+        reste dans le worker LiveView afin de ne pas figer le décompte Pygame.
+        """
         if cv2 is None or np is None or pygame is None:
             self._log_deps_absentes()
             return None
-        with self._lock:
-            # Si pas de caméra : tentative de reconnexion discrète (rate-limitée)
-            if self._cam is None:
-                maintenant = time.time()
-                if maintenant - self._last_init_attempt < self._DELAI_RECONNEXION:
-                    return None
-                self._last_init_attempt = maintenant
-                self._init_unlocked()
-                if self._cam:
-                    self._set_liveview_unlocked(1)
-                return None
-
-            try:
-                capture = self._cam.capture_preview()
-                file_bits = capture.get_data_and_size()
-                image_data = np.frombuffer(memoryview(file_bits), dtype=np.uint8)
-                frame = cv2.imdecode(image_data, cv2.IMREAD_COLOR)
-                if frame is not None:
-                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    frame = cv2.flip(frame, 1)
-                    frame = np.rot90(frame)
-                    return pygame.surfarray.make_surface(frame)
-            except _GPHOTO2_ERROR:
-                # perte gphoto2 → on force la reconnexion au prochain appel
-                self._cam = None
-            except Exception:
-                pass
+        self.start_preview()
+        with self._preview_lock:
+            frame = self._latest_preview
+        if frame is None:
+            return None
+        try:
+            return pygame.surfarray.make_surface(frame)
+        except Exception:
             return None
 
     def capture_hq(self, chemin_complet: str) -> bool:
         """Capture HQ via subprocess gphoto2 avec retry 3× + backoff.
         Ferme la session LiveView avant, la relance après. Retourne True si fichier présent."""
+        preview_etait_actif = self._stop_preview()
         with self._lock:
             # Fermeture LiveView
             if self._cam:
@@ -155,10 +164,15 @@ class CameraManager:
                 except Exception as e:
                     log_warning(f"Impossible de relancer le LiveView : {e}")
 
-            return capture_ok and os.path.exists(chemin_complet)
+            resultat = capture_ok and os.path.exists(chemin_complet)
+
+        if preview_etait_actif:
+            self.start_preview()
+        return resultat
 
     def close(self) -> None:
         """Ferme proprement la session caméra si elle est ouverte."""
+        self._stop_preview()
         with self._lock:
             if not self._cam:
                 return
@@ -170,6 +184,48 @@ class CameraManager:
                 log_warning(f"Fermeture caméra : {e}")
             finally:
                 self._cam = None
+
+    def _stop_preview(self) -> bool:
+        """Demande l'arrêt du worker et retourne s'il était actif."""
+        thread = self._preview_thread
+        etait_actif = thread is not None and thread.is_alive()
+        self._preview_stop.set()
+        if etait_actif:
+            thread.join(timeout=2.0)
+        if thread is None or not thread.is_alive():
+            self._preview_thread = None
+        return etait_actif
+
+    def _preview_loop(self) -> None:
+        """Acquiert et décode les JPEG LiveView sans bloquer l'interface."""
+        while not self._preview_stop.is_set():
+            frame = None
+            with self._lock:
+                if self._cam is None:
+                    maintenant = time.time()
+                    if maintenant - self._last_init_attempt >= self._DELAI_RECONNEXION:
+                        self._last_init_attempt = maintenant
+                        if self._init_unlocked():
+                            self._set_liveview_unlocked(1)
+                if self._cam is not None:
+                    try:
+                        capture = self._cam.capture_preview()
+                        file_bits = capture.get_data_and_size()
+                        image_data = np.frombuffer(memoryview(file_bits), dtype=np.uint8)
+                        frame = cv2.imdecode(image_data, cv2.IMREAD_COLOR)
+                        if frame is not None:
+                            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                            frame = cv2.flip(frame, 1)
+                            frame = np.rot90(frame)
+                    except _GPHOTO2_ERROR:
+                        self._cam = None
+                    except Exception:
+                        frame = None
+            if frame is not None:
+                with self._preview_lock:
+                    self._latest_preview = frame
+            else:
+                self._preview_stop.wait(0.05)
 
     # ---- Privés (supposent lock tenu) ----
     def _init_unlocked(self) -> bool:

@@ -428,6 +428,7 @@ def _initialiser_runtime() -> None:
     camera_mgr.init()
     if camera_mgr.is_connected:
         camera_mgr.set_liveview(1)
+    camera_mgr.start_preview()
 
     pygame.init()
     _display_flags = (pygame.FULLSCREEN | pygame.NOFRAME) if config.KIOSK_FULLSCREEN else 0
@@ -976,6 +977,7 @@ def render_decompte(session: SessionState) -> None:
     # preview pour mesurer le fps réel du LiveView pendant le décompte)
     perf_frames_ok = 0
     perf_t0 = time.time()
+    derniere_preview = get_canon_frame()
     for i in range(TEMPS_DECOMPTE, 0, -1):
         jouer_son("beep_final" if i == 1 else "beep")
         t_start = time.time()
@@ -983,8 +985,10 @@ def render_decompte(session: SessionState) -> None:
             surf = get_canon_frame()
             if surf:
                 perf_frames_ok += 1
+                derniere_preview = surf
+            if derniere_preview:
                 # 1. On applique la symétrie horizontale sur l'image reçue (True = Horizontal, False = Vertical)
-                surf_miroir = pygame.transform.flip(surf, True, False)
+                surf_miroir = pygame.transform.flip(derniere_preview, True, False)
     
                 # 2. On redimensionne et on affiche l'image inversée
                 screen.blit(pygame.transform.scale(surf_miroir, (WIDTH, HEIGHT)), (0, 0))
@@ -1011,11 +1015,21 @@ def render_decompte(session: SessionState) -> None:
                             HEIGHT // 2 - fili_surf.get_height() // 2,
                         ))
 
-                num_surf = font_decompte.render(str(i), True, COULEUR_DECOMPTE)
-                screen.blit(num_surf, (WIDTH // 2 - num_surf.get_width() // 2, HEIGHT // 2 - num_surf.get_height() // 2))
+            else:
+                # Le LiveView peut ne pas avoir encore livré sa première frame.
+                # On garde un fond explicite et, surtout, le décompte reste visible.
+                screen.fill((10, 10, 10))
+
+            num_surf = font_decompte.render(str(i), True, COULEUR_DECOMPTE)
+            screen.blit(num_surf, (WIDTH // 2 - num_surf.get_width() // 2, HEIGHT // 2 - num_surf.get_height() // 2))
 
             pygame.display.flip()
-            pygame.event.pump()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    demander_arret()
+            if not running:
+                return
+            clock.tick(30)
 
     # --- Instrumentation perf #20 : fps preview mesuré sur le décompte ---
     perf_elapsed = time.time() - perf_t0

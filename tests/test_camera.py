@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import subprocess
+import time
 
 from core import camera
 from core.camera import CameraManager
@@ -95,22 +96,28 @@ def test_init_echec_reste_deconnecte(monkeypatch):
     assert mgr.is_connected is False
 
 
-def test_get_preview_frame_reconnecte_rate_limite(monkeypatch):
-    monkeypatch.setattr(camera, "gp", FakeGp)
+def test_get_preview_frame_ne_bloque_pas_sur_camera_lente(monkeypatch):
+    class CameraLente(FakeCamera):
+        def capture_preview(self):
+            time.sleep(0.2)
+
+    class GpLent(FakeGp):
+        Camera = CameraLente
+
+    monkeypatch.setattr(camera, "gp", GpLent)
     monkeypatch.setattr(camera, "cv2", object())
     monkeypatch.setattr(camera, "np", object())
     monkeypatch.setattr(camera, "pygame", object())
     monkeypatch.setattr(camera.subprocess, "run", _no_subprocess)
-    monkeypatch.setattr(camera.time, "time", lambda: 10.0)
     mgr = CameraManager()
+    mgr.init()
+    mgr.start_preview()
 
+    debut = time.monotonic()
     assert mgr.get_preview_frame() is None
-    assert mgr.is_connected is True
-    assert mgr.raw_camera.config.viewfinder.value == 1
+    assert time.monotonic() - debut < 0.05
 
-    mgr._cam = None
-    assert mgr.get_preview_frame() is None
-    assert mgr.is_connected is False
+    mgr.close()
 
 
 def test_get_preview_frame_convertit_surface(monkeypatch):
@@ -171,8 +178,16 @@ def test_get_preview_frame_convertit_surface(monkeypatch):
     monkeypatch.setattr(camera.subprocess, "run", _no_subprocess)
     mgr = CameraManager()
     assert mgr.init() is True
+    mgr.start_preview()
 
-    assert mgr.get_preview_frame()[0] == "surface"
+    deadline = time.monotonic() + 1.0
+    surf = None
+    while surf is None and time.monotonic() < deadline:
+        surf = mgr.get_preview_frame()
+        time.sleep(0.001)
+
+    assert surf[0] == "surface"
+    mgr.close()
 
 
 def test_capture_hq_succes_cree_fichier_et_relance_liveview(monkeypatch, tmp_path):

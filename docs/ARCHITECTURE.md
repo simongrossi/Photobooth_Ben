@@ -203,15 +203,16 @@ normalement, quelle que soit la durée d'inactivité.
 
 ## Threading
 
-Un seul thread de travail : `executer_avec_spinner()` lance la fonction PIL
-(`MontageGenerator*.final()`) dans un thread daemon pour ne pas bloquer l'UI
-pendant 1-2 s. Le thread principal anime le spinner pendant que le thread worker
-fait les opérations PIL. La main thread pygame reste la seule à toucher les
-surfaces pygame.
+Deux traitements peuvent utiliser un thread daemon sans jamais manipuler Pygame :
 
-`CameraManager` utilise un `threading.Lock` en prévision d'un futur multi-thread
-(capture async non implémentée). Actuellement toutes les opérations caméra sont
-sur le thread principal.
+- `executer_avec_spinner()` lance ponctuellement la fonction PIL
+  (`MontageGenerator*.final()`) pendant que le thread principal anime le spinner ;
+- `CameraManager` maintient le flux LiveView en arrière-plan pendant la session.
+
+`CameraManager` acquiert et décode le LiveView dans un thread daemon dédié. Le thread
+principal récupère sans attente la dernière frame disponible et reste seul à créer les
+surfaces Pygame. Un `threading.Lock` protège la caméra ; le worker LiveView est suspendu
+pendant une capture HQ puis redémarré automatiquement.
 
 ---
 
