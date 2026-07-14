@@ -9,11 +9,17 @@ sur le même LAN, sans toucher au code.
   durées, modes) et historique par journée. Thème clair/sombre automatique
   (suit le réglage du navigateur/téléphone).
 - **Galerie** : parcours des montages produits (10×15 et strips) avec
-  miniatures à la volée.
+  miniatures à la volée. Bouton « Retirer » par photo → déplacée vers
+  `data/corbeille/` (disparaît du slideshow et de la galerie en ≤ 30 s, jamais
+  supprimée définitivement), restaurable depuis la section Corbeille.
 - **Templates** : bibliothèque des deux couches d'habillage — **overlays** (PNG
   par-dessus la photo) et **fonds** (image sous les photos) — upload, activation
   par format (10×15 / strip), et état « Aucun » par couche×format (photo nue /
   fond blanc, effet à la photo suivante, sans redémarrage du kiosque).
+- **Kiosque** : assets globaux de la borne — **fond d'écran d'accueil** et
+  **police des textes** (bibliothèque + activation « actif + fallback », effet au
+  redémarrage du kiosque, bouton « Revenir au défaut »), et **slides perso**
+  ajoutés à la rotation du diaporama d'attente (effet à chaud, ≤ 30 s).
 - **Réglages** : édition d'un sous-ensemble de `config.py` via
   `data/config_overrides.json` (timings, imprimantes, slideshow, watermark…).
 
@@ -35,7 +41,10 @@ sur le même LAN, sans toucher au code.
 | Overlays PNG (bibliothèque) | `assets/overlays/*.png` | admin | kiosque (montage) |
 | Fonds JPG/PNG (bibliothèque) | `assets/backgrounds/*` | admin | kiosque (montage) |
 | Couches actives | `assets/overlays/{10x15,strips}_overlay.png` et `assets/backgrounds/{10x15,strips}_background.jpg` (copies du template activé ; fichier absent = « aucun ») | admin | kiosque |
-| Métadonnées templates | `data/admin.db` (SQLite) | admin | admin |
+| Assets kiosque (bibliothèques) | `assets/interface/accueil/`, `assets/fonts/bibliotheque/`, `assets/slideshow/` | admin | kiosque (slideshow à chaud) |
+| Assets kiosque actifs | `assets/interface/accueil_actif.jpg`, `assets/fonts/police_active.ttf` (absents = défauts versionnés) | admin | kiosque (au boot) |
+| Corbeille galerie | `data/corbeille/<mode>/` | admin | admin (restauration) |
+| Métadonnées templates & assets | `data/admin.db` (SQLite) | admin | admin |
 | Surcharges config | `data/config_overrides.json` | admin | kiosque (à chaque import de `config`) |
 
 Le kiosque n'a **pas besoin** de connaître l'admin : les overrides sont lus au
