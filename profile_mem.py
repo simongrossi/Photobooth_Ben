@@ -19,7 +19,10 @@ typiquement dans le diff.
 """
 import signal
 import sys
+import threading
 import tracemalloc
+
+from core.monitoring import lire_rss_mb
 
 
 def _signal_handler(signum, frame):
@@ -33,16 +36,32 @@ def main():
 
     tracemalloc.start(25)  # 25 = profondeur du traceback capturé
     snapshot_debut = tracemalloc.take_snapshot()
+    rss_echantillons = []
+    arret_rss = threading.Event()
+
+    def _echantillonner_rss():
+        while not arret_rss.is_set():
+            rss = lire_rss_mb()
+            if rss is not None:
+                rss_echantillons.append(rss)
+            arret_rss.wait(1.0)
+
+    thread_rss = threading.Thread(target=_echantillonner_rss, name="profil-rss", daemon=True)
+    thread_rss.start()
 
     signal.signal(signal.SIGALRM, _signal_handler)
     signal.alarm(duree)
 
     try:
-        import Photobooth_start  # noqa: F401
+        import Photobooth_start
+
+        Photobooth_start.main()
     except SystemExit:
         pass
     finally:
         signal.alarm(0)
+        arret_rss.set()
+        thread_rss.join(timeout=2.0)
 
     snapshot_fin = tracemalloc.take_snapshot()
     tracemalloc.stop()
@@ -68,6 +87,11 @@ def main():
     # --- Total ---
     total_fin = sum(s.size for s in stats_lineno) / (1024 ** 2)
     print(f"\n💾 Mémoire totale allouée à la fin : {total_fin:.1f} Mo")
+    if rss_echantillons:
+        print(
+            f"📦 RSS processus : début={rss_echantillons[0]:.1f} Mo "
+            f"fin={rss_echantillons[-1]:.1f} Mo max={max(rss_echantillons):.1f} Mo"
+        )
 
 
 if __name__ == "__main__":

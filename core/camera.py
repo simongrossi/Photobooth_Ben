@@ -54,6 +54,9 @@ class CameraManager:
         self._last_init_attempt: float = 0.0
         self._deps_warning_logged: bool = False
         self._latest_preview: Optional[Any] = None
+        self._latest_preview_generation: int = 0
+        self._surface_preview: Optional[Any] = None
+        self._surface_preview_generation: int = -1
         self._preview_stop = threading.Event()
         self._preview_thread: Optional[threading.Thread] = None
 
@@ -66,6 +69,12 @@ class CameraManager:
     def raw_camera(self) -> Optional[Any]:
         """Accès bas niveau à l'objet gphoto2.Camera (pour compat avec code legacy)."""
         return self._cam
+
+    @property
+    def preview_generation(self) -> int:
+        """Identifiant croissant de la dernière image réellement reçue."""
+        with self._preview_lock:
+            return self._latest_preview_generation
 
     def init(self) -> bool:
         """Tente d'initialiser la caméra. Retourne True/False."""
@@ -103,23 +112,35 @@ class CameraManager:
         L'appel ne contacte jamais la caméra : l'I/O gphoto2 potentiellement lente
         reste dans le worker LiveView afin de ne pas figer le décompte Pygame.
         """
+        return self.get_preview_frame_info()[0]
+
+    def get_preview_frame_info(self) -> tuple[Optional[Any], int]:
+        """Retourne la Surface et la génération auxquelles elle correspond."""
         if cv2 is None or np is None or pygame is None:
             self._log_deps_absentes()
-            return None
+            return None, self.preview_generation
         self.start_preview()
         with self._preview_lock:
             frame = self._latest_preview
+            generation = self._latest_preview_generation
+            if generation == self._surface_preview_generation:
+                return self._surface_preview, generation
         if frame is None:
-            return None
+            return None, generation
         try:
-            return pygame.surfarray.make_surface(frame)
+            surface = pygame.surfarray.make_surface(frame)
         except Exception:
-            return None
+            return None, generation
+        with self._preview_lock:
+            self._surface_preview = surface
+            self._surface_preview_generation = generation
+        return surface, generation
 
     def capture_hq(self, chemin_complet: str) -> bool:
         """Capture HQ via subprocess gphoto2 avec retry 3× + backoff.
         Ferme la session LiveView avant, la relance après. Retourne True si fichier présent."""
-        preview_etait_actif = self._stop_preview()
+        self._stop_preview()
+        self._clear_preview()
         with self._lock:
             # Fermeture LiveView
             if self._cam:
@@ -166,8 +187,6 @@ class CameraManager:
 
             resultat = capture_ok and os.path.exists(chemin_complet)
 
-        if preview_etait_actif:
-            self.start_preview()
         return resultat
 
     def close(self) -> None:
@@ -185,6 +204,12 @@ class CameraManager:
             finally:
                 self._cam = None
 
+    def stop_preview(self, clear: bool = False) -> None:
+        """Arrête l'acquisition LiveView sans fermer la session caméra."""
+        self._stop_preview()
+        if clear:
+            self._clear_preview()
+
     def _stop_preview(self) -> bool:
         """Demande l'arrêt du worker et retourne s'il était actif."""
         thread = self._preview_thread
@@ -195,6 +220,12 @@ class CameraManager:
         if thread is None or not thread.is_alive():
             self._preview_thread = None
         return etait_actif
+
+    def _clear_preview(self) -> None:
+        with self._preview_lock:
+            self._latest_preview = None
+            self._surface_preview = None
+            self._surface_preview_generation = -1
 
     def _preview_loop(self) -> None:
         """Acquiert et décode les JPEG LiveView sans bloquer l'interface."""
@@ -216,7 +247,10 @@ class CameraManager:
                         if frame is not None:
                             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                             frame = cv2.flip(frame, 1)
-                            frame = np.rot90(frame)
+                            # pygame.surfarray attend l'axe largeur en premier.
+                            # La transposition conserve le miroir historique sans
+                            # imposer un second flip plein écran dans Pygame.
+                            frame = np.transpose(frame, (1, 0, 2))
                     except _GPHOTO2_ERROR:
                         self._cam = None
                     except Exception:
@@ -224,6 +258,7 @@ class CameraManager:
             if frame is not None:
                 with self._preview_lock:
                     self._latest_preview = frame
+                    self._latest_preview_generation += 1
             else:
                 self._preview_stop.wait(0.05)
 

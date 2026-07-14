@@ -149,7 +149,8 @@ normalement, quelle que soit la durée d'inactivité.
     • session.id_session_timestamp = timestamp
     • session.session_start_ts = time.time()
     • lecture data/evenement_actif.json puis copie id/nom/tags dans SessionState
-    • LiveView caméra affiché (30 FPS via camera_mgr.get_preview_frame())
+    • Worker LiveView démarré à la sélection du format
+    • dernière nouvelle frame caméra convertie/redimensionnée puis réutilisée à 30 FPS
     • Décompte N → 1 avec beep
     • camera_mgr.capture_hq() :
         - set_liveview(0), cam.exit()
@@ -190,8 +191,10 @@ normalement, quelle que soit la durée d'inactivité.
 |---------|-------|-----|
 | `PATH_RAW/photo_<id>_<n>.jpg` | capture HQ | `camera_mgr.capture_hq()` |
 | `PATH_TEMP/montage_prev.jpg` | entrée VALIDATION/FIN | `MontageGenerator*.preview()` |
-| `PATH_TEMP/montage_<mode>_<id>.jpg` | avant impression | `MontageGenerator*.final()` |
-| `PATH_PRINT_<mode>/<prefix>_<id>.jpg` | si imprimé | `shutil.copy` |
+| `PATH_TEMP/montage_10x15_<id>.jpg` | avant impression 10×15 | `MontageGenerator10x15.final()` |
+| `PATH_PRINT_STRIP/montage_strip_<id>_CLEAN.jpg` | bandelette seule | `MontageGeneratorStrip.final()` |
+| `PATH_PRINT_STRIP/READY_TO_PRINT/*_<id>_READY_TO_PRINT.jpg` | feuille strip envoyée à CUPS | `MontageGeneratorStrip.final()` |
+| `PATH_PRINT_10X15/<prefix>_<id>.jpg` | si imprimé | `shutil.copy` |
 | `PATH_SKIPPED_RETAKE/retake_<id>.jpg` | si recommencer | `shutil.move` |
 | `PATH_SKIPPED_DELETED/deleted_<id>.jpg` | si abandon | `shutil.move` |
 | `data/sessions.jsonl` (append, avec instantané événement) | fin de session | `ecrire_metadata_session()` |
@@ -207,12 +210,14 @@ Deux traitements peuvent utiliser un thread daemon sans jamais manipuler Pygame 
 
 - `executer_avec_spinner()` lance ponctuellement la fonction PIL
   (`MontageGenerator*.final()`) pendant que le thread principal anime le spinner ;
-- `CameraManager` maintient le flux LiveView en arrière-plan pendant la session.
+- `CameraManager` maintient le flux LiveView en arrière-plan uniquement depuis
+  la sélection d'un format jusqu'à la capture.
 
 `CameraManager` acquiert et décode le LiveView dans un thread daemon dédié. Le thread
 principal récupère sans attente la dernière frame disponible et reste seul à créer les
-surfaces Pygame. Un `threading.Lock` protège la caméra ; le worker LiveView est suspendu
-pendant une capture HQ puis redémarré automatiquement.
+surfaces Pygame. Un numéro de génération évite de reconvertir et redimensionner la
+même image plusieurs fois. Un `threading.Lock` protège la caméra ; le worker est
+arrêté avant la capture HQ et redémarre à la prochaine photo.
 
 ---
 
@@ -227,13 +232,15 @@ les render functions pour lisibilité.
 plutôt que dependency injection. Convient à une app kiosque mono-processus.
 Pour les tests unitaires, `monkeypatch` suffit (voir `tests/test_montage.py`).
 
-**Wrappers de compat conservés quand utile** : `get_canon_frame()` reste un
-wrapper vers `camera_mgr.get_preview_frame()` car lisible et massivement
-utilisé dans `render_decompte`. Les autres wrappers ont été inlinés.
+**Frame et génération lues ensemble** : `render_decompte()` utilise
+`camera_mgr.get_preview_frame_info()` afin que le numéro de génération
+corresponde exactement à la Surface retournée, même si le worker reçoit une
+nouvelle image pendant la conversion.
 
 **Sous-systèmes indépendants dans `core/monitoring.py`** : `DiskMonitor` et
-`lister_images_slideshow` ne dépendent pas de `SessionState`. Rate-limit interne
-à DiskMonitor, slideshow listing sans state. Testables en isolation.
+`lister_images_slideshow` ne dépendent pas de `SessionState`. Les checks disque
+et les scans du diaporama sont rate-limités, y compris lorsque le diaporama est
+vide. Testables en isolation.
 
 **Mises en page partagées par fichiers atomiques** : l'admin stocke la zone
 10×15 ou les trois zones strip de chaque template dans SQLite puis publie le

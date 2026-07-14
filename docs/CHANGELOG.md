@@ -5,6 +5,30 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
 ---
 
+## `WIP` — Optimisation globale des performances
+
+### Changed
+- Acquisition LiveView limitée aux sélections/décomptes, avec génération de
+  frame et cache de Surface : une frame Canon identique n'est plus reconvertie,
+  inversée et redimensionnée à chaque rafraîchissement Pygame.
+- Connexion caméra du splash déplacée dans un worker pour afficher immédiatement
+  l'état de démarrage au lieu de laisser un écran noir pendant l'initialisation USB.
+- Diaporama vide rate-limité à un scan toutes les 30 secondes ; surfaces de
+  texte, voile de confirmation et chevrons de capture mis en cache.
+- Aperçus PIL composés directement à leur résolution cible, décodage JPEG réduit
+  avec `draft()` et cache des fonds/overlays invalidé par modification de fichier.
+- Le rendu strip retourne directement `READY_TO_PRINT` : suppression d'un second
+  encodage JPEG et des copies temporaires par ticket avant envoi à CUPS.
+- Galerie basée sur `os.scandir()` et miniatures persistantes avec cache HTTP ;
+  service admin abaissé en priorité CPU/I/O par rapport au kiosque.
+- Profilage CPU renommé `profile_app.py`, appels explicites à `main()` pour les
+  profils CPU/mémoire et baselines alignées sur le cap réel de 30 FPS.
+
+### Performance
+- JPEG source 6000×4000 sur macOS, cache chaud : aperçu 10×15 ≈ 215 → 52 ms,
+  aperçu strip ≈ 337 → 72 ms, final strip ≈ 349 → 94 ms. Première génération
+  10×15 mesurée à ≈ 100 ms ; validation Raspberry Pi requise.
+
 ## `WIP` — Éditeur visuel de mise en page 10×15 et strip
 
 ### Added
@@ -12,8 +36,10 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
   chacun facultatif). L'activation d'un événement publie automatiquement son
   habillage et sa mise en page ; l'événement actif est signalé avec un résumé
   de ses templates dans l'admin.
-- Affectation directe d'un template déjà uploadé à un événement depuis chaque
-  carte de `/templates/`, avec application immédiate si l'événement est actif.
+- Vue `/templates/` rangée par événement, avec affectation groupée des quatre
+  emplacements depuis une seule carte et application immédiate si l'événement
+  est actif. Chaque emplacement affiche la vignette sélectionnée sans
+  rechargement ; la bibliothèque séparée utilise une grille de cartes responsive.
 - Horloge locale du serveur dans la barre supérieure du dashboard, actualisée
   chaque seconde et resynchronisée avec le serveur toutes les 60 secondes.
 - Deux interrupteurs admin : désactivation du diaporama de veille et des

@@ -4,7 +4,7 @@
 > effets exotiques, hardware, brainstorm), voir [IDEAS.md](IDEAS.md).
 > Pour l'historique de ce qui a été fait, voir [CHANGELOG.md](CHANGELOG.md).
 
-Dernière mise à jour : 2026-07-14 (options de veille et d'impressions multiples)
+Dernière mise à jour : 2026-07-14 (plan de stabilisation de l'administration web)
 
 ---
 
@@ -18,7 +18,10 @@ Dernière mise à jour : 2026-07-14 (options de veille et d'impressions multiple
 
 **Hardware** : contrôleur Arduino Nano (`core/arduino.py`) — 3 boutons-poussoirs à LED intégrée via pyserial, pilotage LED selon `Etat`, fallback clavier si pyserial absent. `core/camera.py` dégrade proprement si `gphoto2`/`cv2`/`numpy`/`pygame` manque. Firmware `arduino/photobooth_buttons/`.
 
-**Performance** : threading spinner génération montage, cache des surfaces statiques + ASSETS cache, capture HQ async (subprocess.Popen + polling), loader GC optim, purge temp + check disque continu, profiling mémoire (`profile_mem.py`, `profile.py`).
+**Performance** : LiveView à la demande avec cache par génération, rendus PIL à
+la résolution cible et décodage réduit, caches assets/textes/miniatures,
+diaporama vide rate-limité, impression sans encodage/copie redondants et outils
+de profilage fonctionnels (`profile_mem.py`, `profile_app.py`).
 
 **Observabilité** : logging rotatif, `sessions.jsonl` metadata, `status.py` (diagnostic), `stats.py` (rapport avec histogramme horaire), monitoring disque avec bandeau rouge.
 
@@ -38,6 +41,90 @@ au rendu final. Les trois zones strip sont réglables indépendamment.
 exclusive partagée à chaud avec le kiosque, instantané dans chaque session,
 quatre templates facultatifs appliqués automatiquement, filtres
 dashboard/galerie, compatibilité « Sans événement » et export ZIP/CSV.
+
+---
+
+## Prochain sprint — sécurisation des fonctions récentes
+
+### P0 — avant la prochaine prestation
+
+- [ ] **Validation complète des réglages avant application** *(2–4 h)*
+  - Vérifier les bornes et les dépendances entre valeurs dans l'interface web,
+    pas seulement leur type.
+  - Effectuer un pré-vol avec import de la configuration générée avant de
+    relancer le service.
+  - Conserver automatiquement la dernière configuration valide et la restaurer
+    si le kiosque ne redémarre pas correctement.
+- [ ] **État de santé et protection des sessions en cours** *(3–5 h)*
+  - Publier un heartbeat du kiosque avec son état courant (`ACCUEIL`,
+    `DECOMPTE`, `VALIDATION`, `FIN`).
+  - Afficher cet état dans le dashboard avec la date du dernier signal reçu.
+  - Refuser ou mettre en attente les redémarrages, changements d'événement et
+    changements de template pendant une session photo.
+- [ ] **Activation atomique des templates** *(2–4 h)*
+  - Préparer les quatre couches et la configuration de mise en page dans des
+    fichiers temporaires.
+  - Basculer l'ensemble avec `os.replace`, puis revenir à la version précédente
+    en cas d'échec.
+  - Garantir que le kiosque ne puisse jamais lire un mélange entre ancien et
+    nouveau template.
+- [ ] **Protection CSRF de l'administration** *(2–3 h)*
+  - Ajouter un jeton CSRF sur toutes les actions d'écriture.
+  - Couvrir en priorité le redémarrage du service, l'activation d'un événement,
+    les réglages et la suppression de médias.
+  - Tester le refus d'une requête sans jeton ou avec un jeton invalide.
+
+### P1 — rendre l'exploitation plus sûre
+
+- [ ] **Définir clairement la fin d'un événement** *(1–2 h)*
+  - Choisir et documenter si la clôture conserve le dernier habillage ou
+    restaure un template « Sans événement ».
+  - Afficher une confirmation explicite indiquant le résultat avant la clôture.
+- [ ] **Créer un pack événement complet** *(4–8 h)*
+  - Regrouper dans un même écran les quatre couches, les layouts 10×15 et strip,
+    les textes/filigranes et les aperçus.
+  - Ajouter une validation de complétude et une impression de test avant
+    activation.
+- [ ] **Protéger la suppression des templates utilisés** *(2–3 h)*
+  - Afficher les événements qui référencent chaque template.
+  - Bloquer la suppression tant qu'un remplacement n'a pas été choisi, au lieu
+    de détacher silencieusement la référence.
+- [ ] **Historique d'administration et annulation** *(3–5 h)*
+  - Journaliser les modifications de réglages, d'événement actif, de templates
+    et les redémarrages, avec leur date et les anciennes valeurs.
+  - Permettre de restaurer la dernière configuration ou affectation valide
+    depuis l'interface.
+- [ ] **Test de déploiement Debian/systemd reproductible** *(3–5 h)*
+  - Ajouter un smoke test couvrant les droits du dossier, `sudoers`, `systemctl`,
+    la base SQLite et les fichiers d'assets.
+  - Vérifier le comportement après perte puis retour de la caméra, de CUPS et de
+    l'imprimante.
+  - Documenter un retour arrière applicable sans environnement virtuel Python.
+
+### P2 — confort et maintenance
+
+- [ ] **Éditeur visuel plus précis** *(4–8 h)*
+  - Ajouter annuler/rétablir, déplacement au clavier, guides magnétiques et
+    zones de sécurité/fond perdu.
+  - Proposer une impression de test depuis l'éditeur avec un rendu strictement
+    identique à celui du kiosque.
+- [ ] **Horloge serveur diagnostique** *(1–2 h)*
+  - Compléter l'heure affichée par le fuseau horaire, l'état de synchronisation
+    NTP et une alerte en cas de dérive.
+- [ ] **Sauvegardes et contrôle d'intégrité** *(3–5 h)*
+  - Sauvegarder ensemble la base SQLite, les templates/assets et la
+    configuration active.
+  - Ajouter une vérification d'intégrité et une restauration testée depuis le
+    dashboard ou le runbook.
+
+### Ordre recommandé
+
+1. Validation et retour arrière des réglages.
+2. Heartbeat du kiosque et verrouillage pendant les sessions.
+3. Activation atomique des templates.
+4. Protection CSRF.
+5. Parcours événement complet, historique et déploiement Debian.
+6. Améliorations de l'éditeur, diagnostic horaire et sauvegardes.
 
 ---
 

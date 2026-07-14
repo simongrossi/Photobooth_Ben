@@ -109,6 +109,17 @@ class TestCanvasDepuisBg:
         )
         assert canvas.size == (200, 400)
 
+    def test_cache_asset_invalide_apres_remplacement(self, tmp_path_str):
+        bg_path = os.path.join(tmp_path_str, "bg_cache.png")
+        Image.new("RGB", (20, 20), "red").save(bg_path)
+        premier = MontageBase._canvas_depuis_bg_ou_blanc(bg_path, (20, 20))
+
+        Image.new("RGB", (20, 20), "blue").save(bg_path)
+        second = MontageBase._canvas_depuis_bg_ou_blanc(bg_path, (20, 20))
+
+        assert premier.getpixel((10, 10))[0] > 200
+        assert second.getpixel((10, 10))[2] > 200
+
 
 # --- Tests MontageGenerator10x15 ---
 

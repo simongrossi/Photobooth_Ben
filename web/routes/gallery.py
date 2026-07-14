@@ -1,9 +1,10 @@
 """gallery.py — parcours des montages imprimés avec miniatures à la volée."""
 from __future__ import annotations
 
-import io
+import hashlib
 import os
 import re
+import tempfile
 from dataclasses import dataclass
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, url_for
@@ -77,16 +78,17 @@ def _lister_tous(type_galerie: str = "all") -> list[Item]:
         dossier = _RACINES_AUTORISEES.get(mode)
         if not dossier or not os.path.isdir(dossier):
             continue
-        for nom in os.listdir(dossier):
-            chemin = os.path.join(dossier, nom)
-            if not os.path.isfile(chemin):
+        for entree in os.scandir(dossier):
+            nom = entree.name
+            chemin = entree.path
+            if not entree.is_file():
                 continue
             if not nom.lower().endswith((".jpg", ".jpeg", ".png")):
                 continue
             if not est_image_publique(nom):
                 continue
             try:
-                st = os.stat(chemin)
+                st = entree.stat()
             except OSError:
                 continue
             items.append(Item(
@@ -100,16 +102,17 @@ def _lister_tous(type_galerie: str = "all") -> list[Item]:
 
     # Si on cherche les montages et qu'il y a d'anciens montages directement dans PATH_PRINT
     if type_galerie in ("montages", "all") and os.path.isdir(PATH_PRINT):
-        for nom in os.listdir(PATH_PRINT):
-            chemin = os.path.join(PATH_PRINT, nom)
-            if not os.path.isfile(chemin):
+        for entree in os.scandir(PATH_PRINT):
+            nom = entree.name
+            chemin = entree.path
+            if not entree.is_file():
                 continue
             if not nom.lower().endswith((".jpg", ".jpeg", ".png")):
                 continue
             if not est_image_publique(nom):
                 continue
             try:
-                st = os.stat(chemin)
+                st = entree.stat()
             except OSError:
                 continue
             mode = "strip" if "strip" in nom.lower() else "10x15"
@@ -157,12 +160,13 @@ def _lister_corbeille() -> list[Item]:
         dossier = os.path.join(PATH_CORBEILLE, mode)
         if not os.path.isdir(dossier):
             continue
-        for nom in os.listdir(dossier):
-            chemin = os.path.join(dossier, nom)
-            if not os.path.isfile(chemin):
+        for entree in os.scandir(dossier):
+            nom = entree.name
+            chemin = entree.path
+            if not entree.is_file():
                 continue
             try:
-                st = os.stat(chemin)
+                st = entree.stat()
             except OSError:
                 continue
             items.append(Item(
@@ -269,16 +273,35 @@ def image(mode: str, nom: str):
 @require_auth
 def thumb(mode: str, nom: str):
     chemin = _resoudre_chemin(mode, nom)
+    stat = os.stat(chemin)
+    extension = ".jpg" if chemin.lower().endswith((".jpg", ".jpeg")) else ".png"
+    signature = f"{os.path.realpath(chemin)}\0{stat.st_mtime_ns}\0{stat.st_size}\0{THUMB_MAX}"
+    cle = hashlib.sha256(signature.encode()).hexdigest()[:24]
+    cache_dir = os.path.join(config.PATH_DATA, "cache", "thumbs")
+    os.makedirs(cache_dir, exist_ok=True)
+    chemin_cache = os.path.join(cache_dir, cle + extension)
+    mimetype = "image/jpeg" if extension == ".jpg" else "image/png"
+    if os.path.isfile(chemin_cache):
+        return send_file(chemin_cache, mimetype=mimetype, conditional=True, max_age=86400)
+
+    chemin_temporaire = None
     try:
         with Image.open(chemin) as img:
             img.thumbnail(THUMB_MAX)
-            buf = io.BytesIO()
-            fmt = "JPEG" if chemin.lower().endswith((".jpg", ".jpeg")) else "PNG"
+            fmt = "JPEG" if extension == ".jpg" else "PNG"
             if fmt == "JPEG" and img.mode != "RGB":
                 img = img.convert("RGB")
-            img.save(buf, format=fmt, quality=80)
-        buf.seek(0)
-        mimetype = "image/jpeg" if fmt == "JPEG" else "image/png"
-        return send_file(buf, mimetype=mimetype)
+            with tempfile.NamedTemporaryFile(
+                dir=cache_dir,
+                prefix=".thumb-",
+                suffix=extension,
+                delete=False,
+            ) as fichier_temporaire:
+                chemin_temporaire = fichier_temporaire.name
+            img.save(chemin_temporaire, format=fmt, quality=80)
+        os.replace(chemin_temporaire, chemin_cache)
+        return send_file(chemin_cache, mimetype=mimetype, conditional=True, max_age=86400)
     except OSError:
+        if chemin_temporaire and os.path.exists(chemin_temporaire):
+            os.remove(chemin_temporaire)
         abort(404)

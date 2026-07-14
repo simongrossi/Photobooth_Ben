@@ -141,8 +141,9 @@ def test_get_preview_frame_convertit_surface(monkeypatch):
             return ("array", bytes(data))
 
         @staticmethod
-        def rot90(frame):
-            return ("rot90", frame)
+        def transpose(frame, axes):
+            assert axes == (1, 0, 2)
+            return ("transpose", frame)
 
     class FakeCv2:
         IMREAD_COLOR = 1
@@ -164,8 +165,11 @@ def test_get_preview_frame_convertit_surface(monkeypatch):
             return ("flip", frame)
 
     class FakeSurfarray:
+        appels = 0
+
         @staticmethod
         def make_surface(frame):
+            FakeSurfarray.appels += 1
             return ("surface", frame)
 
     class FakePygame:
@@ -187,6 +191,19 @@ def test_get_preview_frame_convertit_surface(monkeypatch):
         time.sleep(0.001)
 
     assert surf[0] == "surface"
+    assert mgr.preview_generation > 0
+
+    surface_info, generation_info = mgr.get_preview_frame_info()
+    assert surface_info is not None
+    assert generation_info <= mgr.preview_generation
+
+    mgr.stop_preview()
+    monkeypatch.setattr(mgr, "start_preview", lambda: None)
+    surf_cachee = mgr.get_preview_frame()
+    nb_conversions = FakeSurfarray.appels
+
+    assert mgr.get_preview_frame() is surf_cachee
+    assert FakeSurfarray.appels == nb_conversions
     mgr.close()
 
 

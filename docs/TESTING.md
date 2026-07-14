@@ -29,8 +29,8 @@ open htmlcov/index.html
 ```
 
 Le seuil de couverture minimum est fixé à **75 %** dans `pyproject.toml`
-(`fail_under`). Mesure actuelle : **92,8 %** globale, avec tous les modules
-au-dessus de **87 %**.
+(`fail_under`). Mesure actuelle : **87,6 %** globale ; les nouveaux modules
+purs de performance restent entre **89 % et 97 %**.
 
 ---
 
@@ -39,21 +39,22 @@ au-dessus de **87 %**.
 | Fichier | Tests | Couvre | Stratégie |
 |---|---|---|---|
 | [test_camera.py](../tests/test_camera.py) | 9 | `core/camera.py` (imports optionnels, preview, capture, close) | mocks gphoto2/cv2/numpy/pygame + subprocess |
-| [test_montage.py](../tests/test_montage.py) | 29 | `core/montage.py` (PIL, 10×15/strip, calques, watermark, grain) | monkeypatch des `PATH_*` + fixtures PIL synthétiques |
+| [test_montage.py](../tests/test_montage.py) | 31 | `core/montage.py` (PIL, 10×15/strip, calques, watermark, grain, cache assets) | monkeypatch des `PATH_*` + fixtures PIL synthétiques |
 | [test_mise_en_page.py](../tests/test_mise_en_page.py) | 7 | validation, lecture et écriture atomique de la zone photo 10×15 | JSON isolé dans `tmp_path` |
 | [test_arduino.py](../tests/test_arduino.py) | 19 | `core/arduino.py` (ArduinoController, LEDs, tick, read loop) | FakeSerial + FakePygame mocks |
-| [test_printer.py](../tests/test_printer.py) | 17 | `core/printer.py` (PrinterManager, lpstat/lp) | mock `subprocess.run`/`Popen` |
+| [test_printer.py](../tests/test_printer.py) | 18 | `core/printer.py` (PrinterManager, lpstat/lp) | mock `subprocess.run`/`Popen` |
 | [test_logger.py](../tests/test_logger.py) | 4 | `core/logger.py` (log_error wrapper legacy) | `caplog` pytest |
 | [test_session.py](../tests/test_session.py) | 11 | `core/session.py` (Etat, SessionState, metadata JSONL) | monkeypatch `PATH_DATA` |
 | [test_evenements.py](../tests/test_evenements.py) | 4 | partage actif + instantané de session | `tmp_path`, JSON synthétique |
-| [test_monitoring.py](../tests/test_monitoring.py) | 35 | `core/monitoring.py` (monitoring, slideshow et exclusion des sorties techniques) | fixtures `tmp_path` |
+| [test_monitoring.py](../tests/test_monitoring.py) | 36 | `core/monitoring.py` (monitoring, slideshow et exclusion des sorties techniques) | fixtures `tmp_path` |
 | [test_status.py](../tests/test_status.py) | 18 | `status.py` (diagnostic hardware/assets) | fixtures assets factices dans `tmp_path` |
 | [test_stats.py](../tests/test_stats.py) | 25 | `stats.py` (parsing `sessions.jsonl`, histogramme horaire, CLI JSON) | fixtures JSONL synthétiques + subprocess |
 | [test_integration.py](../tests/test_integration.py) | 8 | chaîne `CameraManager` → `MontageGenerator` → `PrinterManager`, import sans runtime | mocks gphoto2/CUPS/pygame, réels PIL |
 | [test_web_evenements.py](../tests/test_web_evenements.py) | 6 | CRUD, activation, filtres et export ZIP | Flask test client + SQLite/filesystem isolés |
-| [test_web_gallery.py](../tests/test_web_gallery.py) | 14 | galerie, miniatures, corbeille et exclusion des sorties techniques | Flask test client + filesystem isolé |
+| [test_web_gallery.py](../tests/test_web_gallery.py) | 15 | galerie, miniatures cachées, corbeille et exclusion des sorties techniques | Flask test client + filesystem isolé |
 | [test_web_templates.py](../tests/test_web_templates.py) | 28 | bibliothèque deux couches + éditeur 10×15 + migrations | Flask test client + SQLite/filesystem isolés |
 | [test_nettoyer_sorties_tests.py](../tests/test_nettoyer_sorties_tests.py) | 3 | inventaire et déplacement réversible des sorties techniques | arborescences `tmp_path` |
+| [test_profiling_tools.py](../tests/test_profiling_tools.py) | 2 | import `cProfile` et lancement explicite du kiosque profilé | faux module `Photobooth_start` |
 
 **Non couvert en CI** (nécessite pygame/gphoto2/caméra réelle) :
 - `Photobooth_start.py` — boucle principale, render functions, event handlers

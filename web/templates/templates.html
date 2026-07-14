@@ -1,14 +1,99 @@
 {% extends "base.html" %}
 {% block titre %}Templates · Photobooth{% endblock %}
 {% block contenu %}
-<h1>Templates</h1>
+<div class="dashboard-header templates-header">
+  <div class="templates-title">
+    <span class="templates-eyebrow">Habillage événementiel</span>
+    <h1>Templates</h1>
+    <p class="muted">Choisissez d'abord l'habillage de chaque événement, puis gérez les fichiers dans la bibliothèque.</p>
+    <div class="templates-stats" aria-label="Résumé">
+      <span><strong>{{ evenements | length }}</strong> événement{% if evenements | length != 1 %}s{% endif %}</span>
+      <span><strong>{{ templates | length }}</strong> fichier{% if templates | length != 1 %}s{% endif %}</span>
+    </div>
+  </div>
+  <div class="templates-header__actions">
+    <button type="button" class="btn btn--primary" data-open-upload>Ajouter un template</button>
+    <a class="btn" href="#bibliotheque">Bibliothèque</a>
+  </div>
+</div>
 
 {% set libelles_couche = {"overlay": "Overlays (cadres PNG)", "fond": "Fonds (sous les photos)"} %}
 {% set libelles_type = {"10x15": "10×15 (grand format)", "strip": "Bandelette (strip)"} %}
 
-<section class="panel">
-  <h2>Uploader un nouveau template</h2>
-  <form class="form" method="post" action="{{ url_for('templates.upload') }}" enctype="multipart/form-data">
+<section class="panel event-template-manager">
+  <div class="section-heading">
+    <div>
+      <h2>Habillage par événement</h2>
+      <p class="muted">Les quatre choix sont enregistrés ensemble. Un changement sur l'événement actif est appliqué immédiatement.</p>
+    </div>
+    <a class="btn" href="{{ url_for('evenements.index') }}">Gérer les événements</a>
+  </div>
+
+  {% if evenements %}
+  <div class="event-template-cards">
+    {% for evenement in evenements %}
+    {% set selection = affectations_par_evenement[evenement.id] %}
+    <article id="evenement-{{ evenement.id }}" class="event-template-card {% if evenement.statut == 'actif' %}event-template-card--active{% endif %}">
+      <header>
+        <div>
+          <div class="event-template-card__badges">
+            <span class="badge badge--{{ evenement.statut }}">{% if evenement.statut == 'actif' %}Événement actif{% elif evenement.statut == 'brouillon' %}Brouillon{% else %}Terminé{% endif %}</span>
+            {% for tag in evenement.tags %}<span class="badge">{{ tag }}</span>{% endfor %}
+          </div>
+          <h3>{{ evenement.nom }}</h3>
+          <p class="muted">{{ evenement.debut | replace('T', ' ') }} → {{ evenement.fin | replace('T', ' ') }}</p>
+        </div>
+        <a href="{{ url_for('evenements.modifier', evenement_id=evenement.id) }}">Détails</a>
+      </header>
+
+      <form method="post" action="{{ url_for('templates.affecter_evenement', evenement_id=evenement.id) }}">
+        <div class="event-template-grid event-template-grid--manager">
+          {% for emplacement in emplacements_affectation %}
+          <div class="template-slot template-slot--{{ emplacement.type }}">
+            <div class="template-slot__preview" aria-hidden="true">
+              <img src="" alt="" hidden>
+              <div class="template-slot__placeholder">
+                <strong>{% if emplacement.type == '10x15' %}10×15{% else %}STRIP{% endif %}</strong>
+                <span>{{ emplacement.couche }}</span>
+              </div>
+            </div>
+            <label>
+              <span>{{ emplacement.libelle }}</span>
+              <select name="{{ emplacement.champ }}">
+              <option value="" data-thumb="">Aucun template</option>
+              {% for template in options_par_emplacement[emplacement.champ] %}
+              <option value="{{ template.id }}"
+                      data-thumb="{{ url_for('templates.thumb', template_id=template.id) }}"
+                      {% if selection[emplacement.champ] == template.id %}selected{% endif %}>{{ template.nom }}</option>
+              {% endfor %}
+              </select>
+              {% if not options_par_emplacement[emplacement.champ] %}<small class="muted">Aucun fichier compatible uploadé</small>{% endif %}
+            </label>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="event-template-card__footer">
+          <span class="muted">
+            {% if evenement.statut == 'actif' %}Visible sur le kiosque dès l'enregistrement.{% else %}Appliqué lors de l'activation de l'événement.{% endif %}
+          </span>
+          <button type="submit" class="btn btn--primary">Enregistrer les 4 choix</button>
+        </div>
+      </form>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <p>Aucun événement disponible.</p>
+    <a class="btn btn--primary" href="{{ url_for('evenements.index') }}">Créer un événement</a>
+  </div>
+  {% endif %}
+</section>
+
+<section class="panel" id="upload-template">
+  <details class="template-upload" data-upload-panel>
+    <summary>Uploader un nouveau template</summary>
+    <form class="form" method="post" action="{{ url_for('templates.upload') }}" enctype="multipart/form-data">
     <label>
       Nom affiché
       <input type="text" name="nom" maxlength="80" placeholder="ex : Mariage Camille &amp; Paul">
@@ -31,14 +116,22 @@
       Fichier (PNG pour overlay ; JPG ou PNG pour fond)
       <input type="file" name="fichier" accept="image/png,image/jpeg" required>
     </label>
-    <button type="submit">Uploader</button>
-  </form>
-  <p class="muted">
-    Overlays stockés dans <code>{{ path_overlays }}</code>, fonds dans <code>{{ path_fonds }}</code>.
-    Dimensions du montage : 1800×1200 pour 10×15, 600×1800 pour strip.
-    L'overlay doit être un PNG avec transparence.
-  </p>
+      <button type="submit">Uploader</button>
+    </form>
+    <p class="muted">
+      Overlays stockés dans <code>{{ path_overlays }}</code>, fonds dans <code>{{ path_fonds }}</code>.
+      Dimensions du montage : 1800×1200 pour 10×15, 600×1800 pour strip.
+      L'overlay doit être un PNG avec transparence.
+    </p>
+  </details>
 </section>
+
+<div id="bibliotheque" class="section-heading templates-library-heading">
+  <div>
+    <h2>Bibliothèque</h2>
+    <p class="muted">Prévisualisez, positionnez ou supprimez les fichiers disponibles.</p>
+  </div>
+</div>
 
 {% for couche in couches %}
 <section class="panel">
@@ -72,7 +165,10 @@
     <ul class="templates">
       {% for t in liste %}
         <li class="templates__item {% if t.actif %}templates__item--actif{% endif %}">
-          <img src="{{ url_for('templates.thumb', template_id=t.id) }}" alt="{{ t.nom }}">
+          <div class="templates__visual">
+            <img src="{{ url_for('templates.thumb', template_id=t.id) }}" alt="{{ t.nom }}">
+            <span class="templates__layer">{{ "Overlay" if t.couche == "overlay" else "Fond" }}</span>
+          </div>
           <div class="templates__info">
             <h3>{{ t.nom }}</h3>
             <p>
@@ -90,18 +186,6 @@
               {% endfor %}
             </div>
             {% endif %}
-            <form class="template-event-assignment" method="post" action="{{ url_for('templates.associer_evenement', template_id=t.id) }}">
-              <label>Associer à un événement
-                <select name="evenement_id" required {% if not evenements %}disabled{% endif %}>
-                  <option value="">Choisir…</option>
-                  {% for evenement in evenements %}
-                  <option value="{{ evenement.id }}">{{ evenement.nom }}{% if evenement.statut == 'actif' %} — actif{% endif %}</option>
-                  {% endfor %}
-                </select>
-              </label>
-              <button class="btn" type="submit" {% if not evenements %}disabled{% endif %}>Associer</button>
-            </form>
-            {% if not evenements %}<p class="muted">Crée d'abord un événement dans l'onglet Événements.</p>{% endif %}
             <div class="actions">
               <a class="btn" href="{{ url_for('templates.editer', template_id=t.id) }}">Modifier la mise en page</a>
               {% if not t.actif %}
@@ -124,4 +208,40 @@
   {% endif %}
 </section>
 {% endfor %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (() => {
+    const synchroniserApercu = (select) => {
+      const slot = select.closest('.template-slot');
+      const image = slot.querySelector('.template-slot__preview img');
+      const placeholder = slot.querySelector('.template-slot__placeholder');
+      const option = select.options[select.selectedIndex];
+      const source = option.dataset.thumb || '';
+      image.hidden = !source;
+      placeholder.hidden = Boolean(source);
+      if (source) {
+        image.src = source;
+        image.alt = option.textContent.trim();
+      } else {
+        image.removeAttribute('src');
+        image.alt = '';
+      }
+    };
+
+    document.querySelectorAll('.template-slot select').forEach((select) => {
+      synchroniserApercu(select);
+      select.addEventListener('change', () => synchroniserApercu(select));
+    });
+
+    const boutonUpload = document.querySelector('[data-open-upload]');
+    const panneauUpload = document.querySelector('[data-upload-panel]');
+    boutonUpload?.addEventListener('click', () => {
+      panneauUpload.open = true;
+      panneauUpload.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      panneauUpload.querySelector('input[name="nom"]')?.focus({ preventScroll: true });
+    });
+  })();
+</script>
 {% endblock %}

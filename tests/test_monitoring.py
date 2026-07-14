@@ -18,6 +18,7 @@ from core.monitoring import (
     formater_ligne_perf,
     lire_rss_mb,
     lister_images_slideshow,
+    doit_rafraichir_slideshow,
 )
 
 
@@ -166,6 +167,12 @@ class TestTempMonitorRateLimit:
 
 
 # --- lister_images_slideshow ---
+
+
+def test_slideshow_vide_respecte_intervalle_de_rafraichissement():
+    assert doit_rafraichir_slideshow(0.0, maintenant=100.0)
+    assert not doit_rafraichir_slideshow(100.0, maintenant=129.9)
+    assert doit_rafraichir_slideshow(100.0, maintenant=130.0)
 
 
 @pytest.fixture

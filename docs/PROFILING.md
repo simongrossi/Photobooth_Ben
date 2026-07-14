@@ -15,8 +15,8 @@ représentatifs du Pi (CPU ARM, GPU VideoCore, framebuffer, thermique).
 
 | Métrique | Seuil OK | Rouge |
 |---|---|---|
-| FPS boucle principale (ACCUEIL repos) | ≥ 55 | < 40 |
-| FPS boucle principale (DECOMPTE + liveview) | ≥ 25 | < 15 |
+| FPS boucle principale (ACCUEIL repos, cap 30) | ≥ 29 | < 25 |
+| Nouvelles frames caméra (DECOMPTE) | ≥ 12 FPS | < 8 FPS |
 | ms/frame p95 spinner (`ecran_attente_impression`) | ≤ 35 | > 60 |
 | RAM résidente après 5 sessions | stable ±20 Mo | croissance linéaire |
 | Température CPU soutenue | < 75 °C | ≥ 80 °C (throttle) |
@@ -25,8 +25,9 @@ représentatifs du Pi (CPU ARM, GPU VideoCore, framebuffer, thermique).
 
 Trois scripts, exécutables directement sur le Pi :
 
-- `profile.py` — cProfile sur toute la boucle (fonctions chaudes).
-- `profile_mem.py` — tracemalloc (top allocs + top croissances).
+- `profile_app.py` — cProfile sur toute la boucle (fonctions chaudes).
+- `profile_mem.py` — tracemalloc (top allocs + top croissances) et RSS du
+  processus chaque seconde, afin d'inclure les buffers natifs PIL/OpenCV.
 - `bench_spinner.py` — microbench isolé du `LoaderAnimation`.
 
 Optionnel sur le poste de dev : `pip install snakeviz` pour visualiser
@@ -38,7 +39,7 @@ Sur le Pi, arrêter le service kiosque s'il tourne, puis :
 
 ```bash
 cd ~/Photobooth_Ben
-python3 profile.py 120
+python3 profile_app.py 120
 ```
 
 Scénario d'interaction pendant les 120 s (chronométrer grossièrement) :
@@ -65,8 +66,12 @@ Zones à surveiller :
   depuis le pré-rendu des sprites.
 - `render_decompte` — doit être proportionnel au temps passé dans cet état,
   pas à un multiplicateur caché (le cache masque limite les allocs).
-- `get_canon_frame` / `pygame.transform.scale` — dominés par l'USB + le
-  rescale ; baisser la résolution liveview si nécessaire.
+- `CameraManager._preview_loop` / `pygame.transform.scale` — le premier est
+  dominé par l'USB+décodage ; le second ne doit apparaître qu'une fois par
+  nouvelle génération de frame.
+- lignes `[PERF] preview_validation` et `[PERF] montage_final` dans le log —
+  comparer les modes 10×15/strip et les premières générations après changement
+  de template.
 
 ## 2. tracemalloc — fuites mémoire
 
@@ -112,7 +117,7 @@ kiosk framebuffer pour un chiffre réaliste.
 Après avoir livré une optim, revalider sur Pi :
 
 - [ ] `bench_spinner.py` : FPS moyen ≥ celui d'avant, p95 ≤ celui d'avant.
-- [ ] `profile.py 120` + scénario : pas de nouvelle fonction au top 10.
+- [ ] `profile_app.py 120` + scénario : pas de nouvelle fonction au top 10.
 - [ ] `profile_mem.py 300` + 3 sessions : pas de croissance > 500 KB sur une
       ligne inconnue.
 - [ ] `stats.py` : session `issue=printed` sans erreur (pas de régression
@@ -122,6 +127,6 @@ Après avoir livré une optim, revalider sur Pi :
 
 ## Liens
 
-- [profile.py](../profile.py) · [profile_mem.py](../profile_mem.py) · [bench_spinner.py](../bench_spinner.py)
+- [profile_app.py](../profile_app.py) · [profile_mem.py](../profile_mem.py) · [bench_spinner.py](../bench_spinner.py)
 - Contexte macro : [ARCHITECTURE.md](ARCHITECTURE.md)
 - Journal des perfs : [CHANGELOG.md](CHANGELOG.md)

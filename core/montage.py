@@ -44,9 +44,15 @@ from core.mise_en_page import (
 )
 
 
-def charger_et_corriger(chemin: str, rotation_forcee: float = 0) -> Image.Image:
-    """Charge une image JPEG et la retourne en RGB. `with` ferme le file handle."""
+def charger_et_corriger(
+    chemin: str,
+    rotation_forcee: float = 0,
+    taille_cible: tuple[int, int] | None = None,
+) -> Image.Image:
+    """Charge une image en RGB, avec décodage JPEG réduit si possible."""
     with Image.open(chemin) as src:
+        if taille_cible is not None:
+            src.draft("RGB", taille_cible)
         img = src.convert("RGB")
     if rotation_forcee != 0:
         img = img.rotate(rotation_forcee, expand=True)
@@ -56,6 +62,24 @@ def charger_et_corriger(chemin: str, rotation_forcee: float = 0) -> Image.Image:
 class MontageBase:
     """Helpers partagés pour la génération de montages PIL."""
 
+    _asset_cache: dict[str, tuple[int, int, str, Image.Image]] = {}
+
+    @classmethod
+    def _charger_asset(cls, chemin: str, mode: str) -> Image.Image:
+        """Charge un asset une fois, puis invalide le cache si le fichier change."""
+        stat = os.stat(chemin)
+        cache = cls._asset_cache.get(chemin)
+        signature = (stat.st_mtime_ns, stat.st_size, mode)
+        if cache is not None and cache[:3] == signature:
+            return cache[3].copy()
+
+        with Image.open(chemin) as src:
+            image = src.convert(mode)
+        if cache is not None:
+            cache[3].close()
+        cls._asset_cache[chemin] = (*signature, image)
+        return image.copy()
+
     @staticmethod
     def _canvas_depuis_bg_ou_blanc(
         bg_path: str, size: tuple, rotation: float = 0, redresser_si_horizontal: bool = False,
@@ -64,8 +88,7 @@ class MontageBase:
         `redresser_si_horizontal` : si le fond source est paysage, le met debout
         (rotation 90° expand) avant d'appliquer `rotation` et le resize final."""
         if bg_path and os.path.exists(bg_path) and os.path.isfile(bg_path):
-            with Image.open(bg_path) as src:
-                canvas = src.convert("RGB")
+            canvas = MontageBase._charger_asset(bg_path, "RGB")
             if redresser_si_horizontal and canvas.width > canvas.height:
                 canvas = canvas.rotate(90, expand=True)
             if rotation:
@@ -81,8 +104,7 @@ class MontageBase:
         """Applique l'overlay RGBA si le fichier existe."""
         if not (overlay_path and os.path.exists(overlay_path)):
             return
-        with Image.open(overlay_path) as src:
-            ov = src.convert("RGBA")
+        ov = MontageBase._charger_asset(overlay_path, "RGBA")
         if redresser_si_horizontal and ov.width > ov.height:
             ov = ov.rotate(90, expand=True)
         if rotation:
@@ -169,25 +191,39 @@ class MontageGenerator10x15(MontageBase):
         return charger_mise_en_page(PATH_MISE_EN_PAGE_10X15, defaut, cls.FINAL_SIZE)
 
     @classmethod
-    def _composer(cls, chemin_photo: str) -> Image.Image:
+    def _composer(
+        cls,
+        chemin_photo: str,
+        taille_sortie: tuple[int, int] | None = None,
+    ) -> Image.Image:
         """Compose fond → photo → overlay avec la géométrie active."""
-        canvas = cls._canvas_depuis_bg_ou_blanc(BG_10X15_FILE, cls.FINAL_SIZE)
+        taille_sortie = taille_sortie or cls.FINAL_SIZE
+        canvas = cls._canvas_depuis_bg_ou_blanc(BG_10X15_FILE, taille_sortie)
         mise_en_page = cls._mise_en_page_active()
-        img_brute = charger_et_corriger(chemin_photo)
+        echelle_x = taille_sortie[0] / cls.FINAL_SIZE[0]
+        echelle_y = taille_sortie[1] / cls.FINAL_SIZE[1]
+        zone = (
+            max(1, round(mise_en_page.largeur * echelle_x)),
+            max(1, round(mise_en_page.hauteur * echelle_y)),
+        )
+        position = (
+            round(mise_en_page.x * echelle_x),
+            round(mise_en_page.y * echelle_y),
+        )
+        img_brute = charger_et_corriger(chemin_photo, taille_cible=zone)
         photo_fit = ImageOps.fit(
             img_brute,
-            (mise_en_page.largeur, mise_en_page.hauteur),
+            zone,
             Image.Resampling.LANCZOS,
         )
-        canvas.paste(photo_fit, (mise_en_page.x, mise_en_page.y))
-        cls._coller_overlay(canvas, OVERLAY_10X15, cls.FINAL_SIZE)
+        canvas.paste(photo_fit, position)
+        cls._coller_overlay(canvas, OVERLAY_10X15, taille_sortie)
         return canvas
 
     @classmethod
     def preview(cls, photos: list) -> str:
         path_prev = cls._chemin_prev()
-        canvas = cls._composer(photos[0])
-        apercu = canvas.resize(cls.PREVIEW_SIZE, Image.Resampling.LANCZOS)
+        apercu = cls._composer(photos[0], taille_sortie=cls.PREVIEW_SIZE)
         apercu.save(path_prev, quality=cls.PREVIEW_QUALITY)
         return path_prev
 
@@ -239,21 +275,33 @@ class MontageGeneratorStrip(MontageBase):
         )
 
     @classmethod
-    def _composer(cls, photos: list) -> Image.Image:
+    def _composer(
+        cls,
+        photos: list,
+        taille_sortie: tuple[int, int] | None = None,
+    ) -> Image.Image:
         """Compose fond → trois photos → overlay avec la géométrie active."""
+        taille_sortie = taille_sortie or cls.FINAL_SIZE
         canvas = cls._canvas_depuis_bg_ou_blanc(
-            os.path.abspath(BG_STRIPS_FILE), cls.FINAL_SIZE,
+            os.path.abspath(BG_STRIPS_FILE), taille_sortie,
             rotation=cls.FINAL_ROTATION, redresser_si_horizontal=True,
         )
         mise_en_page = cls._mise_en_page_active()
+        echelle_x = taille_sortie[0] / cls.FINAL_SIZE[0]
+        echelle_y = taille_sortie[1] / cls.FINAL_SIZE[1]
         for chemin, zone in zip(photos[:3], mise_en_page.photos):
-            img = charger_et_corriger(chemin)
-            img_fit = ImageOps.fit(
-                img, (zone.largeur, zone.hauteur), Image.Resampling.LANCZOS,
+            taille_photo = (
+                max(1, round(zone.largeur * echelle_x)),
+                max(1, round(zone.hauteur * echelle_y)),
             )
-            canvas.paste(img_fit, (zone.x, zone.y))
+            position = (round(zone.x * echelle_x), round(zone.y * echelle_y))
+            img = charger_et_corriger(chemin, taille_cible=taille_photo)
+            img_fit = ImageOps.fit(
+                img, taille_photo, Image.Resampling.LANCZOS,
+            )
+            canvas.paste(img_fit, position)
         cls._coller_overlay(
-            canvas, OVERLAY_STRIPS, cls.FINAL_SIZE,
+            canvas, OVERLAY_STRIPS, taille_sortie,
             rotation=cls.FINAL_ROTATION, redresser_si_horizontal=True,
         )
         return canvas
@@ -261,8 +309,16 @@ class MontageGeneratorStrip(MontageBase):
     @classmethod
     def preview(cls, photos: list) -> str:
         path_prev = cls._chemin_prev()
-        bande_v = cls._composer(photos)
-        bande_v.thumbnail(cls.PREVIEW_THUMBNAIL_MAX, Image.Resampling.LANCZOS)
+        facteur = min(
+            cls.PREVIEW_THUMBNAIL_MAX[0] / cls.FINAL_SIZE[0],
+            cls.PREVIEW_THUMBNAIL_MAX[1] / cls.FINAL_SIZE[1],
+            1.0,
+        )
+        taille_preview = (
+            max(1, round(cls.FINAL_SIZE[0] * facteur)),
+            max(1, round(cls.FINAL_SIZE[1] * facteur)),
+        )
+        bande_v = cls._composer(photos, taille_sortie=taille_preview)
         bande_v.save(path_prev, "JPEG", quality=cls.PREVIEW_QUALITY)
         return path_prev
 
@@ -312,8 +368,4 @@ class MontageGeneratorStrip(MontageBase):
         # Sauvegarde avec qualité maximale et sans sous-échantillonnage (plus net)
         canvas_10x15.save(path_ready, "JPEG", quality=cls.FINAL_QUALITY, subsampling=0)
 
-        # --- 4. REDIRECTION VERS TEMP ---
-        path_tmp_print = os.path.join(PATH_TEMP, f"print_tmp_{id_session}.jpg")
-        canvas_10x15.save(path_tmp_print, "JPEG", quality=cls.FINAL_QUALITY)
-
-        return path_tmp_print
+        return path_ready

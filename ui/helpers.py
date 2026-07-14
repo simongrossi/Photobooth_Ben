@@ -387,6 +387,12 @@ def executer_avec_spinner(fonction_longue, message):
     if _global_spinner is None:
         _global_spinner = LoaderAnimation()
 
+    try:
+        txt_message = ctx.font_bandeau.render(message, True, (255, 255, 255))
+    except Exception as e:
+        log_warning(f"Rendu spinner : {e}")
+        txt_message = None
+
     while t.is_alive():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -403,11 +409,11 @@ def executer_avec_spinner(fonction_longue, message):
         # On utilise _global_spinner au lieu de local_loader
         _global_spinner.update_and_draw(ctx.screen)
         
-        try:
-            txt = ctx.font_bandeau.render(message, True, (255, 255, 255))
-            ctx.screen.blit(txt, (WIDTH // 2 - txt.get_width() // 2, HEIGHT - 120))
-        except Exception as e:
-            log_warning(f"Rendu spinner : {e}")
+        if txt_message is not None:
+            ctx.screen.blit(
+                txt_message,
+                (WIDTH // 2 - txt_message.get_width() // 2, HEIGHT - 120),
+            )
             
         pygame.display.flip()
         ctx.clock.tick(SPINNER_FPS)
@@ -436,6 +442,12 @@ def ecran_erreur(message, timeout=None):
         font_inter = pygame.font.Font("assets/fonts/WesternBangBang-Regular.ttf", 65)
 
     t_start = time.time()
+    couleur_alerte = (255, 100, 100)
+    titre = ctx.font_titre.render("ERREUR", True, couleur_alerte)
+    msg = font_inter.render(message, True, couleur_alerte)
+    hint = ctx.font_bandeau.render(
+        "Appuyez sur une touche ou patientez...", True, (170, 170, 170)
+    )
     while time.time() - t_start < timeout:
         # ... (le reste de ta boucle d'événements reste identique)
         for event in pygame.event.get():
@@ -446,23 +458,9 @@ def ecran_erreur(message, timeout=None):
                 return
         
         ctx.screen.fill((40, 10, 10))
-        try:
-            couleur_alerte = (255, 100, 100)
-            
-            # Titre "ERREUR"
-            titre = ctx.font_titre.render("ERREUR", True, couleur_alerte)
-            ctx.screen.blit(titre, (WIDTH // 2 - titre.get_width() // 2, HEIGHT // 2 - 220))
-            
-            # Message avec la BONNE police et la BONNE couleur
-            msg = font_inter.render(message, True, couleur_alerte)
-            ctx.screen.blit(msg, (WIDTH // 2 - msg.get_width() // 2, HEIGHT // 2 - 20))
-            
-            hint = ctx.font_bandeau.render(
-                "Appuyez sur une touche ou patientez...", True, (170, 170, 170)
-            )
-            ctx.screen.blit(hint, (WIDTH // 2 - hint.get_width() // 2, HEIGHT - 100))
-        except Exception as e:
-            log_warning(f"Rendu écran erreur : {e}")
+        ctx.screen.blit(titre, (WIDTH // 2 - titre.get_width() // 2, HEIGHT // 2 - 220))
+        ctx.screen.blit(msg, (WIDTH // 2 - msg.get_width() // 2, HEIGHT // 2 - 20))
+        ctx.screen.blit(hint, (WIDTH // 2 - hint.get_width() // 2, HEIGHT - 100))
             
         pygame.display.flip()
         ctx.clock.tick(30)
@@ -493,6 +491,8 @@ def ecran_attente_impression():
 
     # 4. BOUCLE D'ANIMATION
     temps_debut = time.time()
+    surf_txt = ctx.font_imp_texte.render("Impression en cours...", True, (255, 255, 255))
+    compteurs = {}
     while time.time() - temps_debut < TEMPS_ATTENTE_IMP:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -512,8 +512,10 @@ def ecran_attente_impression():
             restant = max(0, int(TEMPS_ATTENTE_IMP - (time.time() - temps_debut)))
             
             # Utilisation des polices dédiées
-            surf_txt = ctx.font_imp_texte.render("Impression en cours...", True, (255, 255, 255))
-            surf_num = ctx.font_imp_compteur.render(f"{restant}s", True, (255, 255, 255))
+            surf_num = compteurs.get(restant)
+            if surf_num is None:
+                surf_num = ctx.font_imp_compteur.render(f"{restant}s", True, (255, 255, 255))
+                compteurs[restant] = surf_num
             
             # Le chiffre (le plus gros) est placé à 150px du bord bas
             pos_y_num = HEIGHT - 10 - surf_num.get_height()
@@ -538,15 +540,18 @@ def splash_connexion_camera(camera_mgr, timeout=None):
         timeout = TIMEOUT_SPLASH_CAMERA
     t_start = time.time()
     frame_count = 0
+    tentative = None
+    prochaine_tentative = 0.0
+
+    def _connecter():
+        if camera_mgr.init():
+            camera_mgr.set_liveview(1)
+
     while time.time() - t_start < timeout:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-
-        if not camera_mgr.is_connected and frame_count % 30 == 0:
-            if camera_mgr.init():
-                camera_mgr.set_liveview(1)
 
         if camera_mgr.is_connected:
             afficher_message_plein_ecran(TXT_SPLASH_CAMERA_OK, couleur=(100, 255, 100))
@@ -555,6 +560,13 @@ def splash_connexion_camera(camera_mgr, timeout=None):
 
         dots = "." * (1 + (frame_count // 15) % 3)
         afficher_message_plein_ecran(f"{TXT_SPLASH_CAMERA}{dots}", couleur=(255, 215, 0))
+
+        maintenant = time.time()
+        if maintenant >= prochaine_tentative and (tentative is None or not tentative.is_alive()):
+            tentative = threading.Thread(target=_connecter, name="camera-connexion", daemon=True)
+            tentative.start()
+            prochaine_tentative = maintenant + 1.0
+
         ctx.clock.tick(30)
         frame_count += 1
 

@@ -115,6 +115,26 @@ class TestThumbnail:
         img = Image.open(io.BytesIO(r.data))
         assert max(img.size) <= 300
 
+    def test_thumb_est_cache_apres_premiere_generation(self, client, monkeypatch):
+        import web.routes.gallery as gallery
+
+        vrai_open = gallery.Image.open
+        appels = []
+
+        def compter_open(*args, **kwargs):
+            appels.append(args[0])
+            return vrai_open(*args, **kwargs)
+
+        monkeypatch.setattr(gallery.Image, "open", compter_open)
+
+        premier = client.get("/galerie/thumb/10x15/photo_001.jpg", headers=HEADERS)
+        second = client.get("/galerie/thumb/10x15/photo_001.jpg", headers=HEADERS)
+
+        assert premier.status_code == second.status_code == 200
+        assert premier.data == second.data
+        assert len(appels) == 1
+        assert "max-age=86400" in second.headers["Cache-Control"]
+
 
 # --- Corbeille (volet 2) : retirer du slideshow/galerie, restaurer ---
 

@@ -73,7 +73,7 @@ Photobooth_Ben/
 │   └── helpers.py
 ├── status.py             # diagnostic standalone (matériel, assets)
 ├── stats.py              # rapport post-événement (sessions.jsonl)
-├── profile.py            # profiling CPU (cProfile)
+├── profile_app.py        # profiling CPU (cProfile)
 ├── profile_mem.py        # profiling mémoire (tracemalloc)
 ├── bench_spinner.py      # microbench LoaderAnimation
 ├── tests/                # tests pytest
@@ -125,7 +125,7 @@ pytest --cov              # avec couverture
 ### Profiling
 
 ```bash
-python3 profile.py        # cProfile → profile.stats (ouvrir avec snakeviz)
+python3 profile_app.py    # cProfile → profile.stats (ouvrir avec snakeviz)
 python3 profile_mem.py    # tracemalloc top-N allocations
 python3 bench_spinner.py  # microbench isolé du LoaderAnimation
 ```

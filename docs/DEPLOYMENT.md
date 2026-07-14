@@ -324,7 +324,7 @@ echo $DISPLAY                   # doit être :0
 
 Lancer le profile sur le matériel :
 ```bash
-python3 profile.py 60           # 60 secondes d'usage
+python3 profile_app.py 60       # 60 secondes d'usage
 # Lire le rapport top 30 cumulatif
 ```
 
@@ -341,6 +341,10 @@ python3 bench_spinner.py --duree 10 --points 300     # comparaison ancienne conf
 ```
 
 Protocole complet de profiling sur Pi : [docs/PROFILING.md](PROFILING.md).
+
+L'interface admin utilise une priorité CPU/I/O inférieure au kiosque
+(`Nice=10`, `CPUWeight=20`, `IOSchedulingClass=idle`). Une génération de
+miniatures ou un parcours de galerie ne doit donc pas perturber le LiveView.
 
 ---
 

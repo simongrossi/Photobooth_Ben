@@ -57,12 +57,22 @@ from core.mise_en_page import (
 )
 from web.auth import require_auth
 from web.db import connexion
-from web.evenements import lister_evenements, selection_templates_evenement
+from web.evenements import (
+    enregistrer_selection_templates,
+    lister_evenements,
+    selection_templates_evenement,
+)
 
 bp = Blueprint("templates", __name__, url_prefix="/templates")
 
 TYPES_AUTORISES = ("10x15", "strip")
 COUCHES_AUTORISEES = ("overlay", "fond")
+EMPLACEMENTS_AFFECTATION = (
+    {"couche": "fond", "type": "10x15", "champ": "template_fond_10x15", "libelle": "Fond 10×15"},
+    {"couche": "overlay", "type": "10x15", "champ": "template_overlay_10x15", "libelle": "Overlay 10×15"},
+    {"couche": "fond", "type": "strip", "champ": "template_fond_strip", "libelle": "Fond strip"},
+    {"couche": "overlay", "type": "strip", "champ": "template_overlay_strip", "libelle": "Overlay strip"},
+)
 # L'overlay exige la transparence (PNG) ; le fond est une image pleine.
 EXTENSIONS_PAR_COUCHE = {
     "overlay": (".png",),
@@ -345,6 +355,28 @@ def _associations_evenements() -> dict[int, list[dict]]:
     return resultat
 
 
+def _affectations_par_evenement(evenements: list) -> dict[str, dict[str, Optional[int]]]:
+    """Prépare les quatre choix de chaque événement pour le formulaire groupé."""
+    resultat = {}
+    for evenement in evenements:
+        selection = selection_templates_evenement(evenement.id)
+        resultat[evenement.id] = {
+            emplacement["champ"]: selection[(emplacement["couche"], emplacement["type"])]
+            for emplacement in EMPLACEMENTS_AFFECTATION
+        }
+    return resultat
+
+
+def _options_par_emplacement(templates: list[TemplateRow]) -> dict[str, list[TemplateRow]]:
+    return {
+        emplacement["champ"]: [
+            template for template in templates
+            if template.couche == emplacement["couche"] and template.type == emplacement["type"]
+        ]
+        for emplacement in EMPLACEMENTS_AFFECTATION
+    }
+
+
 @bp.route("/", methods=["GET"])
 @require_auth
 def index():
@@ -352,6 +384,7 @@ def index():
     _synchroniser_mise_en_page_active()
     templates = _lister()
     actifs = {(t.couche, t.type): t.nom for t in templates if t.actif}
+    evenements = [e for e in lister_evenements() if e.statut != "archive"]
     return render_template(
         "templates.html",
         templates=templates,
@@ -360,9 +393,66 @@ def index():
         types=TYPES_AUTORISES,
         path_overlays=PATH_OVERLAYS,
         path_fonds=PATH_FONDS,
-        evenements=[e for e in lister_evenements() if e.statut != "archive"],
+        evenements=evenements,
+        emplacements_affectation=EMPLACEMENTS_AFFECTATION,
+        options_par_emplacement=_options_par_emplacement(templates),
+        affectations_par_evenement=_affectations_par_evenement(evenements),
         associations_evenements=_associations_evenements(),
     )
+
+
+@bp.route("/evenement/<evenement_id>", methods=["POST"])
+@require_auth
+def affecter_evenement(evenement_id: str):
+    """Enregistre les quatre emplacements depuis la carte d'un événement."""
+    with connexion() as conn:
+        evenement = conn.execute(
+            "SELECT id, nom, statut FROM evenement WHERE id = ?", (evenement_id,),
+        ).fetchone()
+        if evenement is None:
+            abort(404)
+        if evenement["statut"] == "archive":
+            flash("Un événement archivé ne peut pas être modifié.", "error")
+            return redirect(url_for("templates.index"))
+
+        selection = {}
+        erreurs = []
+        for emplacement in EMPLACEMENTS_AFFECTATION:
+            cle = (emplacement["couche"], emplacement["type"])
+            valeur = (request.form.get(emplacement["champ"]) or "").strip()
+            if not valeur:
+                selection[cle] = None
+                continue
+            try:
+                template_id = int(valeur)
+            except ValueError:
+                erreurs.append(f"{emplacement['libelle']} invalide.")
+                continue
+            template = conn.execute(
+                "SELECT type, couche FROM template WHERE id = ?", (template_id,),
+            ).fetchone()
+            if template is None or (template["couche"], template["type"]) != cle:
+                erreurs.append(f"{emplacement['libelle']} incompatible.")
+                continue
+            selection[cle] = template_id
+
+        if erreurs:
+            for erreur in erreurs:
+                flash(erreur, "error")
+            return redirect(url_for("templates.index") + f"#evenement-{evenement_id}")
+        enregistrer_selection_templates(conn, evenement_id, selection)
+
+    if evenement["statut"] == "actif":
+        try:
+            appliquer_selection_templates(selection)
+        except (ValueError, FileNotFoundError, OSError) as e:
+            flash(f"Affectation enregistrée, mais application impossible : {e}", "error")
+            return redirect(url_for("templates.index") + f"#evenement-{evenement_id}")
+        message = "Affectation enregistrée et appliquée immédiatement au kiosque."
+    else:
+        message = "Affectation enregistrée ; elle sera appliquée à l'activation de l'événement."
+    flash(f"{evenement['nom']} : {message}", "success")
+    return redirect(url_for("templates.index") + f"#evenement-{evenement_id}")
 
 
 @bp.route("/associer/<int:template_id>", methods=["POST"])

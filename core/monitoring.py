@@ -212,3 +212,17 @@ def lister_images_slideshow(dossiers: list[str], nb_max: int) -> list[str]:
             continue
     fichiers.sort(key=lambda x: x[0], reverse=True)
     return [f[1] for f in fichiers[:nb_max]]
+
+
+def doit_rafraichir_slideshow(
+    dernier_rafraichissement: float,
+    maintenant: float,
+    intervalle_s: float = 30.0,
+) -> bool:
+    """Indique si la liste du diaporama doit être rescannée.
+
+    Une liste vide ne force jamais un scan supplémentaire : le premier passage
+    est assuré par ``dernier_rafraichissement == 0``, puis l'intervalle est
+    respecté même lorsqu'aucune image publique n'existe.
+    """
+    return dernier_rafraichissement <= 0 or maintenant - dernier_rafraichissement >= intervalle_s

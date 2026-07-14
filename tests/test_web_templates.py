@@ -181,7 +181,7 @@ class TestAssociationEvenement:
                 (statut,),
             )
 
-    def test_carte_propose_les_evenements(self, client):
+    def test_page_groupe_les_affectations_par_evenement(self, client):
         c, _, _ = client
         self._creer_evenement()
         c.post("/templates/upload", data={
@@ -190,9 +190,73 @@ class TestAssociationEvenement:
         }, headers=HEADERS, content_type="multipart/form-data")
 
         html = c.get("/templates/", headers=HEADERS).get_data(as_text=True)
-        assert "Associer à un événement" in html
+        assert "Habillage par événement" in html
         assert "Mariage Été" in html
-        assert "/templates/associer/" in html
+        assert "/templates/evenement/evt-1" in html
+        assert "template_fond_10x15" in html
+        assert "template_overlay_10x15" in html
+        assert "template_fond_strip" in html
+        assert "template_overlay_strip" in html
+        assert "template-slot" in html
+        assert 'data-thumb="/templates/thumb/' in html
+        assert "Ajouter un template" in html
+
+    def test_enregistre_les_quatre_choix_depuis_la_carte_evenement(self, client):
+        c, _, _ = client
+        self._creer_evenement()
+        for nom, type_t, couche in (
+            ("Fond photo", "10x15", "fond"),
+            ("Cadre photo", "10x15", "overlay"),
+            ("Fond bandelette", "strip", "fond"),
+            ("Cadre bandelette", "strip", "overlay"),
+        ):
+            c.post("/templates/upload", data={
+                "nom": nom, "type": type_t, "couche": couche,
+                "fichier": (io.BytesIO(_png_bytes()), f"{nom}.png"),
+            }, headers=HEADERS, content_type="multipart/form-data")
+        with connexion() as conn:
+            ids = {row["nom"]: row["id"] for row in conn.execute("SELECT id, nom FROM template")}
+
+        reponse = c.post("/templates/evenement/evt-1", data={
+            "template_fond_10x15": ids["Fond photo"],
+            "template_overlay_10x15": ids["Cadre photo"],
+            "template_fond_strip": ids["Fond bandelette"],
+            "template_overlay_strip": ids["Cadre bandelette"],
+        }, headers=HEADERS, follow_redirects=True)
+
+        assert reponse.status_code == 200
+        assert "elle sera appliquée à l&#39;activation" in reponse.get_data(as_text=True)
+        with connexion() as conn:
+            rows = conn.execute(
+                "SELECT type, couche, template_id FROM evenement_template "
+                "WHERE evenement_id = 'evt-1'"
+            ).fetchall()
+        selection = {(row["couche"], row["type"]): row["template_id"] for row in rows}
+        assert selection == {
+            ("fond", "10x15"): ids["Fond photo"],
+            ("overlay", "10x15"): ids["Cadre photo"],
+            ("fond", "strip"): ids["Fond bandelette"],
+            ("overlay", "strip"): ids["Cadre bandelette"],
+        }
+
+    def test_affectation_groupee_active_applique_immediatement(self, client):
+        c, overlays, _ = client
+        self._creer_evenement(statut="actif")
+        c.post("/templates/upload", data={
+            "nom": "Cadre actif groupé", "type": "10x15", "couche": "overlay",
+            "fichier": (io.BytesIO(_png_bytes()), "actif-groupe.png"),
+        }, headers=HEADERS, content_type="multipart/form-data")
+        with connexion() as conn:
+            template_id = conn.execute(
+                "SELECT id FROM template WHERE nom = 'Cadre actif groupé'"
+            ).fetchone()["id"]
+
+        reponse = c.post("/templates/evenement/evt-1", data={
+            "template_overlay_10x15": template_id,
+        }, headers=HEADERS, follow_redirects=True)
+
+        assert "appliquée immédiatement au kiosque" in reponse.get_data(as_text=True)
+        assert os.path.isfile(os.path.join(overlays, "10x15_overlay.png"))
 
     def test_associer_a_evenement_actif_applique_le_template(self, client):
         c, overlays, _ = client

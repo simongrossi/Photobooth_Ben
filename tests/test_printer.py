@@ -141,6 +141,18 @@ class TestSend:
         
         assert mgr.send("/tmp/foo.jpg", "10x15") is True
 
+    def test_envoi_deja_verifie_ne_relance_pas_lpstat(self, mgr, monkeypatch):
+        commandes = []
+
+        def fake_run(cmd, **kwargs):
+            commandes.append(cmd)
+            return SimpleNamespace(stdout="", stderr="", returncode=0)
+
+        monkeypatch.setattr(printer.subprocess, "run", fake_run)
+
+        assert mgr.send("/tmp/foo.jpg", "10x15", verifier=False) is True
+        assert [commande[0] for commande in commandes] == ["lp"]
+
     def test_popen_raise_attrape(self, mgr, monkeypatch):
         monkeypatch.setattr(printer.subprocess, "run", _fake_run_factory("idle"))
 

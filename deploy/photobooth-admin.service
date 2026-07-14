@@ -36,6 +36,11 @@ StandardError=append:@PROJET_DIR@/logs/admin.log
 # Limite mémoire défensive (l'admin doit rester léger)
 MemoryMax=256M
 
+# L'admin ne doit jamais prendre du CPU ou des I/O au kiosque pendant une capture.
+Nice=10
+CPUWeight=20
+IOSchedulingClass=idle
+
 TimeoutStopSec=10
 
 [Install]

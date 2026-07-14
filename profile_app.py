@@ -1,22 +1,15 @@
 #!/usr/bin/env python3
-"""profile.py — lance Photobooth_start sous cProfile pendant N secondes.
+"""Profile CPU du photobooth pendant une durée déterminée.
 
 Usage :
-    python3 profile.py [secondes]  # défaut 60s
+    python3 profile_app.py [secondes]  # défaut 60 s
 
-Produit `profile.stats` (format Python) + affiche le top 30 des fonctions
-les plus coûteuses à la fin. Ouvrable ensuite avec :
-    python3 -m pstats profile.stats
-    > sort cumulative
-    > stats 30
-
-À lancer sur le matériel cible (Raspberry) pour identifier les bottlenecks
-réels (get_canon_frame ? génération montage ? slideshow render ? etc).
-
-Le script termine le photobooth après `secondes` via SIGALRM — prévoir
-d'interagir manuellement pendant ce temps pour couvrir les états (accueil,
-décompte, validation, fin).
+Le nom évite volontairement ``profile.py`` : un fichier portant ce nom masque
+le module standard utilisé par :mod:`cProfile` lorsque le script est lancé
+depuis la racine du dépôt.
 """
+from __future__ import annotations
+
 import cProfile
 import pstats
 import signal
@@ -27,20 +20,25 @@ def _signal_handler(signum, frame):
     raise SystemExit("⏱️ Timeout profil : arrêt propre")
 
 
-def main():
+def _executer_application() -> None:
+    """Importe le module sans effet de bord puis appelle son point d'entrée."""
+    import Photobooth_start
+
+    Photobooth_start.main()
+
+
+def main() -> None:
     duree = int(sys.argv[1]) if len(sys.argv) > 1 else 60
     print(f"🔬 Profile : lancement du photobooth pour {duree}s...")
     print("   (interagis avec l'UI pour couvrir les états — le script s'arrête auto)\n")
 
-    # SIGALRM envoyé après `duree` secondes → SystemExit propre
     signal.signal(signal.SIGALRM, _signal_handler)
     signal.alarm(duree)
 
     profiler = cProfile.Profile()
     profiler.enable()
     try:
-        # On importe Photobooth_start qui démarre immédiatement (boucle while running)
-        import Photobooth_start  # noqa: F401
+        _executer_application()
     except SystemExit:
         pass
     finally:

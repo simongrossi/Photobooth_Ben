@@ -21,8 +21,10 @@ sur le même LAN, sans toucher au code.
 - **Templates** : bibliothèque des deux couches d'habillage — **overlays** (PNG
   par-dessus la photo) et **fonds** (image sous les photos) — upload, activation
   par format (10×15 / strip), et état « Aucun » par couche×format (photo nue /
-  fond blanc, effet à la photo suivante, sans redémarrage du kiosque). Pour le
-  10×15 et le strip disposent d'un éditeur visuel. Pour le strip, les trois
+  fond blanc, effet à la photo suivante, sans redémarrage du kiosque). La page
+  commence par une vue rangée par événement : les quatre emplacements sont
+  modifiables et enregistrables ensemble. Le 10×15 et le strip disposent d'un
+  éditeur visuel. Pour le strip, les trois
   photos se déplacent et se redimensionnent indépendamment, avec un aperçu
   exact fond → photos → overlay et mémorisation par template.
 - **Kiosque** : assets globaux de la borne — **fond d'écran d'accueil** et
@@ -99,11 +101,13 @@ Renommer un événement actif met immédiatement à jour l'instantané pour les
 sessions futures. Les sessions déjà terminées gardent leur nom et leurs tags
 d'origine, ce qui préserve l'historique.
 
-Un changement manuel depuis la page **Templates** met également à jour
-l'association de l'événement actif, afin que les deux écrans restent cohérents.
-Chaque carte de template contient aussi **Associer à un événement** : ce choix
-remplace la couche correspondante de l'événement sélectionné. Si celui-ci est
-actif, le nouveau template est publié immédiatement.
+La section **Habillage par événement** de la page **Templates** présente
+l'événement actif en premier, puis les brouillons et les événements terminés.
+Chaque carte permet de choisir ensemble fond et overlay pour les formats 10×15
+et strip. L'enregistrement publie immédiatement les quatre choix si l'événement
+est actif ; sinon ils seront appliqués lors de sa prochaine activation. La
+bibliothèque située dessous reste dédiée à l'upload, à l'aperçu et à l'édition
+de la mise en page des fichiers.
 
 ## Installation
 

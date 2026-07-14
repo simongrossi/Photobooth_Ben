@@ -137,14 +137,6 @@ from core.camera import CameraManager  # noqa: E402
 camera_mgr: CameraManager | None = None
 
 
-# Wrapper de compat — seul `get_canon_frame` est encore appelé (dans render_decompte).
-def get_canon_frame() -> Optional[pygame.Surface]:  # type: ignore
-    """Retourne la frame preview caméra courante sous forme de pygame.Surface, ou None."""
-    if camera_mgr is None:
-        return None
-    return camera_mgr.get_preview_frame()
-
-
 # ========================================================================================================
 # --- 2. FONCTIONS TECHNIQUES --- ########################################################################
 # ========================================================================================================
@@ -175,21 +167,7 @@ def capturer_hq(id_session: str, index_photo: int) -> Optional[str]:
     jouer_son("shutter")
     time.sleep(DUREE_FLASH_BLANC)
 
-    # --- CHARGEMENT DES CHEVRONS DU CHENILLARD ---
-    chevrons = []
-    try:
-        for i in range(1, 4):
-            img_origine = pygame.image.load(f"assets/interface/fleche_{i}.png").convert_alpha()
-            
-            # On force la taille exacte de ton fichier : 100 de large, 200 de haut
-            # et smoothscale s'occupe de rendre les contours des PNG ultra propres
-            img_propre = pygame.transform.smoothscale(img_origine, (100, 200))
-            
-            chevrons.append(img_propre)
-            
-    except pygame.error:
-        log_warning("Impossible de charger les images fleche_1, 2 ou 3.png")
-        chevrons = []
+    chevrons = _get_chevrons_capture()
 
     # 2. Capture en thread + animation SOURIEZ pendant
     resultat: dict = {}
@@ -315,6 +293,7 @@ from core.monitoring import (  # noqa: E402
     formater_ligne_perf,
     lire_rss_mb,
     lister_images_slideshow,
+    doit_rafraichir_slideshow,
 )
 
 
@@ -347,11 +326,54 @@ slideshow_last_refresh = 0.0
 slideshow_cached_surface = None
 slideshow_cached_for_idx = -1
 _perf_capture_num = 0  # compteur de captures depuis le lancement (instrumentation #20)
+_chevrons_capture_cache = None
+_texte_surface_cache = {}
+_overlay_abandon_cache = None
 fond_accueil = None
 icon_10x15_norm = None
 icon_10x15_select = None
 icon_strip_norm = None
 icon_strip_select = None
+
+
+def _surface_texte_cache(font, texte: str, couleur: tuple, alpha: int = 255):
+    """Retourne une surface de texte immuable partagée entre les frames."""
+    key = (id(font), texte, couleur, alpha)
+    surf = _texte_surface_cache.get(key)
+    if surf is None:
+        surf = font.render(texte, True, couleur)
+        if alpha != 255:
+            surf.set_alpha(alpha)
+        _texte_surface_cache[key] = surf
+    return surf
+
+
+def _get_overlay_abandon():
+    """Construit une seule fois le voile plein écran de confirmation."""
+    global _overlay_abandon_cache
+    if _overlay_abandon_cache is None:
+        _overlay_abandon_cache = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        _overlay_abandon_cache.fill((0, 0, 0, 170))
+    return _overlay_abandon_cache
+
+
+def _get_chevrons_capture():
+    """Charge et redimensionne une seule fois les sprites de capture."""
+    global _chevrons_capture_cache
+    if _chevrons_capture_cache is not None:
+        return _chevrons_capture_cache
+    try:
+        _chevrons_capture_cache = [
+            pygame.transform.smoothscale(
+                pygame.image.load(f"assets/interface/fleche_{i}.png").convert_alpha(),
+                (100, 200),
+            )
+            for i in range(1, 4)
+        ]
+    except pygame.error:
+        log_warning("Impossible de charger les images fleche_1, 2 ou 3.png")
+        _chevrons_capture_cache = []
+    return _chevrons_capture_cache
 
 
 def _charger_polices():
@@ -425,10 +447,6 @@ def _initialiser_runtime() -> None:
     splash_connexion_camera = _splash_connexion_camera
 
     camera_mgr = CameraManager()
-    camera_mgr.init()
-    if camera_mgr.is_connected:
-        camera_mgr.set_liveview(1)
-    camera_mgr.start_preview()
 
     pygame.init()
     _display_flags = (pygame.FULLSCREEN | pygame.NOFRAME) if config.KIOSK_FULLSCREEN else 0
@@ -620,9 +638,14 @@ def demander_nombre_copies(session: SessionState) -> int:
 def traiter_impression_session(session) -> str:
     """Genere, archive et imprime le montage final avec diagnostic precis."""
     try:
+        perf_montage_t0 = time.perf_counter()
         p = executer_avec_spinner(
             lambda: _generer_montage_final(session),
             TXT_PREPARATION_IMP,
+        )
+        log_info(
+            f"[PERF] montage_final mode={session.mode_actuel} "
+            f"duree={time.perf_counter() - perf_montage_t0:.3f}s"
         )
         destination = _destination_montage_imprime(session)
 
@@ -670,22 +693,10 @@ def traiter_impression_session(session) -> str:
         def boucle_envoi_dnp():
             for i in range(nb_impressions_reelles):
                 log_info(f"🚀 [Thread DNP] Envoi de l'impression physique {i+1}/{nb_impressions_reelles}...")
-                
-                chemin_unique_copie = destination.replace(".jpg", f"_ticket_{i}.jpg")
-                try:
-                    shutil.copy(destination, chemin_unique_copie)
-                except Exception:
-                    chemin_unique_copie = destination
 
-                # Envoi effectif
-                printer_mgr.send(chemin_unique_copie, session.mode_actuel)
-                
-                # Nettoyage
-                if os.path.exists(chemin_unique_copie) and chemin_unique_copie != destination:
-                    try:
-                        os.remove(chemin_unique_copie)
-                    except Exception:
-                        pass
+                # CUPS copie le contenu dans son spool : inutile de dupliquer le
+                # JPEG sur la carte SD pour chaque ticket.
+                printer_mgr.send(destination, session.mode_actuel, verifier=False)
 
                 # Attente entre deux impressions pour ne pas saturer CUPS
                 if nb_impressions_reelles > 1 and i < (nb_impressions_reelles - 1):
@@ -746,11 +757,12 @@ def _render_accueil_slideshow(session: SessionState, idle_seconds: float) -> Non
     global slideshow_images, slideshow_last_refresh, slideshow_cached_for_idx, slideshow_cached_surface
 
     # Rafraîchit la liste tous les 30 s pour inclure les nouvelles impressions
-    if time.time() - slideshow_last_refresh > 30.0 or not slideshow_images:
+    maintenant = time.time()
+    if doit_rafraichir_slideshow(slideshow_last_refresh, maintenant):
         slideshow_images = lister_images_slideshow(
             [PATH_PRINT_10X15, PATH_PRINT_STRIP, PATH_SLIDESHOW_PERSO], NB_MAX_IMAGES_SLIDESHOW,
         )
-        slideshow_last_refresh = time.time()
+        slideshow_last_refresh = maintenant
         slideshow_cached_for_idx = -1
 
     screen.fill((0, 0, 0))
@@ -783,7 +795,7 @@ def _render_accueil_slideshow(session: SessionState, idle_seconds: float) -> Non
 
     # 2. Rendu du texte avec pulsation
     alpha_inv = 150 + int(80 * math.sin(time.time() * 2))
-    inv_surf = font_bandeau.render(TXT_SLIDESHOW_INVITATION, True, (255, 255, 255))
+    inv_surf = _surface_texte_cache(font_bandeau, TXT_SLIDESHOW_INVITATION, (255, 255, 255))
     inv_surf.set_alpha(alpha_inv)
     
     # 3. Calcul du centrage parfait dans le bandeau
@@ -977,21 +989,25 @@ def render_decompte(session: SessionState) -> None:
     # preview pour mesurer le fps réel du LiveView pendant le décompte)
     perf_frames_ok = 0
     perf_t0 = time.time()
-    derniere_preview = get_canon_frame()
+    derniere_preview_affichee = None
+    derniere_generation = -1
+    if camera_mgr is not None:
+        camera_mgr.start_preview()
     for i in range(TEMPS_DECOMPTE, 0, -1):
         jouer_son("beep_final" if i == 1 else "beep")
         t_start = time.time()
         while time.time() - t_start < 1:
-            surf = get_canon_frame()
-            if surf:
+            if camera_mgr is not None:
+                surf, generation = camera_mgr.get_preview_frame_info()
+            else:
+                surf, generation = None, -1
+            if surf and generation != derniere_generation:
                 perf_frames_ok += 1
-                derniere_preview = surf
-            if derniere_preview:
-                # 1. On applique la symétrie horizontale sur l'image reçue (True = Horizontal, False = Vertical)
-                surf_miroir = pygame.transform.flip(derniere_preview, True, False)
-    
-                # 2. On redimensionne et on affiche l'image inversée
-                screen.blit(pygame.transform.scale(surf_miroir, (WIDTH, HEIGHT)), (0, 0))
+                derniere_generation = generation
+                derniere_preview_affichee = pygame.transform.scale(surf, (WIDTH, HEIGHT))
+
+            if derniere_preview_affichee:
+                screen.blit(derniere_preview_affichee, (0, 0))
 
                 if masque_surf is not None:
                     screen.blit(masque_surf, (0, 0))
@@ -1008,8 +1024,12 @@ def render_decompte(session: SessionState) -> None:
 
                     if config.STRIP_FILIGRANE_ENABLED:
                         photos_restantes = 3 - len(session.photos_validees)
-                        fili_surf = font_filigrane.render(str(photos_restantes), True, COULEUR_DECOMPTE)
-                        fili_surf.set_alpha(config.STRIP_FILIGRANE_ALPHA)
+                        fili_surf = _surface_texte_cache(
+                            font_filigrane,
+                            str(photos_restantes),
+                            COULEUR_DECOMPTE,
+                            config.STRIP_FILIGRANE_ALPHA,
+                        )
                         screen.blit(fili_surf, (
                             WIDTH // 2 - fili_surf.get_width() // 2,
                             HEIGHT // 2 - fili_surf.get_height() // 2,
@@ -1020,7 +1040,7 @@ def render_decompte(session: SessionState) -> None:
                 # On garde un fond explicite et, surtout, le décompte reste visible.
                 screen.fill((10, 10, 10))
 
-            num_surf = font_decompte.render(str(i), True, COULEUR_DECOMPTE)
+            num_surf = _surface_texte_cache(font_decompte, str(i), COULEUR_DECOMPTE)
             screen.blit(num_surf, (WIDTH // 2 - num_surf.get_width() // 2, HEIGHT // 2 - num_surf.get_height() // 2))
 
             pygame.display.flip()
@@ -1079,7 +1099,7 @@ def _dessiner_actions_bandeau(actions: tuple[tuple[str, tuple], ...], y_bandeau:
     hauteur_max = BANDEAU_HAUTEUR - 10
 
     for index, (texte, couleur) in enumerate(actions):
-        surf = font_bandeau.render(texte, True, couleur)
+        surf = _surface_texte_cache(font_bandeau, texte, couleur)
         facteur = min(1.0, largeur_max / surf.get_width(), hauteur_max / surf.get_height())
         if facteur < 1.0:
             nouvelle_taille = (
@@ -1115,6 +1135,7 @@ def render_validation(session: SessionState) -> bool:
 
     # 1. Gestion de l'aperçu (Image seule)
     if not session.img_preview_cache and len(session.photos_validees) > 0:
+        perf_preview_t0 = time.perf_counter()
         derniere_photo = session.photos_validees[-1]
 
         if session.mode_actuel == "strips":
@@ -1133,6 +1154,10 @@ def render_validation(session: SessionState) -> bool:
         session.img_preview_cache = pygame.image.fromstring(
             pil_img.tobytes(), pil_img.size, pil_img.mode
         ).convert()
+        log_info(
+            f"[PERF] preview_validation mode={session.mode_actuel} "
+            f"duree={time.perf_counter() - perf_preview_t0:.3f}s"
+        )
 
     # 2. Affichage de l'aperçu centré
     if session.img_preview_cache:
@@ -1189,9 +1214,7 @@ def render_validation(session: SessionState) -> bool:
     
     # 4. Overlay de confirmation d'abandon (À insérer juste avant le return False)
     if session.abandon_confirm_until and time.time() < session.abandon_confirm_until:
-        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 170))
-        screen.blit(overlay, (0, 0))
+        screen.blit(_get_overlay_abandon(), (0, 0))
         
         # Message principal (Titre rouge doux)
         _dessiner_texte_centre_avec_garde(screen, config.TXT_CONFIRM_ABANDON_1, font_alerte, (255, 120, 120), HEIGHT // 2 - 100, int(WIDTH * 0.55))
@@ -1246,9 +1269,7 @@ def render_fin(session: SessionState) -> None:
 
     # 5. Overlay de confirmation d'abandon
     if session.abandon_confirm_until and time.time() < session.abandon_confirm_until:
-        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 170))
-        screen.blit(overlay, (0, 0))
+        screen.blit(_get_overlay_abandon(), (0, 0))
         
         _dessiner_texte_centre_avec_garde(screen, config.TXT_CONFIRM_ABANDON_1, font_alerte, (255, 120, 120), HEIGHT // 2 - 120, int(WIDTH * 0.55))
         
@@ -1274,9 +1295,13 @@ def handle_accueil_event(event: pygame.event.Event, session: SessionState,   # t
     if event.key == TOUCHE_GAUCHE:
         print("Mode 10x15 sélectionné")
         session.mode_actuel = "10x15"
+        if camera_mgr is not None:
+            camera_mgr.start_preview()
     elif event.key == TOUCHE_DROITE:
         print("Mode Bandelettes sélectionné")
         session.mode_actuel = "strips"
+        if camera_mgr is not None:
+            camera_mgr.start_preview()
     elif event.key == TOUCHE_MILIEU and session.mode_actuel:
         print(f"🚀 {session.mode_actuel} Validé !")
         session.photos_validees = []
@@ -1471,8 +1496,6 @@ def main() -> None:
         splash_connexion_camera(camera_mgr)
 
         while running:
-            screen.fill((10, 10, 10))
-
             # --------------------------------------------------------------------------------------------
             # --- 1 ------ GESTION DES ÉVÉNEMENTS (TOUCHES) --- ##########################################
             # --------------------------------------------------------------------------------------------

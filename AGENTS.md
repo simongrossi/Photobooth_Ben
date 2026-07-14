@@ -9,7 +9,7 @@ Event photobooth app (Pygame + gphoto2 + PIL) targeting a Raspberry Pi with a Ca
 ## Common commands
 
 ```bash
-# Tests (297 tests, ~30 s) — pure-Python modules only
+# Tests (305 tests, ~30 s) — pure-Python modules only
 pytest                                   # full suite
 pytest tests/test_montage.py -v          # single file
 pytest tests/test_montage.py::test_name -v  # single test
@@ -35,7 +35,7 @@ python3 stats.py --date 2026-04-20
 python3 stats.py --json
 
 # Profiling (see docs/PROFILING.md for the full Pi protocol)
-python3 profile.py        # cProfile → profile.stats (open with snakeviz)
+python3 profile_app.py    # cProfile → profile.stats (open with snakeviz)
 python3 profile_mem.py    # tracemalloc
 python3 bench_spinner.py  # LoaderAnimation microbench (--points N to override)
 ```

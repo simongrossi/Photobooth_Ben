@@ -68,18 +68,22 @@ class PrinterManager:
         self.last_error = None
         return True
 
-    def send(self, chemin: str, mode: str) -> bool:
-        """Envoie à la file correspondante. Retourne True si l'envoi a démarré."""
+    def send(self, chemin: str, mode: str, verifier: bool = True) -> bool:
+        """Envoie à la file correspondante. Retourne True si l'envoi a démarré.
+
+        ``verifier=False`` évite deux appels ``lpstat`` redondants lorsque
+        l'appelant vient d'effectuer le contrôle de sécurité.
+        """
         nom_file = self._noms.get(mode)
         if not nom_file:
             log_critical(f"Mode imprimante inconnu : {mode}")
             return False
             
-        status = self.is_ready(mode)
-        if status is not True:
-            # Maintenant, le message "IMPRIMANTE ÉTEINTE" sera bien loggé ici
-            log_critical(f"Annulation : {status} (File: {nom_file})")
-            return False
+        if verifier:
+            status = self.is_ready(mode)
+            if status is not True:
+                log_critical(f"Annulation : {status} (File: {nom_file})")
+                return False
             
         try:
             # check=True lève une erreur si la commande échoue
