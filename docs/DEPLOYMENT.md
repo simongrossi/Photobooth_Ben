@@ -185,6 +185,7 @@ Tester le flux complet :
 ```bash
 tail -f logs/photobooth.log       # temps réel
 cat data/sessions.jsonl            # historique des sessions
+python3 perf_report.py             # latences p50/p95 et alertes matériel
 ```
 
 ---
@@ -371,6 +372,9 @@ tar czf backup_event_$(date +%Y%m%d).tar.gz data/ logs/ assets/
 
 # Stats
 python3 stats.py --date $(date +%Y-%m-%d)
+
+# Performance réelle (inclut les rotations du journal)
+python3 perf_report.py --date $(date +%Y-%m-%d)
 
 # Transférer vers NAS (exemple rsync)
 rsync -avz data/print/ nas.local:/photos/events/$(date +%Y-%m-%d)/

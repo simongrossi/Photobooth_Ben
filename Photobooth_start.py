@@ -295,6 +295,7 @@ from core.monitoring import (  # noqa: E402
     lister_images_slideshow,
     doit_rafraichir_slideshow,
 )
+from core.performance import ecrire_performance, resumer_durees  # noqa: E402
 
 
 screen = None
@@ -508,7 +509,30 @@ def _initialiser_runtime() -> None:
 
 def terminer_session_et_revenir_accueil(issue: str) -> None:
     """Wrapper module-local : délègue à core.session en passant le `session` global."""
+    duree_s = time.time() - session.session_start_ts if session.session_start_ts else 0.0
+    ecrire_performance(
+        "session_end",
+        session_id=session.id_session_timestamp or None,
+        mode=session.mode_actuel,
+        issue=issue,
+        photos=len(session.photos_validees),
+        duration_ms=round(duree_s * 1000, 3),
+        rss_mb=lire_rss_mb(),
+        temperature_c=temp_monitor.temp_c if temp_monitor is not None else None,
+    )
     _terminer_session_et_revenir_accueil(session, issue)
+
+
+def _journaliser_action(action: str, **details) -> None:
+    """Trace uniquement les actions utilisateur, jamais les frames."""
+    log_info(f"[ACTION] {action} mode={session.mode_actuel}")
+    ecrire_performance(
+        "action",
+        action=action,
+        session_id=session.id_session_timestamp or None,
+        mode=session.mode_actuel,
+        **details,
+    )
 
 
 def _generer_montage_final(session: SessionState) -> str:
@@ -643,9 +667,16 @@ def traiter_impression_session(session) -> str:
             lambda: _generer_montage_final(session),
             TXT_PREPARATION_IMP,
         )
+        duree_montage_ms = (time.perf_counter() - perf_montage_t0) * 1000
         log_info(
             f"[PERF] montage_final mode={session.mode_actuel} "
-            f"duree={time.perf_counter() - perf_montage_t0:.3f}s"
+            f"duree={duree_montage_ms / 1000:.3f}s"
+        )
+        ecrire_performance(
+            "montage_final",
+            session_id=session.id_session_timestamp,
+            mode=session.mode_actuel,
+            duration_ms=round(duree_montage_ms, 3),
         )
         destination = _destination_montage_imprime(session)
 
@@ -681,7 +712,17 @@ def traiter_impression_session(session) -> str:
         # is_ready renvoie True si prêt, sinon une chaîne décrivant le problème
         # (mémorisée aussi dans last_error). Une chaîne est truthy : on teste
         # `is not True` pour ne PAS partir imprimer sur « FILE D'ATTENTE PLEINE ».
+        verification_t0 = time.perf_counter()
         etat_imprimante = printer_mgr.is_ready(session.mode_actuel)
+        verification_ms = (time.perf_counter() - verification_t0) * 1000
+        ecrire_performance(
+            "printer_check",
+            session_id=session.id_session_timestamp,
+            mode=session.mode_actuel,
+            duration_ms=round(verification_ms, 3),
+            ready=etat_imprimante is True,
+            detail=None if etat_imprimante is True else str(etat_imprimante),
+        )
         if etat_imprimante is not True:
             log_warning(f"Impression bloquée : {etat_imprimante}")
             ecran_erreur(printer_mgr.last_error or TXT_ERREUR_IMPRIMANTE)
@@ -690,13 +731,25 @@ def traiter_impression_session(session) -> str:
         # ===========================================================
         # --- ETAPE 1 : FONCTION INTERNE D'ENVOI EN ARRIÈRE-PLAN ---
         # ===========================================================
+        perf_session_id = session.id_session_timestamp
+        perf_mode = session.mode_actuel
+
         def boucle_envoi_dnp():
             for i in range(nb_impressions_reelles):
                 log_info(f"🚀 [Thread DNP] Envoi de l'impression physique {i+1}/{nb_impressions_reelles}...")
 
                 # CUPS copie le contenu dans son spool : inutile de dupliquer le
                 # JPEG sur la carte SD pour chaque ticket.
-                printer_mgr.send(destination, session.mode_actuel, verifier=False)
+                envoi_t0 = time.perf_counter()
+                envoi_ok = printer_mgr.send(destination, perf_mode, verifier=False)
+                ecrire_performance(
+                    "printer_submit",
+                    session_id=perf_session_id,
+                    mode=perf_mode,
+                    copy=i + 1,
+                    duration_ms=round((time.perf_counter() - envoi_t0) * 1000, 3),
+                    success=envoi_ok,
+                )
 
                 # Attente entre deux impressions pour ne pas saturer CUPS
                 if nb_impressions_reelles > 1 and i < (nb_impressions_reelles - 1):
@@ -984,11 +1037,18 @@ def render_decompte(session: SessionState) -> None:
                 session.evenement_nom = evenement["nom"]
                 session.evenement_tags = evenement["tags"]
         log_info(f"🚀 NOUVELLE SESSION : {session.id_session_timestamp}")
+        ecrire_performance(
+            "session_start",
+            session_id=session.id_session_timestamp,
+            mode=session.mode_actuel,
+            event_id=session.evenement_id,
+        )
 
     # Boucle du décompte visuel (+ instrumentation perf #20 : compte les frames
     # preview pour mesurer le fps réel du LiveView pendant le décompte)
     perf_frames_ok = 0
     perf_t0 = time.time()
+    render_durations_ms = []
     derniere_preview_affichee = None
     derniere_generation = -1
     if camera_mgr is not None:
@@ -997,6 +1057,7 @@ def render_decompte(session: SessionState) -> None:
         jouer_son("beep_final" if i == 1 else "beep")
         t_start = time.time()
         while time.time() - t_start < 1:
+            render_t0 = time.perf_counter()
             if camera_mgr is not None:
                 surf, generation = camera_mgr.get_preview_frame_info()
             else:
@@ -1044,6 +1105,7 @@ def render_decompte(session: SessionState) -> None:
             screen.blit(num_surf, (WIDTH // 2 - num_surf.get_width() // 2, HEIGHT // 2 - num_surf.get_height() // 2))
 
             pygame.display.flip()
+            render_durations_ms.append((time.perf_counter() - render_t0) * 1000)
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     demander_arret()
@@ -1054,12 +1116,17 @@ def render_decompte(session: SessionState) -> None:
     # --- Instrumentation perf #20 : fps preview mesuré sur le décompte ---
     perf_elapsed = time.time() - perf_t0
     perf_fps = (perf_frames_ok / perf_elapsed) if perf_elapsed > 0 else None
+    preview_metrics = camera_mgr.preview_metrics() if camera_mgr is not None else {}
+    render_metrics = resumer_durees(render_durations_ms, seuil_lent_ms=33.3)
 
     # CAPTURE HQ + transition (chronométrée pour le log PERF)
     index_photo = len(session.photos_validees) + 1
     perf_t_cap = time.time()
     chemin_photo = capturer_hq(session.id_session_timestamp, index_photo)
     perf_capture_s = time.time() - perf_t_cap
+    capture_metrics = camera_mgr.capture_metrics if camera_mgr is not None else {}
+    rss_mb = lire_rss_mb()
+    gc_objs = len(gc.get_objects())
 
     global _perf_capture_num
     _perf_capture_num += 1
@@ -1067,9 +1134,24 @@ def render_decompte(session: SessionState) -> None:
         capture_num=_perf_capture_num,
         preview_fps=perf_fps,
         capture_s=perf_capture_s,
-        rss_mb=lire_rss_mb(),
-        gc_objs=len(gc.get_objects()),
+        rss_mb=rss_mb,
+        gc_objs=gc_objs,
     ))
+    ecrire_performance(
+        "capture",
+        session_id=session.id_session_timestamp,
+        mode=session.mode_actuel,
+        photo_index=index_photo,
+        success=bool(chemin_photo),
+        preview_fps=round(perf_fps, 3) if perf_fps is not None else None,
+        countdown_render_ms=render_metrics,
+        camera_preview=preview_metrics,
+        capture_phases_ms=capture_metrics,
+        capture_total_ms=round(perf_capture_s * 1000, 3),
+        rss_mb=round(rss_mb, 3) if rss_mb is not None else None,
+        gc_objs=gc_objs,
+        temperature_c=temp_monitor.temp_c if temp_monitor is not None else None,
+    )
 
     if chemin_photo:
         session.photos_validees.append(chemin_photo)
@@ -1154,9 +1236,17 @@ def render_validation(session: SessionState) -> bool:
         session.img_preview_cache = pygame.image.fromstring(
             pil_img.tobytes(), pil_img.size, pil_img.mode
         ).convert()
+        duree_preview_ms = (time.perf_counter() - perf_preview_t0) * 1000
         log_info(
             f"[PERF] preview_validation mode={session.mode_actuel} "
-            f"duree={time.perf_counter() - perf_preview_t0:.3f}s"
+            f"duree={duree_preview_ms / 1000:.3f}s"
+        )
+        ecrire_performance(
+            "preview_validation",
+            session_id=session.id_session_timestamp,
+            mode=session.mode_actuel,
+            photo_index=len(session.photos_validees),
+            duration_ms=round(duree_preview_ms, 3),
         )
 
     # 2. Affichage de l'aperçu centré
@@ -1293,17 +1383,17 @@ def handle_accueil_event(event: pygame.event.Event, session: SessionState,   # t
     if ecoule < DELAI_SECURITE:
         return
     if event.key == TOUCHE_GAUCHE:
-        print("Mode 10x15 sélectionné")
         session.mode_actuel = "10x15"
+        _journaliser_action("select_format")
         if camera_mgr is not None:
             camera_mgr.start_preview()
     elif event.key == TOUCHE_DROITE:
-        print("Mode Bandelettes sélectionné")
         session.mode_actuel = "strips"
+        _journaliser_action("select_format")
         if camera_mgr is not None:
             camera_mgr.start_preview()
     elif event.key == TOUCHE_MILIEU and session.mode_actuel:
-        print(f"🚀 {session.mode_actuel} Validé !")
+        _journaliser_action("confirm_format")
         session.photos_validees = []
         session.dernier_clic_time = maintenant
         session.etat = Etat.DECOMPTE
@@ -1314,7 +1404,7 @@ def _handle_validation_10x15(event: pygame.event.Event, session: SessionState,  
     """VALIDATION mode 10x15 : retake / imprimer / abandon (debounce géré par caller)."""
     if event.key == TOUCHE_GAUCHE:
         # Retake : archive en RETAKE puis retourne au décompte
-        print("LOG: [10x15] -> Refaire : Archivage RETAKE et relance")
+        _journaliser_action("retake")
 
         session.img_preview_cache = None
 
@@ -1333,7 +1423,7 @@ def _handle_validation_10x15(event: pygame.event.Event, session: SessionState,  
 
     elif event.key == TOUCHE_MILIEU:
         # Imprimer direct + retour accueil
-        print("LOG: [10x15] -> Impression directe et Accueil")
+        _journaliser_action("print")
         session.abandon_confirm_until = 0.0
         issue = traiter_impression_session(session)
         pygame.event.clear()
@@ -1343,7 +1433,7 @@ def _handle_validation_10x15(event: pygame.event.Event, session: SessionState,  
     elif event.key == TOUCHE_DROITE:
         # Abandon avec confirmation double-press
         if session.abandon_confirm_until and time.time() < session.abandon_confirm_until:
-            print("LOG: [10x15] -> Abandon confirmé : Archivage DELETED et Accueil")
+            _journaliser_action("abandon_confirmed")
             session.abandon_confirm_until = 0.0
             try:
                 p = executer_avec_spinner(
@@ -1356,7 +1446,7 @@ def _handle_validation_10x15(event: pygame.event.Event, session: SessionState,  
                 log_critical(f"Erreur 10x15 Deleted: {e}")
             terminer_session_et_revenir_accueil("abandoned")
         else:
-            print("LOG: [10x15] -> Demande de confirmation abandon")
+            _journaliser_action("abandon_requested")
             session.abandon_confirm_until = time.time() + DUREE_CONFIRM_ABANDON
         
         session.dernier_clic_time = maintenant
@@ -1366,7 +1456,7 @@ def _handle_validation_strips(event: pygame.event.Event, session: SessionState, 
                               maintenant: float) -> None:
     """VALIDATION mode strips : retake dernière / valider-continue / annuler."""
     if event.key == TOUCHE_GAUCHE:
-        print("LOG: [Strips] -> Refaire la dernière photo")
+        _journaliser_action("retake")
         if session.photos_validees:
             session.photos_validees.pop()
         session.img_preview_cache = None
@@ -1376,15 +1466,16 @@ def _handle_validation_strips(event: pygame.event.Event, session: SessionState, 
     elif event.key == TOUCHE_MILIEU:
         session.img_preview_cache = None
         if len(session.photos_validees) < 3:
-            print(f"LOG: [Strips] -> Photo {len(session.photos_validees)} validée")
+            _journaliser_action("validate_photo", photo_index=len(session.photos_validees))
             session.etat = Etat.DECOMPTE
         else:
-            print("LOG: [Strips] -> 3 photos OK, passage à l'écran FIN")
+            _journaliser_action("finish_strip")
             session.path_montage = MontageGeneratorStrip.preview(session.photos_validees)
             session.etat = Etat.FIN
         session.dernier_clic_time = maintenant
 
     elif event.key == TOUCHE_DROITE:
+        _journaliser_action("abandon")
         terminer_session_et_revenir_accueil("abandoned")
         session.dernier_clic_time = maintenant
 
@@ -1411,7 +1502,7 @@ def handle_fin_event(event: pygame.event.Event, session: SessionState,   # type:
 
     if event.key == TOUCHE_GAUCHE:
         # Recommencer : archive en RETAKE + repars au décompte (garde id_session)
-        print("LOG: [FIN] -> Recommencer : Archivage et relance")
+        _journaliser_action("restart_session")
         session.abandon_confirm_until = 0.0
         try:
             if session.mode_actuel == "strips":
@@ -1440,7 +1531,7 @@ def handle_fin_event(event: pygame.event.Event, session: SessionState,   # type:
 
     if event.key == TOUCHE_MILIEU:
         # Imprimer : génère HD, copie en PRINT_<mode>, envoie CUPS
-        print(f"LOG: [FIN] -> Impression ({session.mode_actuel})")
+        _journaliser_action("print")
         session.abandon_confirm_until = 0.0
         issue = traiter_impression_session(session)
         pygame.event.clear()
@@ -1452,7 +1543,7 @@ def handle_fin_event(event: pygame.event.Event, session: SessionState,   # type:
         # Abandon avec confirmation double-press
         if session.abandon_confirm_until and time.time() < session.abandon_confirm_until:
             # 2e appui dans la fenêtre → abandon confirmé
-            print("LOG: [FIN] -> Abandon confirmé (deleted_)")
+            _journaliser_action("abandon_confirmed")
             session.abandon_confirm_until = 0.0
             try:
                 if session.mode_actuel == "strips":
@@ -1474,7 +1565,7 @@ def handle_fin_event(event: pygame.event.Event, session: SessionState,   # type:
             session.dernier_clic_time = maintenant
         else:
             # 1er appui → on arme la fenêtre de confirmation
-            print("LOG: [FIN] -> Demande de confirmation abandon")
+            _journaliser_action("abandon_requested")
             session.abandon_confirm_until = time.time() + DUREE_CONFIRM_ABANDON
             session.dernier_clic_time = maintenant
 

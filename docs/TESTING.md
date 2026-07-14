@@ -29,8 +29,8 @@ open htmlcov/index.html
 ```
 
 Le seuil de couverture minimum est fixé à **75 %** dans `pyproject.toml`
-(`fail_under`). Mesure actuelle : **87,6 %** globale ; les nouveaux modules
-purs de performance restent entre **89 % et 97 %**.
+(`fail_under`). Mesure actuelle : **87,8 %** globale ; `core/performance.py`
+atteint **84 %** et `core/camera.py` **91 %**.
 
 ---
 
@@ -55,6 +55,8 @@ purs de performance restent entre **89 % et 97 %**.
 | [test_web_templates.py](../tests/test_web_templates.py) | 28 | bibliothèque deux couches + éditeur 10×15 + migrations | Flask test client + SQLite/filesystem isolés |
 | [test_nettoyer_sorties_tests.py](../tests/test_nettoyer_sorties_tests.py) | 3 | inventaire et déplacement réversible des sorties techniques | arborescences `tmp_path` |
 | [test_profiling_tools.py](../tests/test_profiling_tools.py) | 2 | import `cProfile` et lancement explicite du kiosque profilé | faux module `Photobooth_start` |
+| [test_performance.py](../tests/test_performance.py) | 4 | agrégats statistiques, écriture JSONL et rotation | `tmp_path`, journal isolé |
+| [test_perf_report.py](../tests/test_perf_report.py) | 3 | lecture des rotations, p50/p95, modes et alertes | événements JSONL synthétiques |
 
 **Non couvert en CI** (nécessite pygame/gphoto2/caméra réelle) :
 - `Photobooth_start.py` — boucle principale, render functions, event handlers

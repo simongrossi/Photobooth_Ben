@@ -201,6 +201,15 @@ normalement, quelle que soit la durée d'inactivité.
 | `data/evenement_actif.json` (remplacement atomique) | activation/modification/fin d'événement | admin web |
 | `data/admin.db:evenement_template` | quatre choix fond/overlay 10×15/strip par événement | admin web |
 | `logs/photobooth.log` (rotation 2 Mo × 5) | continu | `core.logger` |
+| `logs/performance.jsonl` (rotation 2 Mo × 5) | transitions et fin de capture | `core.performance` |
+
+---
+
+Les durées par frame ne sont jamais écrites individuellement :
+`CameraManager` et le rendu du décompte les conservent dans des buffers bornés,
+puis `core.performance.resumer_durees()` produit un agrégat compact. Le CLI
+`perf_report.py` relit le journal et ses rotations pour comparer p50/p95, modes,
+RAM et température sur le matériel réel.
 
 ---
 

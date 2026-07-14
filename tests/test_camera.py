@@ -196,6 +196,10 @@ def test_get_preview_frame_convertit_surface(monkeypatch):
     surface_info, generation_info = mgr.get_preview_frame_info()
     assert surface_info is not None
     assert generation_info <= mgr.preview_generation
+    mesures_preview = mgr.preview_metrics()
+    assert mesures_preview["first_frame_ms"] is not None
+    assert mesures_preview["acquisition_ms"]["count"] > 0
+    assert mesures_preview["decode_ms"]["count"] > 0
 
     mgr.stop_preview()
     monkeypatch.setattr(mgr, "start_preview", lambda: None)
@@ -226,6 +230,8 @@ def test_capture_hq_succes_cree_fichier_et_relance_liveview(monkeypatch, tmp_pat
     assert mgr.capture_hq(str(destination)) is True
     assert any(cmd and cmd[0] == "gphoto2" for cmd in appels)
     assert mgr.is_connected is True
+    assert mgr.capture_metrics["attempts"] == 1
+    assert mgr.capture_metrics["total_ms"] >= 0
 
 
 def test_capture_hq_echec_apres_retries(monkeypatch, tmp_path):

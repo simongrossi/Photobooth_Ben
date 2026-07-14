@@ -14,6 +14,7 @@ import os
 import subprocess
 import threading
 import time
+from collections import deque
 from typing import Any, Optional
 
 try:
@@ -37,6 +38,7 @@ except ImportError:
     pygame = None  # type: ignore[assignment]
 
 from core.logger import log_info, log_warning, log_critical
+from core.performance import resumer_durees
 
 
 _GPHOTO2_ERROR = gp.GPhoto2Error if gp is not None else Exception
@@ -59,6 +61,11 @@ class CameraManager:
         self._surface_preview_generation: int = -1
         self._preview_stop = threading.Event()
         self._preview_thread: Optional[threading.Thread] = None
+        self._preview_requested_perf: Optional[float] = None
+        self._first_frame_latency_ms: Optional[float] = None
+        self._preview_acquisition_ms: deque[float] = deque(maxlen=600)
+        self._preview_decode_ms: deque[float] = deque(maxlen=600)
+        self._last_capture_metrics: dict[str, float | int] = {}
 
     # ---- API publique ----
     @property
@@ -75,6 +82,24 @@ class CameraManager:
         """Identifiant croissant de la dernière image réellement reçue."""
         with self._preview_lock:
             return self._latest_preview_generation
+
+    @property
+    def capture_metrics(self) -> dict[str, float | int]:
+        """Dernier découpage temporel de capture HQ."""
+        with self._preview_lock:
+            return dict(self._last_capture_metrics)
+
+    def preview_metrics(self) -> dict:
+        """Résumé courant du worker LiveView, calculé seulement à la demande."""
+        with self._preview_lock:
+            acquisition = list(self._preview_acquisition_ms)
+            decode = list(self._preview_decode_ms)
+            first_frame_ms = self._first_frame_latency_ms
+        return {
+            "first_frame_ms": round(first_frame_ms, 3) if first_frame_ms is not None else None,
+            "acquisition_ms": resumer_durees(acquisition),
+            "decode_ms": resumer_durees(decode),
+        }
 
     def init(self) -> bool:
         """Tente d'initialiser la caméra. Retourne True/False."""
@@ -98,6 +123,11 @@ class CameraManager:
             return
         if self._preview_thread is not None and self._preview_thread.is_alive():
             return
+        with self._preview_lock:
+            self._preview_requested_perf = time.perf_counter()
+            self._first_frame_latency_ms = None
+            self._preview_acquisition_ms.clear()
+            self._preview_decode_ms.clear()
         self._preview_stop.clear()
         self._preview_thread = threading.Thread(
             target=self._preview_loop,
@@ -139,10 +169,14 @@ class CameraManager:
     def capture_hq(self, chemin_complet: str) -> bool:
         """Capture HQ via subprocess gphoto2 avec retry 3× + backoff.
         Ferme la session LiveView avant, la relance après. Retourne True si fichier présent."""
+        total_t0 = time.perf_counter()
+        stop_t0 = time.perf_counter()
         self._stop_preview()
+        stop_ms = (time.perf_counter() - stop_t0) * 1000
         self._clear_preview()
         with self._lock:
             # Fermeture LiveView
+            fermeture_t0 = time.perf_counter()
             if self._cam:
                 try:
                     log_info("Fermeture LiveView pour capture...")
@@ -155,11 +189,15 @@ class CameraManager:
                 self._cam = None
             else:
                 log_warning("Camera non initialisée (None), tentative de capture directe...")
+            fermeture_ms = (time.perf_counter() - fermeture_t0) * 1000
 
             # Capture avec retry
             log_info(f"📸 Capture HQ en cours : {os.path.basename(chemin_complet)}")
             capture_ok = False
+            tentatives = 0
+            gphoto_t0 = time.perf_counter()
             for tentative in range(3):
+                tentatives = tentative + 1
                 try:
                     subprocess.run([
                         "gphoto2",
@@ -175,18 +213,30 @@ class CameraManager:
                         time.sleep(0.5 * (2 ** tentative))
             if not capture_ok:
                 log_critical("Capture HQ abandonnée après 3 tentatives")
+            gphoto_ms = (time.perf_counter() - gphoto_t0) * 1000
 
             # Relance LiveView
             log_info("Relancement du LiveView...")
+            relance_t0 = time.perf_counter()
             self._init_unlocked()
             if self._cam:
                 try:
                     self._set_liveview_unlocked(1)
                 except Exception as e:
                     log_warning(f"Impossible de relancer le LiveView : {e}")
+            relance_ms = (time.perf_counter() - relance_t0) * 1000
 
             resultat = capture_ok and os.path.exists(chemin_complet)
 
+        with self._preview_lock:
+            self._last_capture_metrics = {
+                "stop_preview_ms": round(stop_ms, 3),
+                "close_liveview_ms": round(fermeture_ms, 3),
+                "gphoto_ms": round(gphoto_ms, 3),
+                "restart_liveview_ms": round(relance_ms, 3),
+                "attempts": tentatives,
+                "total_ms": round((time.perf_counter() - total_t0) * 1000, 3),
+            }
         return resultat
 
     def close(self) -> None:
@@ -231,6 +281,8 @@ class CameraManager:
         """Acquiert et décode les JPEG LiveView sans bloquer l'interface."""
         while not self._preview_stop.is_set():
             frame = None
+            acquisition_ms = None
+            decode_ms = None
             with self._lock:
                 if self._cam is None:
                     maintenant = time.time()
@@ -240,8 +292,11 @@ class CameraManager:
                             self._set_liveview_unlocked(1)
                 if self._cam is not None:
                     try:
+                        acquisition_t0 = time.perf_counter()
                         capture = self._cam.capture_preview()
                         file_bits = capture.get_data_and_size()
+                        acquisition_ms = (time.perf_counter() - acquisition_t0) * 1000
+                        decode_t0 = time.perf_counter()
                         image_data = np.frombuffer(memoryview(file_bits), dtype=np.uint8)
                         frame = cv2.imdecode(image_data, cv2.IMREAD_COLOR)
                         if frame is not None:
@@ -251,6 +306,7 @@ class CameraManager:
                             # La transposition conserve le miroir historique sans
                             # imposer un second flip plein écran dans Pygame.
                             frame = np.transpose(frame, (1, 0, 2))
+                        decode_ms = (time.perf_counter() - decode_t0) * 1000
                     except _GPHOTO2_ERROR:
                         self._cam = None
                     except Exception:
@@ -259,6 +315,14 @@ class CameraManager:
                 with self._preview_lock:
                     self._latest_preview = frame
                     self._latest_preview_generation += 1
+                    if acquisition_ms is not None:
+                        self._preview_acquisition_ms.append(acquisition_ms)
+                    if decode_ms is not None:
+                        self._preview_decode_ms.append(decode_ms)
+                    if self._first_frame_latency_ms is None and self._preview_requested_perf is not None:
+                        self._first_frame_latency_ms = (
+                            time.perf_counter() - self._preview_requested_perf
+                        ) * 1000
             else:
                 self._preview_stop.wait(0.05)
 

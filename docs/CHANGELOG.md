@@ -24,10 +24,21 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 - Profilage CPU renommé `profile_app.py`, appels explicites à `main()` pour les
   profils CPU/mémoire et baselines alignées sur le cap réel de 30 FPS.
 
+### Added
+- Journal `logs/performance.jsonl` compact et rotatif : latence de première
+  frame, FPS LiveView, acquisition/décodage, rendu décompte, phases de capture,
+  aperçu, montage, CUPS, RAM, GC et température, corrélés par session et mode.
+- Agrégation des frames en mémoire avant écriture afin de ne jamais effectuer
+  d'I/O disque dans la boucle 30 FPS.
+- `perf_report.py` : rapport texte/JSON avec p50/p95, comparaison 10×15/strip,
+  rotations, évolution RSS et alertes actionnables.
+
 ### Performance
 - JPEG source 6000×4000 sur macOS, cache chaud : aperçu 10×15 ≈ 215 → 52 ms,
   aperçu strip ≈ 337 → 72 ms, final strip ≈ 349 → 94 ms. Première génération
   10×15 mesurée à ≈ 100 ms ; validation Raspberry Pi requise.
+- Sur macOS, coût de l'instrumentation mesuré à ≈ 8 µs pour résumer 150 frames
+  et ≈ 0,06 ms par écriture JSONL ; la validation sur carte SD du Pi reste à faire.
 
 ## `WIP` — Éditeur visuel de mise en page 10×15 et strip
 

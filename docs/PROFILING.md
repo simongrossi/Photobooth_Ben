@@ -21,6 +21,32 @@ représentatifs du Pi (CPU ARM, GPU VideoCore, framebuffer, thermique).
 | RAM résidente après 5 sessions | stable ±20 Mo | croissance linéaire |
 | Température CPU soutenue | < 75 °C | ≥ 80 °C (throttle) |
 
+## Télémétrie continue, sans profilage intrusif
+
+Le kiosque écrit `logs/performance.jsonl` (rotation 2 Mo × 5). Les mesures de
+chaque frame du décompte et du LiveView restent dans des buffers mémoire bornés ;
+elles sont résumées en p50/p95 avant une écriture unique à la fin de la capture.
+Les autres écritures ont uniquement lieu aux transitions : début/fin de session,
+aperçu, montage et soumission d'impression. Il n'y a donc aucune écriture disque
+à 30 FPS.
+
+Sur la machine de développement, le résumé de 150 frames coûte environ 8 µs et
+une ligne JSONL environ 0,06 ms en moyenne. Ces chiffres ne préjugent pas du coût
+de la carte SD du Pi, mais les écritures étant très rares, elles ne se trouvent
+pas sur le chemin critique du rendu.
+
+Après un événement ou une série de tests :
+
+```bash
+python3 perf_report.py
+python3 perf_report.py --date 2026-07-15
+python3 perf_report.py --date 2026-07-15 --json > perf-2026-07-15.json
+```
+
+Le rapport regroupe p50/p95/max par mode et signale notamment : première frame
+> 500 ms, preview < 12 FPS, rendu décompte > 25 ms, capture > 5 s, montage
+> 3 s, température ≥ 75 °C ou croissance RSS > 20 Mo sur cinq captures.
+
 ## Outils
 
 Trois scripts, exécutables directement sur le Pi :
@@ -122,11 +148,13 @@ Après avoir livré une optim, revalider sur Pi :
       ligne inconnue.
 - [ ] `stats.py` : session `issue=printed` sans erreur (pas de régression
       fonctionnelle côté imprimante).
+- [ ] `perf_report.py --date …` : archiver le JSON et comparer les p95 au
+      relevé précédent, par mode.
 - [ ] Thermique : `vcgencmd measure_temp` au repos et après 5 sessions —
       pas d'emballement (< 75 °C soutenu).
 
 ## Liens
 
-- [profile_app.py](../profile_app.py) · [profile_mem.py](../profile_mem.py) · [bench_spinner.py](../bench_spinner.py)
+- [profile_app.py](../profile_app.py) · [profile_mem.py](../profile_mem.py) · [bench_spinner.py](../bench_spinner.py) · [perf_report.py](../perf_report.py)
 - Contexte macro : [ARCHITECTURE.md](ARCHITECTURE.md)
 - Journal des perfs : [CHANGELOG.md](CHANGELOG.md)

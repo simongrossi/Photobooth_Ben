@@ -4,7 +4,7 @@
 > effets exotiques, hardware, brainstorm), voir [IDEAS.md](IDEAS.md).
 > Pour l'historique de ce qui a été fait, voir [CHANGELOG.md](CHANGELOG.md).
 
-Dernière mise à jour : 2026-07-14 (plan de stabilisation de l'administration web)
+Dernière mise à jour : 2026-07-15 (télémétrie et priorités guidées par les mesures)
 
 ---
 
@@ -23,7 +23,10 @@ la résolution cible et décodage réduit, caches assets/textes/miniatures,
 diaporama vide rate-limité, impression sans encodage/copie redondants et outils
 de profilage fonctionnels (`profile_mem.py`, `profile_app.py`).
 
-**Observabilité** : logging rotatif, `sessions.jsonl` metadata, `status.py` (diagnostic), `stats.py` (rapport avec histogramme horaire), monitoring disque avec bandeau rouge.
+**Observabilité** : logging rotatif, `sessions.jsonl` metadata, télémétrie
+performance structurée et rotative (`logs/performance.jsonl`), rapport p50/p95
+avec alertes (`perf_report.py`), `status.py` (diagnostic), `stats.py` (rapport
+avec histogramme horaire), monitoring disque avec bandeau rouge.
 
 **Code quality** : `from config import *` → imports explicites (96 noms), dead code nettoyé, ruff clean, type hints sur classes publiques + docstrings, log_error → log_info/warning/critical.
 
@@ -44,7 +47,55 @@ dashboard/galerie, compatibilité « Sans événement » et export ZIP/CSV.
 
 ---
 
-## Prochain sprint — sécurisation des fonctions récentes
+## Prochaine étape performance — mesurer sur le matériel réel
+
+Principe : ne modifier aucun délai, FPS, rendu ou cycle caméra tant que les
+mesures du Raspberry Pi ne montrent pas un écart reproductible. La télémétrie
+agrège les temps de frame en mémoire et n'écrit que quelques lignes par session.
+
+### P0 — baseline avant toute nouvelle optimisation
+
+- [x] **Journal JSONL rotatif à faible coût**
+  - Mesurer première frame LiveView, FPS caméra, acquisition/décodage, rendu du
+    décompte, capture HQ, aperçu de validation, montage, CUPS, RAM et température.
+  - Corréler les événements avec la session et le mode 10×15/strip.
+- [x] **Rapport automatique p50/p95 et alertes**
+  - `python3 perf_report.py --date AAAA-MM-JJ` pour comparer les modes et repérer
+    les lenteurs réelles sans analyser les logs à la main.
+- [ ] **Relever une baseline sur le serveur de production** *(30–45 min)*
+  - Faire au minimum 5 sessions 10×15 et 5 sessions strip, dont une reprise et
+    une impression, avec caméra et DNP réellement connectées.
+  - Conserver le rapport JSON avant/après chaque future optimisation.
+  - Vérifier en parallèle l'absence de changement visuel ou fonctionnel.
+
+### P1 — n'agir que si le rapport confirme le seuil
+
+- [ ] **Première image / aperçu > 500 ms au p95** : profiler séparément
+  ouverture LiveView, acquisition USB, décodage JPEG et composition PIL ; ne
+  réduire une résolution ou différer un aperçu que si la qualité reste identique.
+- [ ] **Rendu décompte > 25 ms au p95** : envisager un FPS par état ou des zones
+  de rafraîchissement partielles, avec test visuel du décompte et de l'animation.
+- [ ] **Capture HQ > 5 s au p95** : distinguer fermeture LiveView, gphoto2 et
+  reprise LiveView ; ne réduire le délai de sécurité matériel qu'après un test
+  d'endurance sans écran noir ni capture perdue.
+- [ ] **Montage > 3 s au p95** : profiler PIL par mode/template et optimiser
+  uniquement l'étape dominante, sans modifier dimensions, DPI ni qualité JPEG.
+- [ ] **RAM +20 Mo sur 5 sessions ou température ≥ 75 °C** : lancer
+  `profile_mem.py`/`profile_app.py`, puis traiter la fuite ou le point chaud
+  identifié avant d'ajouter une nouvelle fonctionnalité.
+
+### Ordre performance recommandé
+
+1. Déployer la télémétrie telle quelle sur le Pi.
+2. Capturer la baseline de 10 sessions et archiver le rapport.
+3. Corriger uniquement le premier seuil rouge, un changement à la fois.
+4. Rejouer exactement le même scénario et comparer p50/p95, RAM et température.
+5. Garder le changement seulement si le gain est mesurable et les tests restent
+   verts ; sinon revenir au comportement précédent.
+
+---
+
+## Prochain sprint fonctionnel — sécurisation des fonctions récentes
 
 ### P0 — avant la prochaine prestation
 

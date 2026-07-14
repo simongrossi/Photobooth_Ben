@@ -161,6 +161,17 @@ doivent être livrés ou sauvegardés.
 Chiffres intéressants : nombre total de sessions, répartition 10×15 vs strip,
 histogramme horaire (pic d'affluence), temps moyen d'une session.
 
+Analyser ensuite la réactivité réelle du matériel :
+
+```bash
+python3 perf_report.py --date $(date +%Y-%m-%d)
+python3 perf_report.py --date $(date +%Y-%m-%d) --json > perf-event.json
+```
+
+Archiver `perf-event.json` avec les photos. Une alerte isolée peut être un aléa
+USB ; privilégier le p95 et une série d'au moins cinq sessions par format avant
+de modifier un délai ou la qualité d'image.
+
 ### 3. Récupération des photos
 
 Les originaux sont dans `data/raw/`, les montages imprimés dans

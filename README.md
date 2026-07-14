@@ -77,7 +77,7 @@ Photobooth_Ben/
 │   └── __init__.py       # re-exporte pour `from ui import X`
 ├── status.py             # diagnostic autonome pré-événement
 ├── stats.py              # rapport fin de soirée (sessions.jsonl)
-├── tests/                # suite pytest (305 tests)
+├── tests/                # suite pytest (312 tests)
 │   └── test_*.py
 ├── README.md
 ├── deploy/                 # infra Pi (systemd + kiosque)
@@ -196,6 +196,8 @@ Validation automatique au chargement — un `AssertionError` explicite au démar
 - 🎛 **[docs/ARDUINO.md](docs/ARDUINO.md)** — boîtier 3 boutons + LEDs (câblage, flash firmware, protocole)
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — diagramme des modules + machine d'état + flow de données
 - [docs/PROFILING.md](docs/PROFILING.md) — protocole de profiling sur Pi (cProfile, tracemalloc, `bench_spinner.py`)
+- `python3 perf_report.py --date AAAA-MM-JJ` — rapport des latences p50/p95,
+  RAM et température mesurées sur le matériel réel
 - [docs/ROADMAP.md](docs/ROADMAP.md) — items dev à faire, priorisés court/moyen/long terme
 - [docs/IDEAS.md](docs/IDEAS.md) — pool d'idées + références open-source (PIBOOTH, photobooth-app, RaspAP)
 - [docs/CHANGELOG.md](docs/CHANGELOG.md) — historique des commits par sprint
