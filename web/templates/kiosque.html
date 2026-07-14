@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block titre %}Kiosque · Photobooth{% endblock %}
+{% block contenu %}
+<h1>Kiosque</h1>
+
+{% set libelles = {"accueil": "Fond d'accueil", "police": "Police des textes", "slide": "Slides du diaporama"} %}
+
+<section class="panel">
+  <h2>Uploader un asset</h2>
+  <form class="form" method="post" action="{{ url_for('kiosque.upload') }}" enctype="multipart/form-data">
+    <label>
+      Nom affiché
+      <input type="text" name="nom" maxlength="80" placeholder="ex : Fond plage, Police manuscrite…">
+    </label>
+    <label>
+      Catégorie
+      <select name="categorie" required>
+        <option value="accueil">Fond d'accueil (JPG/PNG — plein écran)</option>
+        <option value="police">Police (.ttf/.otf — textes du kiosque)</option>
+        <option value="slide">Slide du diaporama (JPG/PNG)</option>
+      </select>
+    </label>
+    <label>
+      Fichier
+      <input type="file" name="fichier" accept="image/png,image/jpeg,.ttf,.otf" required>
+    </label>
+    <button type="submit">Uploader</button>
+  </form>
+  <p class="muted">
+    Fond d'accueil et police : effet au <strong>prochain redémarrage du kiosque</strong>.
+    Slides : pris en compte <strong>à chaud</strong> (≤ 30 s), ajoutés à la rotation
+    du diaporama d'attente avec les photos de l'événement.
+  </p>
+</section>
+
+{% for categorie in ["accueil", "police", "slide"] %}
+<section class="panel">
+  <h2>{{ libelles[categorie] }}</h2>
+
+  {% if categorie != "slide" %}
+    <ul class="etats">
+      <li>
+        {% set nom_actif = actifs.get(categorie) %}
+        {% if nom_actif %}
+          <span class="badge badge--actif">Actif : {{ nom_actif }}</span>
+        {% else %}
+          <span class="badge">Défaut</span>
+        {% endif %}
+        <form method="post" class="inline"
+              action="{{ url_for('kiosque.defaut', categorie=categorie) }}"
+              onsubmit="return confirm('Revenir au {{ categorie }} par défaut ?');">
+          <button type="submit" class="btn">Revenir au défaut</button>
+        </form>
+      </li>
+    </ul>
+  {% endif %}
+
+  {% set liste = assets | selectattr("categorie", "equalto", categorie) | list %}
+  {% if liste %}
+    <ul class="templates">
+      {% for a in liste %}
+        <li class="templates__item {% if a.actif %}templates__item--actif{% endif %}">
+          <img src="{{ url_for('kiosque.thumb', asset_id=a.id) }}" alt="{{ a.nom }}">
+          <div class="templates__info">
+            <h3>{{ a.nom }}</h3>
+            <p>
+              {% if a.actif %}<span class="badge badge--actif">Actif</span>{% endif %}
+              <span class="muted">{{ a.taille_ko }} Ko — {{ a.uploaded_at }}</span>
+            </p>
+            <div class="actions">
+              {% if categorie != "slide" and not a.actif %}
+                <form method="post" action="{{ url_for('kiosque.activer', asset_id=a.id) }}">
+                  <button type="submit" class="btn btn--primary">Activer</button>
+                </form>
+              {% endif %}
+              {% if not a.actif %}
+                <form method="post" action="{{ url_for('kiosque.supprimer', asset_id=a.id) }}" onsubmit="return confirm('Supprimer cet asset ?');">
+                  <button type="submit" class="btn btn--danger">Supprimer</button>
+                </form>
+              {% else %}
+                <span class="muted">Utilisé par le kiosque au prochain démarrage.</span>
+              {% endif %}
+            </div>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="muted">Aucun asset {{ categorie }} enregistré.</p>
+  {% endif %}
+</section>
+{% endfor %}
+{% endblock %}

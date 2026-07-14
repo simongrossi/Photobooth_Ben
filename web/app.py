@@ -13,7 +13,7 @@ import os
 from flask import Flask, redirect, url_for
 
 from web.db import init_db
-from web.routes import dashboard, gallery, settings_route, templates_route
+from web.routes import dashboard, gallery, kiosque_route, settings_route, templates_route
 
 
 def create_app(config_overrides: dict | None = None) -> Flask:
@@ -39,6 +39,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     app.register_blueprint(dashboard.bp)
     app.register_blueprint(gallery.bp)
     app.register_blueprint(templates_route.bp)
+    app.register_blueprint(kiosque_route.bp)
     app.register_blueprint(settings_route.bp)
 
     @app.route("/")
