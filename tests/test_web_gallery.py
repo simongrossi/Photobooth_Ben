@@ -115,6 +115,18 @@ class TestThumbnail:
         img = Image.open(io.BytesIO(r.data))
         assert max(img.size) <= 300
 
+    def test_thumb_strip_conserve_300_px_de_large(self, client):
+        import web.routes.gallery as gallery
+
+        chemin = os.path.join(gallery._RACINES_AUTORISEES["strip"], "strip_001.jpg")
+        _png(chemin, taille=(600, 1800))
+
+        r = client.get("/galerie/thumb/strip/strip_001.jpg", headers=HEADERS)
+
+        assert r.status_code == 200
+        img = Image.open(io.BytesIO(r.data))
+        assert img.size == (300, 900)
+
     def test_thumb_est_cache_apres_premiere_generation(self, client, monkeypatch):
         import web.routes.gallery as gallery
 

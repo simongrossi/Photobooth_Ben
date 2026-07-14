@@ -24,7 +24,10 @@ from web.evenements import lister_evenements, tous_les_tags
 bp = Blueprint("gallery", __name__, url_prefix="/galerie")
 
 PAGE_SIZE = 24
-THUMB_MAX = (300, 300)
+# La grille affiche chaque image sur environ 300 px de large. Une limite carrée
+# réduisait les strips 1:3 à 100 px de large avant que le navigateur ne les
+# réagrandisse à 300 px, ce qui rendait ces vignettes floues.
+THUMB_MAX = (300, 900)
 TYPES_GALERIE = {"all", "montages", "raw", "deleted", "retake"}
 
 # Racines autorisées : interdit la remontée vers d'autres dossiers.
@@ -287,7 +290,7 @@ def thumb(mode: str, nom: str):
     chemin_temporaire = None
     try:
         with Image.open(chemin) as img:
-            img.thumbnail(THUMB_MAX)
+            img.thumbnail(THUMB_MAX, Image.Resampling.LANCZOS)
             fmt = "JPEG" if extension == ".jpg" else "PNG"
             if fmt == "JPEG" and img.mode != "RGB":
                 img = img.convert("RGB")
