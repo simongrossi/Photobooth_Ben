@@ -5,10 +5,10 @@ import io
 import os
 from dataclasses import dataclass
 
-from flask import Blueprint, abort, render_template, request, send_file
+from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, url_for
 from PIL import Image
 
-from config import PATH_PRINT, PATH_PRINT_10X15, PATH_PRINT_STRIP
+from config import PATH_CORBEILLE, PATH_PRINT, PATH_PRINT_10X15, PATH_PRINT_STRIP
 from web.auth import require_auth
 
 bp = Blueprint("gallery", __name__, url_prefix="/galerie")
@@ -70,6 +70,26 @@ def _resoudre_chemin(mode: str, nom: str) -> str:
     return chemin
 
 
+def _lister_corbeille() -> list[Item]:
+    """Fichiers retirés (data/corbeille/<mode>/), restaurables."""
+    items: list[Item] = []
+    for mode in _RACINES_AUTORISEES:
+        dossier = os.path.join(PATH_CORBEILLE, mode)
+        if not os.path.isdir(dossier):
+            continue
+        for nom in os.listdir(dossier):
+            chemin = os.path.join(dossier, nom)
+            if not os.path.isfile(chemin):
+                continue
+            try:
+                st = os.stat(chemin)
+            except OSError:
+                continue
+            items.append(Item(nom=nom, mode=mode, mtime=st.st_mtime, taille_ko=st.st_size // 1024))
+    items.sort(key=lambda i: i.mtime, reverse=True)
+    return items
+
+
 @bp.route("/")
 @require_auth
 def index():
@@ -85,8 +105,38 @@ def index():
         page=page,
         total_pages=total_pages,
         total=len(tous),
+        corbeille=_lister_corbeille(),
         print_path=PATH_PRINT,
     )
+
+
+@bp.route("/retirer/<mode>/<nom>", methods=["POST"])
+@require_auth
+def retirer(mode: str, nom: str):
+    """Déplace un montage vers la corbeille : disparaît du slideshow (≤ 30 s) et
+    de la galerie. Jamais de suppression définitive — restaurable."""
+    chemin = _resoudre_chemin(mode, nom)
+    dest_dir = os.path.join(PATH_CORBEILLE, mode)
+    os.makedirs(dest_dir, exist_ok=True)
+    os.replace(chemin, os.path.join(dest_dir, os.path.basename(chemin)))
+    flash("Photo retirée du slideshow et de la galerie — restaurable depuis la corbeille.", "success")
+    return redirect(url_for("gallery.index"))
+
+
+@bp.route("/restaurer/<mode>/<nom>", methods=["POST"])
+@require_auth
+def restaurer(mode: str, nom: str):
+    """Déplacement inverse : la photo réapparaît en galerie et dans le slideshow."""
+    racine = _RACINES_AUTORISEES.get(mode)
+    if racine is None:
+        abort(404)
+    racine_corbeille = os.path.realpath(os.path.join(PATH_CORBEILLE, mode))
+    chemin = os.path.realpath(os.path.join(racine_corbeille, nom))
+    if not chemin.startswith(racine_corbeille + os.sep) or not os.path.isfile(chemin):
+        abort(404)
+    os.replace(chemin, os.path.join(racine, os.path.basename(chemin)))
+    flash("Photo restaurée.", "success")
+    return redirect(url_for("gallery.index"))
 
 
 @bp.route("/image/<mode>/<nom>")

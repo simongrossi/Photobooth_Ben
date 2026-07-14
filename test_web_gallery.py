@@ -99,3 +99,70 @@ class TestThumbnail:
         assert r.mimetype in ("image/jpeg", "image/png")
         img = Image.open(io.BytesIO(r.data))
         assert max(img.size) <= 300
+
+
+# --- Corbeille (volet 2) : retirer du slideshow/galerie, restaurer ---
+
+
+@pytest.fixture
+def client_corbeille(tmp_path, monkeypatch):
+    """Comme `client`, mais retourne aussi les dossiers pour vérifier les déplacements."""
+    data_path = tmp_path / "data"
+    d10 = data_path / "print" / "print_10x15"
+    dstrip = data_path / "print" / "print_strip"
+    corbeille = data_path / "corbeille"
+    d10.mkdir(parents=True)
+    dstrip.mkdir(parents=True)
+    monkeypatch.setenv("PHOTOBOOTH_ADMIN_PASS", "test")
+
+    import config
+    monkeypatch.setattr(config, "PATH_DATA", str(data_path))
+    monkeypatch.setattr(config, "PATH_PRINT", str(data_path / "print"))
+    monkeypatch.setattr(config, "PATH_PRINT_10X15", str(d10))
+    monkeypatch.setattr(config, "PATH_PRINT_STRIP", str(dstrip))
+
+    import web.db
+    import web.routes.gallery as g
+    monkeypatch.setattr(web.db, "DB_PATH", str(data_path / "admin.db"))
+    monkeypatch.setattr(g, "_RACINES_AUTORISEES", {"10x15": str(d10), "strip": str(dstrip)})
+    monkeypatch.setattr(g, "PATH_CORBEILLE", str(corbeille))
+
+    _png(d10 / "m1.jpg")
+
+    app = create_app()
+    app.config["TESTING"] = True
+    return app.test_client(), {"10x15": str(d10), "corbeille": str(corbeille)}
+
+
+class TestCorbeille:
+    def test_retirer_deplace_en_corbeille(self, client_corbeille):
+        import os
+        c, dossiers = client_corbeille
+        r = c.post("/galerie/retirer/10x15/m1.jpg", headers=HEADERS, follow_redirects=True)
+        assert r.status_code == 200
+        assert not os.path.exists(os.path.join(dossiers["10x15"], "m1.jpg"))
+        assert os.path.exists(os.path.join(dossiers["corbeille"], "10x15", "m1.jpg"))
+
+    def test_restaurer_ramene_le_fichier(self, client_corbeille):
+        import os
+        c, dossiers = client_corbeille
+        c.post("/galerie/retirer/10x15/m1.jpg", headers=HEADERS, follow_redirects=True)
+        r = c.post("/galerie/restaurer/10x15/m1.jpg", headers=HEADERS, follow_redirects=True)
+        assert r.status_code == 200
+        assert os.path.exists(os.path.join(dossiers["10x15"], "m1.jpg"))
+
+    def test_retirer_fichier_inexistant_404(self, client_corbeille):
+        c, dossiers = client_corbeille
+        assert c.post("/galerie/retirer/10x15/absent.jpg", headers=HEADERS).status_code == 404
+
+    def test_restaurer_inexistant_404(self, client_corbeille):
+        c, dossiers = client_corbeille
+        assert c.post("/galerie/restaurer/10x15/absent.jpg", headers=HEADERS).status_code == 404
+
+    def test_corbeille_visible_dans_la_page(self, client_corbeille):
+        c, dossiers = client_corbeille
+        c.post("/galerie/retirer/10x15/m1.jpg", headers=HEADERS, follow_redirects=True)
+        r = c.get("/galerie/", headers=HEADERS)
+        html = r.get_data(as_text=True)
+        assert "Corbeille" in html
+        assert "m1.jpg" in html
