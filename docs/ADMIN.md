@@ -4,7 +4,10 @@ Service séparé du kiosque pygame, activable à la demande sur le Raspberry Pi.
 Permet de piloter le photobooth depuis un navigateur (ordinateur ou mobile)
 sur le même LAN, sans toucher au code.
 
-- **Dashboard** : stats de sessions, état disque/CPU, dossier d'impression.
+- **Dashboard** : santé matériel en un coup d'œil (imprimantes, disque, CPU),
+  compteurs du jour avec activité par heure, totaux (taux d'impression, photos,
+  durées, modes) et historique par journée. Thème clair/sombre automatique
+  (suit le réglage du navigateur/téléphone).
 - **Galerie** : parcours des montages produits (10×15 et strips) avec
   miniatures à la volée.
 - **Templates** : bibliothèque des deux couches d'habillage — **overlays** (PNG

@@ -205,3 +205,59 @@ class TestCLI:
         assert result.returncode == 0
         # Seulement 1 session le 21 avril
         assert "total : 1" in result.stdout
+
+
+# --- Tests stats_du_jour / stats_par_jour (dashboard v2) ---
+
+
+class TestStatsDuJour:
+    def test_jour_actif(self, jsonl_factice):
+        sessions = stats.load_sessions(jsonl_factice)
+        jour = stats.stats_du_jour(sessions, "2026-04-20")
+        assert jour["total"] == 7          # s6 est le 21
+        assert jour["printed"] == 3
+        assert jour["abandoned"] == 1
+        assert jour["capture_failed"] == 1
+        # histogramme du jour uniquement : 14h → 3 sessions (14:30/14:35/14:40), 22h absent
+        assert jour["heures"][14] == 3
+        assert 22 not in jour["heures"]
+
+    def test_jour_sans_session_retourne_zeros(self, jsonl_factice):
+        sessions = stats.load_sessions(jsonl_factice)
+        jour = stats.stats_du_jour(sessions, "2030-01-01")
+        assert jour["total"] == 0
+        assert jour["printed"] == 0
+        assert jour["abandoned"] == 0
+        assert jour["capture_failed"] == 0
+        assert jour["heures"] == {}
+
+    def test_ts_malforme_ignore(self):
+        sessions = [{"issue": "printed", "ts": "n'importe quoi"},
+                    {"issue": "printed", "ts": "2026-04-20 14:00:00"}]
+        jour = stats.stats_du_jour(sessions, "2026-04-20")
+        assert jour["total"] == 1
+
+
+class TestStatsParJour:
+    def test_agrege_et_trie_desc(self, jsonl_factice):
+        sessions = stats.load_sessions(jsonl_factice)
+        hist = stats.stats_par_jour(sessions)
+        assert [j["date"] for j in hist] == ["2026-04-21", "2026-04-20"]
+        assert hist[1]["total"] == 7
+        assert hist[1]["printed"] == 3
+        assert hist[0]["total"] == 1
+        assert hist[0]["printed"] == 1
+
+    def test_limite(self, jsonl_factice):
+        sessions = stats.load_sessions(jsonl_factice)
+        hist = stats.stats_par_jour(sessions, limite=1)
+        assert len(hist) == 1
+        assert hist[0]["date"] == "2026-04-21"  # le plus récent d'abord
+
+    def test_ts_malforme_ignore(self):
+        sessions = [{"issue": "printed", "ts": ""},
+                    {"issue": "printed"},
+                    {"issue": "printed", "ts": "2026-04-20 14:00:00"}]
+        hist = stats.stats_par_jour(sessions)
+        assert len(hist) == 1
+        assert hist[0]["total"] == 1

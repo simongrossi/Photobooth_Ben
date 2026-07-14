@@ -116,3 +116,30 @@ class TestDashboard:
         assert r.status_code == 200
         # La card "Imprimées" doit contenir 1.
         assert b"Imprim" in r.data
+
+
+class TestDashboardV2:
+    def test_quatre_etages_presents(self, client, monkeypatch):
+        import web.routes.dashboard as dash
+        monkeypatch.setattr(dash.printer_mgr, "is_ready", lambda mode: True)
+        r = client.get("/dashboard/", headers=HEADERS_OK)
+        html = r.get_data(as_text=True)
+        assert "Aujourd'hui" in html
+        assert "Historique par journée" in html
+        assert "pastille--ok" in html          # imprimantes mockées prêtes
+        assert "Imprimante 10×15" in html
+
+    def test_imprimante_en_erreur_pastille_rouge(self, client, monkeypatch):
+        import web.routes.dashboard as dash
+        monkeypatch.setattr(dash.printer_mgr, "is_ready",
+                            lambda mode: "FILE D'ATTENTE PLEINE")
+        r = client.get("/dashboard/", headers=HEADERS_OK)
+        html = r.get_data(as_text=True)
+        assert "pastille--err" in html
+        assert "FILE D&#39;ATTENTE PLEINE" in html or "FILE D'ATTENTE PLEINE" in html
+
+    def test_zero_session_ne_crashe_pas(self, client, monkeypatch):
+        import web.routes.dashboard as dash
+        monkeypatch.setattr(dash.printer_mgr, "is_ready", lambda mode: True)
+        r = client.get("/dashboard/", headers=HEADERS_OK)
+        assert r.status_code == 200
