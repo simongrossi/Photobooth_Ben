@@ -1150,7 +1150,7 @@ def render_validation(session: SessionState) -> bool:
         screen.blit(overlay, (0, 0))
         
         # Message principal (Titre rouge doux)
-        _dessiner_texte_centre_avec_garde(screen, config.TXT_CONFIRM_ABANDON_1, font_alerte, (255, 120, 120), HEIGHT // 2 - 100, int(WIDTH * 0.7))
+        _dessiner_texte_centre_avec_garde(screen, config.TXT_CONFIRM_ABANDON_1, font_alerte, (255, 120, 120), HEIGHT // 2 - 100, int(WIDTH * 0.55))
         
         # Message d'instruction (Petit texte blanc)
         _dessiner_texte_centre_avec_garde(screen, config.TXT_CONFIRM_ABANDON_2, font_bandeau, (255, 255, 255), HEIGHT // 2 + 40, int(WIDTH * 0.7))
@@ -1214,7 +1214,7 @@ def render_fin(session: SessionState) -> None:
         overlay.fill((0, 0, 0, 170))
         screen.blit(overlay, (0, 0))
         
-        _dessiner_texte_centre_avec_garde(screen, config.TXT_CONFIRM_ABANDON_1, font_alerte, (255, 120, 120), HEIGHT // 2 - 120, int(WIDTH * 0.7))
+        _dessiner_texte_centre_avec_garde(screen, config.TXT_CONFIRM_ABANDON_1, font_alerte, (255, 120, 120), HEIGHT // 2 - 120, int(WIDTH * 0.55))
         
         _dessiner_texte_centre_avec_garde(screen, config.TXT_CONFIRM_ABANDON_2, font_bandeau, (255, 255, 255), HEIGHT // 2 + 20, int(WIDTH * 0.7))
     elif session.abandon_confirm_until:

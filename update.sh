@@ -17,6 +17,15 @@ if [[ $(systemctl show -p LoadState photobooth.service 2>/dev/null) == "LoadStat
     sudo systemctl restart photobooth.service
 else
     echo "ℹ photobooth.service n'est pas installé sous systemd (non trouvé)."
+    echo "Recherche d'une instance manuelle en cours d'exécution..."
+    if pgrep -f Photobooth_start.py > /dev/null; then
+        echo "Arrêt de l'instance manuelle en cours (pkill)..."
+        pkill -f Photobooth_start.py
+        sleep 1
+    else
+        echo "Aucune instance manuelle trouvée."
+    fi
+    echo "ℹ Pour relancer l'écran manuellement : run_app.sh ou python3 Photobooth_start.py (ou rebooter le serveur)"
 fi
 
 # Gestion de photobooth-admin.service (web)
