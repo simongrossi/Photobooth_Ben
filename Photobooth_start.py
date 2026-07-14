@@ -1039,6 +1039,16 @@ def render_decompte(session: SessionState) -> None:
     session.dernier_clic_time = time.time()
 
 
+def _dessiner_texte_centre_avec_garde(screen, text: str, font, color: tuple, y: int, max_width: int) -> None:
+    """Dessine un texte centré horizontalement, en le redimensionnant s'il dépasse max_width."""
+    surf = font.render(text, True, color)
+    if surf.get_width() > max_width:
+        new_width = max_width
+        new_height = int(surf.get_height() * (new_width / surf.get_width()))
+        surf = pygame.transform.smoothscale(surf, (new_width, new_height))
+    screen.blit(surf, (WIDTH // 2 - surf.get_width() // 2, y))
+
+
 def render_validation(session: SessionState) -> bool:
     """VALIDATION : aperçu de la dernière photo + bandeau boutons + burst countdown.
 
@@ -1140,12 +1150,10 @@ def render_validation(session: SessionState) -> bool:
         screen.blit(overlay, (0, 0))
         
         # Message principal (Titre rouge doux)
-        t1 = font_alerte.render(config.TXT_CONFIRM_ABANDON_1, True, (255, 120, 120))
-        screen.blit(t1, (WIDTH // 2 - t1.get_width() // 2, HEIGHT // 2 - 100))
+        _dessiner_texte_centre_avec_garde(screen, config.TXT_CONFIRM_ABANDON_1, font_alerte, (255, 120, 120), HEIGHT // 2 - 100, WIDTH - 80)
         
         # Message d'instruction (Petit texte blanc)
-        t2 = font_bandeau.render(config.TXT_CONFIRM_ABANDON_2, True, (255, 255, 255))
-        screen.blit(t2, (WIDTH // 2 - t2.get_width() // 2, HEIGHT // 2 + 40))
+        _dessiner_texte_centre_avec_garde(screen, config.TXT_CONFIRM_ABANDON_2, font_bandeau, (255, 255, 255), HEIGHT // 2 + 40, WIDTH - 80)
         
     elif session.abandon_confirm_until:
         session.abandon_confirm_until = 0.0
@@ -1206,11 +1214,9 @@ def render_fin(session: SessionState) -> None:
         overlay.fill((0, 0, 0, 170))
         screen.blit(overlay, (0, 0))
         
-        t1 = font_alerte.render(config.TXT_CONFIRM_ABANDON_1, True, (255, 120, 120))
-        screen.blit(t1, (WIDTH // 2 - t1.get_width() // 2, HEIGHT // 2 - 120))
+        _dessiner_texte_centre_avec_garde(screen, config.TXT_CONFIRM_ABANDON_1, font_alerte, (255, 120, 120), HEIGHT // 2 - 120, WIDTH - 80)
         
-        t2 = font_bandeau.render(config.TXT_CONFIRM_ABANDON_2, True, (255, 255, 255))
-        screen.blit(t2, (WIDTH // 2 - t2.get_width() // 2, HEIGHT // 2 + 20))
+        _dessiner_texte_centre_avec_garde(screen, config.TXT_CONFIRM_ABANDON_2, font_bandeau, (255, 255, 255), HEIGHT // 2 + 20, WIDTH - 80)
     elif session.abandon_confirm_until:
         session.abandon_confirm_until = 0.0
 
