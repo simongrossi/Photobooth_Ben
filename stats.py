@@ -54,6 +54,42 @@ def filtrer_par_date(sessions, date_str):
     return [s for s in sessions if s.get("ts", "").startswith(date_str)]
 
 
+def stats_du_jour(sessions, date_str):
+    """Stats d'une seule journée (YYYY-MM-DD), clés toujours présentes.
+
+    Contrairement à calculer_stats() qui renvoie {"total": 0} à vide, le
+    dashboard a besoin de toutes les clés pour l'étage « Aujourd'hui ».
+    """
+    stats = calculer_stats(filtrer_par_date(sessions, date_str))
+    return {
+        "date": date_str,
+        "total": stats.get("total", 0),
+        "printed": stats.get("printed", 0),
+        "abandoned": stats.get("abandoned", 0),
+        "capture_failed": stats.get("capture_failed", 0),
+        "heures": stats.get("heures", {}),
+    }
+
+
+def stats_par_jour(sessions, limite=14):
+    """Agrégat par journée (date desc), pour l'historique du dashboard.
+
+    Retourne au plus `limite` journées actives : [{date, total, printed}, ...].
+    Les sessions au `ts` malformé (pas de date YYYY-MM-DD) sont ignorées.
+    """
+    par_jour = {}
+    for s in sessions:
+        ts = s.get("ts", "") or ""
+        date_str = ts.split(" ")[0]
+        if len(date_str) != 10 or date_str.count("-") != 2:
+            continue
+        jour = par_jour.setdefault(date_str, {"date": date_str, "total": 0, "printed": 0})
+        jour["total"] += 1
+        if s.get("issue") == "printed":
+            jour["printed"] += 1
+    return [par_jour[d] for d in sorted(par_jour, reverse=True)[:limite]]
+
+
 def calculer_stats(sessions):
     """Calcule les stats agrégées. Retourne un dict prêt à afficher ou sérialiser."""
     total = len(sessions)
