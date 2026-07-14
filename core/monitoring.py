@@ -112,6 +112,55 @@ class TempMonitor:
             log_warning(f"Check température échoué : {e}")
 
 
+def lire_rss_mb(
+    statm_path: str = "/proc/self/statm", page_size: Optional[int] = None
+) -> Optional[float]:
+    """Mémoire résidente (RSS) du process courant en Mo, via /proc/self/statm.
+
+    Format de `/proc/self/statm` : `size resident shared text lib data dt`,
+    tous en pages mémoire. On lit le 2e champ (resident) et on multiplie par la
+    taille de page.
+
+    Hors Linux (fichier absent) ou contenu illisible → retourne None :
+    l'instrumentation est inerte silencieusement, comme TempMonitor.
+
+    Args:
+        statm_path: chemin du fichier statm (paramétrable pour les tests).
+        page_size: taille de page en octets (défaut : `os.sysconf("SC_PAGE_SIZE")`,
+            typiquement 4096).
+    """
+    try:
+        with open(statm_path) as f:
+            champs = f.read().split()
+        resident_pages = int(champs[1])
+    except (FileNotFoundError, IndexError, ValueError):
+        return None
+    if page_size is None:
+        page_size = os.sysconf("SC_PAGE_SIZE") if hasattr(os, "sysconf") else 4096
+    return resident_pages * page_size / (1024 ** 2)
+
+
+def formater_ligne_perf(
+    capture_num: int,
+    preview_fps: Optional[float],
+    capture_s: float,
+    rss_mb: Optional[float],
+    gc_objs: int,
+) -> str:
+    """Formate une ligne de métriques `[PERF]` pour le log (diagnostic issue #20).
+
+    Loggée une fois par capture pour révéler, sur un événement long, si la
+    preview ralentit (fps qui baisse), si la capture s'allonge, ou si la mémoire
+    grimpe (rss / gc). Les valeurs absentes (hors Linux, pas de frame) → `n/a`.
+    """
+    fps_txt = f"{preview_fps:.1f}" if preview_fps is not None else "n/a"
+    rss_txt = f"{rss_mb:.0f}Mo" if rss_mb is not None else "n/a"
+    return (
+        f"[PERF] capture#{capture_num} preview_fps={fps_txt} "
+        f"capture={capture_s:.2f}s rss={rss_txt} gc_objs={gc_objs}"
+    )
+
+
 def lister_images_slideshow(dossiers: list[str], nb_max: int) -> list[str]:
     """Scan les `dossiers` (typiquement PATH_PRINT_10X15 + PATH_PRINT_STRIP) pour
     alimenter le slideshow d'attente.
