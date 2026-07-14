@@ -174,7 +174,7 @@ TAILLE_DECOMPTE      = 300  # Chiffre 3, 2, 1...
 TAILLE_TITRE_ACCUEIL = 180  # Le nom du Photobooth ou gros messages
 TAILLE_TEXTE_BOUTON  = 60   # "GRAND FORMAT" / "BANDELETTES" (ecran choix du mode)
 TAILLE_TEXTE_BANDEAU = 40
-TAILLE_TEXTE_ALERTE = 120
+TAILLE_TEXTE_ALERTE = 80
 
 # --- Effets de Clignotement (Pulse) ---
 PULSE_MIN, PULSE_MAX, PULSE_VITESSE = 150, 255, 5      # Pulse rapide (sélection)
@@ -328,8 +328,8 @@ TXT_SPLASH_CAMERA_FAIL  = "Appareil photo non détecté - mode dégradé"
 TXT_PREPARATION_IMP     = "Préparation de votre impression..."
 TXT_ERREUR_CAPTURE      = "Erreur de capture - réessayez"
 TXT_ERREUR_IMPRIMANTE   = "Imprimante indisponible"
-TXT_CONFIRM_ABANDON_1   = "Abandonner votre session ?"
-TXT_CONFIRM_ABANDON_2   = "Appuyez encore sur le bouton rouge pour confirmer"
+TXT_CONFIRM_ABANDON_1   = "Abandonner ?"
+TXT_CONFIRM_ABANDON_2   = "Appuyez à nouveau pour confirmer"
 
 DUREE_FLASH_BLANC  = 0.08  # Secondes de flash blanc pur avant la capture
 DUREE_ECRAN_ERREUR = 4.0   # Timeout auto des écrans d'erreur (secondes)
