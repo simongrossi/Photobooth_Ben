@@ -61,7 +61,9 @@ _META_REGLAGES = {
     "NOM_IMPRIMANTE_10X15": ("impression", "Imprimante 10×15", "Nom exact de la file CUPS grand format.", ""),
     "NOM_IMPRIMANTE_STRIP": ("impression", "Imprimante bandelettes", "Nom exact de la file CUPS strips.", ""),
     "ACTIVER_IMPRESSION": ("impression", "Autoriser l'impression", "Active l'envoi des montages vers CUPS.", ""),
+    "ACTIVER_IMPRESSIONS_MULTIPLES": ("impression", "Impressions multiples", "Permet aux invités de choisir plusieurs copies avant l'impression.", ""),
     "TEMPS_ATTENTE_IMP": ("impression", "Attente annoncée", "Durée indicative affichée pendant l'impression.", "s"),
+    "ACTIVER_DIAPORAMA_VEILLE": ("diaporama", "Diaporama en veille", "Fait défiler les souvenirs après une période d'inactivité.", ""),
     "DUREE_IDLE_SLIDESHOW": ("diaporama", "Démarrer après inactivité", "Temps sans interaction avant le diaporama.", "s"),
     "DUREE_PAR_IMAGE_SLIDESHOW": ("diaporama", "Durée par image", "Temps d'affichage de chaque souvenir.", "s"),
     "NB_MAX_IMAGES_SLIDESHOW": ("diaporama", "Nombre maximal d'images", "Limite la mémoire utilisée par le diaporama.", "images"),
@@ -109,7 +111,7 @@ def _lister_reglages() -> list[Reglage]:
         reglages.append(Reglage(
             cle=cle,
             type_nom=_type_nom(type_attendu),
-            valeur_actuelle=getattr(config, cle),
+            valeur_actuelle=overrides.get(cle, getattr(config, cle)),
             overridee=cle in overrides,
             groupe=groupe,
             libelle=libelle,

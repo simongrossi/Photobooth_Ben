@@ -11,9 +11,10 @@ nativement l'absence : fond → toile blanche, overlay → photo nue).
 from __future__ import annotations
 
 import io
+import json
 import os
 import shutil
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Optional
 
 from flask import (
@@ -35,13 +36,25 @@ from config import (
     OVERLAY_STRIPS,
     PATH_FONDS,
     PATH_MISE_EN_PAGE_10X15,
+    PATH_MISE_EN_PAGE_STRIP,
     PATH_OVERLAYS,
     PATH_RAW,
     MONTAGE_10X15_FINAL_PHOTO_FIT,
     MONTAGE_10X15_FINAL_PHOTO_OFFSET,
     MONTAGE_10X15_SIZE,
+    MONTAGE_STRIP_SIZE,
+    STRIP_ESPACE_PHOTOS,
+    STRIP_MARGE_HAUT,
+    STRIP_MARGE_LATERALE,
+    STRIP_PHOTO_RATIO,
+    STRIP_ROTATION_DEGREES,
 )
-from core.mise_en_page import MiseEnPage10x15, ecrire_mise_en_page
+from core.mise_en_page import (
+    MiseEnPage10x15,
+    MiseEnPageStrip,
+    ecrire_mise_en_page,
+    ecrire_mise_en_page_strip,
+)
 from web.auth import require_auth
 from web.db import connexion
 
@@ -85,9 +98,12 @@ class TemplateRow:
     photo_y: Optional[int]
     photo_largeur: Optional[int]
     photo_hauteur: Optional[int]
+    zones_strip: Optional[str]
 
     @property
     def mise_en_page_personnalisee(self) -> bool:
+        if self.type == "strip":
+            return self.zones_strip is not None
         return all(
             valeur is not None
             for valeur in (self.photo_x, self.photo_y, self.photo_largeur, self.photo_hauteur)
@@ -170,8 +186,22 @@ def _mise_en_page_defaut() -> MiseEnPage10x15:
     )
 
 
+def _mise_en_page_strip_defaut() -> MiseEnPageStrip:
+    largeur = MONTAGE_STRIP_SIZE[0] - (2 * STRIP_MARGE_LATERALE)
+    hauteur = int(largeur * float(STRIP_PHOTO_RATIO))
+    return MiseEnPageStrip(photos=tuple(
+        MiseEnPage10x15(
+            x=STRIP_MARGE_LATERALE,
+            y=STRIP_MARGE_HAUT + i * (hauteur + STRIP_ESPACE_PHOTOS),
+            largeur=largeur,
+            hauteur=hauteur,
+        )
+        for i in range(3)
+    ))
+
+
 def _synchroniser_mise_en_page_active() -> None:
-    """Publie la zone du template actif : overlay prioritaire, puis fond."""
+    """Publie les zones actives des deux formats (overlay prioritaire)."""
     with connexion() as conn:
         row = conn.execute(
             "SELECT id, photo_x, photo_y, photo_largeur, photo_hauteur FROM template "
@@ -185,22 +215,49 @@ def _synchroniser_mise_en_page_active() -> None:
             os.remove(PATH_MISE_EN_PAGE_10X15)
         except FileNotFoundError:
             pass
+    else:
+        mise_en_page = MiseEnPage10x15(
+            x=row["photo_x"], y=row["photo_y"],
+            largeur=row["photo_largeur"], hauteur=row["photo_hauteur"],
+        )
+        ecrire_mise_en_page(
+            PATH_MISE_EN_PAGE_10X15, mise_en_page, MONTAGE_10X15_SIZE,
+            template_id=row["id"],
+        )
+
+    with connexion() as conn:
+        row_strip = conn.execute(
+            "SELECT id, zones_strip FROM template WHERE actif = 1 AND type = 'strip' "
+            "AND zones_strip IS NOT NULL "
+            "ORDER BY CASE couche WHEN 'overlay' THEN 0 ELSE 1 END LIMIT 1"
+        ).fetchone()
+    if row_strip is None:
+        try:
+            os.remove(PATH_MISE_EN_PAGE_STRIP)
+        except FileNotFoundError:
+            pass
         return
-    mise_en_page = MiseEnPage10x15(
-        x=row["photo_x"], y=row["photo_y"],
-        largeur=row["photo_largeur"], hauteur=row["photo_hauteur"],
-    )
-    ecrire_mise_en_page(
-        PATH_MISE_EN_PAGE_10X15, mise_en_page, MONTAGE_10X15_SIZE,
-        template_id=row["id"],
-    )
+    try:
+        zones = json.loads(row_strip["zones_strip"])
+        mise_en_page_strip = MiseEnPageStrip(photos=tuple(
+            MiseEnPage10x15(**zone) for zone in zones
+        ))
+        ecrire_mise_en_page_strip(
+            PATH_MISE_EN_PAGE_STRIP, mise_en_page_strip, MONTAGE_STRIP_SIZE,
+            template_id=row_strip["id"],
+        )
+    except (TypeError, ValueError, json.JSONDecodeError):
+        try:
+            os.remove(PATH_MISE_EN_PAGE_STRIP)
+        except FileNotFoundError:
+            pass
 
 
 def _lister() -> list[TemplateRow]:
     with connexion() as conn:
         rows = conn.execute(
             "SELECT id, nom, type, couche, fichier, actif, uploaded_at, taille_octets, "
-            "photo_x, photo_y, photo_largeur, photo_hauteur "
+            "photo_x, photo_y, photo_largeur, photo_hauteur, zones_strip "
             "FROM template ORDER BY couche, type, uploaded_at DESC"
         ).fetchall()
     return [
@@ -211,6 +268,7 @@ def _lister() -> list[TemplateRow]:
             taille_ko=r["taille_octets"] // 1024,
             photo_x=r["photo_x"], photo_y=r["photo_y"],
             photo_largeur=r["photo_largeur"], photo_hauteur=r["photo_hauteur"],
+            zones_strip=r["zones_strip"],
         )
         for r in rows
     ]
@@ -400,14 +458,27 @@ def fichier(template_id: int):
     """Retourne l'image originale utilisée comme calque par l'éditeur."""
     with connexion() as conn:
         row = conn.execute(
-            "SELECT fichier, couche FROM template WHERE id = ?", (template_id,),
+            "SELECT fichier, couche, type FROM template WHERE id = ?", (template_id,),
         ).fetchone()
     if row is None:
         abort(404)
     chemin = _chemin_fichier(row["fichier"], row["couche"])
     if not os.path.isfile(chemin):
         abort(404)
-    return send_file(chemin, conditional=True)
+    if row["type"] != "strip" or request.args.get("rendu") != "1":
+        return send_file(chemin, conditional=True)
+    try:
+        with Image.open(chemin) as source:
+            image = source.convert("RGBA")
+        if image.width > image.height:
+            image = image.rotate(90, expand=True)
+        image = image.rotate(STRIP_ROTATION_DEGREES).resize(MONTAGE_STRIP_SIZE)
+        buf = io.BytesIO()
+        image.save(buf, "PNG")
+        buf.seek(0)
+        return send_file(buf, mimetype="image/png")
+    except OSError:
+        abort(404)
 
 
 @bp.route("/photo-exemple")
@@ -445,11 +516,33 @@ def editer(template_id: int):
         row = conn.execute("SELECT * FROM template WHERE id = ?", (template_id,)).fetchone()
     if row is None:
         abort(404)
-    if row["type"] != "10x15":
-        flash("L'éditeur visuel est disponible pour le 10×15 dans cette première version.", "error")
-        return redirect(url_for("templates.index"))
-
     if request.method == "POST":
+        if row["type"] == "strip":
+            try:
+                mise_en_page_strip = MiseEnPageStrip(photos=tuple(
+                    MiseEnPage10x15(
+                        x=int(request.form[f"photo_{i}_x"]),
+                        y=int(request.form[f"photo_{i}_y"]),
+                        largeur=int(request.form[f"photo_{i}_largeur"]),
+                        hauteur=int(request.form[f"photo_{i}_hauteur"]),
+                    )
+                    for i in range(1, 4)
+                ))
+            except (KeyError, TypeError, ValueError):
+                flash("Coordonnées invalides.", "error")
+                return redirect(url_for("templates.editer", template_id=template_id))
+            if not mise_en_page_strip.est_valide(MONTAGE_STRIP_SIZE):
+                flash("Les zones photo doivent rester entièrement dans la bandelette.", "error")
+                return redirect(url_for("templates.editer", template_id=template_id))
+            with connexion() as conn:
+                conn.execute(
+                    "UPDATE template SET zones_strip = ? WHERE id = ?",
+                    (json.dumps([asdict(zone) for zone in mise_en_page_strip.photos]), template_id),
+                )
+            _synchroniser_mise_en_page_active()
+            flash(f"Mise en page de « {row['nom']} » enregistrée.", "success")
+            return redirect(url_for("templates.editer", template_id=template_id))
+
         try:
             mise_en_page = MiseEnPage10x15(
                 x=int(request.form["photo_x"]),
@@ -476,28 +569,45 @@ def editer(template_id: int):
         flash(f"Mise en page de « {row['nom']} » enregistrée.", "success")
         return redirect(url_for("templates.editer", template_id=template_id))
 
-    valeurs = _mise_en_page_defaut()
-    champs = ("photo_x", "photo_y", "photo_largeur", "photo_hauteur")
-    if all(row[champ] is not None for champ in champs):
-        valeurs = MiseEnPage10x15(
-            x=row["photo_x"], y=row["photo_y"],
-            largeur=row["photo_largeur"], hauteur=row["photo_hauteur"],
-        )
+    if row["type"] == "strip":
+        defaut = _mise_en_page_strip_defaut()
+        valeurs = defaut
+        if row["zones_strip"]:
+            try:
+                valeurs = MiseEnPageStrip(photos=tuple(
+                    MiseEnPage10x15(**zone) for zone in json.loads(row["zones_strip"])
+                ))
+            except (TypeError, ValueError, json.JSONDecodeError):
+                valeurs = defaut
+        zones = valeurs.photos
+        zones_defaut = defaut.photos
+        canvas = MONTAGE_STRIP_SIZE
+    else:
+        valeur = _mise_en_page_defaut()
+        champs = ("photo_x", "photo_y", "photo_largeur", "photo_hauteur")
+        if all(row[champ] is not None for champ in champs):
+            valeur = MiseEnPage10x15(
+                x=row["photo_x"], y=row["photo_y"],
+                largeur=row["photo_largeur"], hauteur=row["photo_hauteur"],
+            )
+        zones = (valeur,)
+        zones_defaut = (_mise_en_page_defaut(),)
+        canvas = MONTAGE_10X15_SIZE
     autre_couche = "fond" if row["couche"] == "overlay" else "overlay"
     with connexion() as conn:
         autre = conn.execute(
-            "SELECT id FROM template WHERE type = '10x15' AND couche = ? AND actif = 1",
-            (autre_couche,),
+            "SELECT id FROM template WHERE type = ? AND couche = ? AND actif = 1",
+            (row["type"], autre_couche),
         ).fetchone()
     fond_id = template_id if row["couche"] == "fond" else (autre["id"] if autre else None)
     overlay_id = template_id if row["couche"] == "overlay" else (autre["id"] if autre else None)
     return render_template(
         "template_editeur.html",
         template=row,
-        valeurs=valeurs,
-        canvas_w=MONTAGE_10X15_SIZE[0],
-        canvas_h=MONTAGE_10X15_SIZE[1],
+        zones=zones,
+        canvas_w=canvas[0],
+        canvas_h=canvas[1],
         fond_id=fond_id,
         overlay_id=overlay_id,
-        defaut=_mise_en_page_defaut(),
+        zones_defaut=zones_defaut,
     )

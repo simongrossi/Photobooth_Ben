@@ -5,20 +5,27 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
 ---
 
-## `WIP` — Éditeur visuel de mise en page 10×15
+## `WIP` — Éditeur visuel de mise en page 10×15 et strip
 
 ### Added
+- Deux interrupteurs admin : désactivation du diaporama de veille et des
+  impressions multiples. Sans copies multiples, le kiosque imprime directement
+  une seule feuille, y compris la feuille contenant deux bandelettes.
 - Éditeur admin par template avec aperçu fond → photo → overlay, déplacement,
   redimensionnement, coordonnées précises, verrouillage 3:2 et préréglages.
 - Géométrie mémorisée dans SQLite et publiée atomiquement dans
   `data/mise_en_page_10x15.json` pour le kiosque.
 - `core/mise_en_page.py` : validation et lecture tolérante avec repli sur les
   coordonnées par défaut de `config.py`.
+- Extension au strip avec trois zones photo indépendantes, mémorisées par
+  template et publiées dans `data/mise_en_page_strip.json`.
 
 ### Changed
 - L'aperçu de validation 10×15 réutilise désormais la composition du rendu
   final, incluant le fond, la position personnalisée et l'overlay.
 - Si fond et overlay actifs ont chacun un réglage, l'overlay est prioritaire.
+- L'aperçu strip réutilise la composition finale (fond orienté, trois photos et
+  overlay), au lieu d'une prévisualisation simplifiée distincte.
 
 ## `WIP` — Rangement de la suite de tests
 

@@ -64,6 +64,21 @@ class TestApplicationOverrides:
         config._appliquer_overrides()
         assert config.WATERMARK_ENABLED == original
 
+    def test_options_kiosque_booleennes(self, tmp_path, monkeypatch):
+        path = tmp_path / "config_overrides.json"
+        with open(path, "w") as f:
+            json.dump({
+                "ACTIVER_DIAPORAMA_VEILLE": False,
+                "ACTIVER_IMPRESSIONS_MULTIPLES": False,
+            }, f)
+        import config
+        monkeypatch.setattr(config, "CONFIG_OVERRIDES_PATH", str(path))
+        config._appliquer_overrides()
+        assert config.ACTIVER_DIAPORAMA_VEILLE is False
+        assert config.ACTIVER_IMPRESSIONS_MULTIPLES is False
+        config.ACTIVER_DIAPORAMA_VEILLE = True
+        config.ACTIVER_IMPRESSIONS_MULTIPLES = True
+
     def test_int_pour_float_tolere(self, tmp_path, monkeypatch):
         path = tmp_path / "config_overrides.json"
         with open(path, "w") as f:

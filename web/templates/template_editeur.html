@@ -3,30 +3,31 @@
 {% block contenu %}
 <div class="editor-header">
   <div>
-    <p class="settings-eyebrow">Template {{ template.couche }} · 10×15</p>
-    <h1>Positionner la photo</h1>
-    <p class="settings-lead">{{ template.nom }} — glisse la photo ou utilise les valeurs précises.</p>
+    <p class="settings-eyebrow">Template {{ template.couche }} · {{ "10×15" if template.type == "10x15" else "strip" }}</p>
+    <h1>Positionner {{ "la photo" if template.type == "10x15" else "les trois photos" }}</h1>
+    <p class="settings-lead">{{ template.nom }} — glisse une photo ou utilise les valeurs précises.</p>
   </div>
   <a class="btn" href="{{ url_for('templates.index') }}">← Retour aux templates</a>
 </div>
 
-<div class="editor-layout">
+<div class="editor-layout {% if template.type == 'strip' %}editor-layout--strip{% endif %}">
   <section class="panel editor-preview-panel">
-    <div id="layout-editor" class="layout-editor"
+    <div id="layout-editor" class="layout-editor {% if template.type == 'strip' %}layout-editor--strip{% endif %}"
          data-canvas-w="{{ canvas_w }}" data-canvas-h="{{ canvas_h }}">
       {% if fond_id %}
       <img class="layout-editor__layer layout-editor__background"
-           src="{{ url_for('templates.fichier', template_id=fond_id) }}" alt="Fond">
+           src="{{ url_for('templates.fichier', template_id=fond_id, rendu=1 if template.type == 'strip' else none) }}" alt="Fond">
       {% endif %}
-      <div id="photo-frame" class="layout-editor__photo">
-        <img src="{{ url_for('templates.photo_exemple') }}" alt="Photo d'exemple">
-        <span class="layout-editor__label">PHOTO</span>
-        <button id="resize-handle" class="layout-editor__handle" type="button"
-                aria-label="Redimensionner la photo"></button>
+      {% for zone in zones %}
+      <div class="layout-editor__photo" data-zone="{{ loop.index }}">
+        <img src="{{ url_for('templates.photo_exemple') }}" alt="Photo d'exemple {{ loop.index }}">
+        <span class="layout-editor__label">PHOTO{% if zones|length > 1 %} {{ loop.index }}{% endif %}</span>
+        <button class="layout-editor__handle" type="button" aria-label="Redimensionner la photo {{ loop.index }}"></button>
       </div>
+      {% endfor %}
       {% if overlay_id %}
       <img class="layout-editor__layer layout-editor__overlay"
-           src="{{ url_for('templates.fichier', template_id=overlay_id) }}" alt="Overlay">
+           src="{{ url_for('templates.fichier', template_id=overlay_id, rendu=1 if template.type == 'strip' else none) }}" alt="Overlay">
       {% endif %}
     </div>
     <p class="muted editor-hint">
@@ -36,32 +37,39 @@
   </section>
 
   <section class="panel editor-controls">
-    <h2>Zone photo</h2>
+    <h2>Zone{{ "s" if zones|length > 1 }} photo</h2>
     <form method="post" id="layout-form">
-      <div class="editor-fields">
-        <label>X <input id="photo-x" name="photo_x" type="number" min="0" max="{{ canvas_w - 1 }}" value="{{ valeurs.x }}" required></label>
-        <label>Y <input id="photo-y" name="photo_y" type="number" min="0" max="{{ canvas_h - 1 }}" value="{{ valeurs.y }}" required></label>
-        <label>Largeur <input id="photo-w" name="photo_largeur" type="number" min="1" max="{{ canvas_w }}" value="{{ valeurs.largeur }}" required></label>
-        <label>Hauteur <input id="photo-h" name="photo_hauteur" type="number" min="1" max="{{ canvas_h }}" value="{{ valeurs.hauteur }}" required></label>
-      </div>
+      {% for zone in zones %}
+      {% set numero = loop.index %}
+      {% set prefixe = "photo" if zones|length == 1 else "photo_" ~ numero %}
+      {% set defaut = zones_defaut[loop.index0] %}
+      <fieldset class="editor-zone" data-zone="{{ numero }}">
+        <legend>Photo {{ numero }}</legend>
+        <div class="editor-fields">
+          <label>X <input data-field="x" name="{{ prefixe }}_x" type="number" min="0" max="{{ canvas_w - 1 }}" value="{{ zone.x }}" required></label>
+          <label>Y <input data-field="y" name="{{ prefixe }}_y" type="number" min="0" max="{{ canvas_h - 1 }}" value="{{ zone.y }}" required></label>
+          <label>Largeur <input data-field="w" name="{{ prefixe }}_largeur" type="number" min="1" max="{{ canvas_w }}" value="{{ zone.largeur }}" required></label>
+          <label>Hauteur <input data-field="h" name="{{ prefixe }}_hauteur" type="number" min="1" max="{{ canvas_h }}" value="{{ zone.hauteur }}" required></label>
+        </div>
+        <div class="editor-presets">
+          <button data-action="center" type="button" class="btn">Centrer</button>
+          <button data-action="reset" type="button" class="btn"
+                  data-x="{{ defaut.x }}" data-y="{{ defaut.y }}"
+                  data-w="{{ defaut.largeur }}" data-h="{{ defaut.hauteur }}">Réinitialiser</button>
+        </div>
+      </fieldset>
+      {% endfor %}
       <label class="editor-ratio">
         <input id="lock-ratio" type="checkbox" checked>
-        Conserver le ratio photo 3:2
+        Conserver le ratio photo 3:2 pendant le redimensionnement
       </label>
-      <div class="editor-presets">
-        <button id="center-photo" type="button" class="btn">Centrer</button>
-        <button id="full-photo" type="button" class="btn">Plein cadre</button>
-        <button id="reset-photo" type="button" class="btn"
-                data-x="{{ defaut.x }}" data-y="{{ defaut.y }}"
-                data-w="{{ defaut.largeur }}" data-h="{{ defaut.hauteur }}">Réinitialiser</button>
-      </div>
       <button type="submit" class="btn btn--primary editor-save">Enregistrer la mise en page</button>
     </form>
     <aside class="settings-notice editor-notice">
       <span class="settings-notice__mark" aria-hidden="true">i</span>
       <div>
         <strong>Ordre des calques</strong>
-        <p>Fond → photo → overlay. Un texte important doit être dans l'overlay pour rester visible.</p>
+        <p>Fond → photo{{ "s" if zones|length > 1 }} → overlay. Un texte important doit être dans l'overlay.</p>
       </div>
     </aside>
     {% if template.couche == 'fond' %}
@@ -73,106 +81,87 @@
 <script>
 (() => {
   const editor = document.getElementById('layout-editor');
-  const frame = document.getElementById('photo-frame');
-  const handle = document.getElementById('resize-handle');
-  const inputs = {
-    x: document.getElementById('photo-x'), y: document.getElementById('photo-y'),
-    w: document.getElementById('photo-w'), h: document.getElementById('photo-h')
-  };
   const canvasW = Number(editor.dataset.canvasW);
   const canvasH = Number(editor.dataset.canvasH);
   const lockRatio = document.getElementById('lock-ratio');
-  const value = key => Number(inputs[key].value) || 0;
   const clamp = (number, min, max) => Math.min(Math.max(number, min), max);
 
-  function normalise() {
-    let w = clamp(value('w'), 1, canvasW);
-    let h = clamp(value('h'), 1, canvasH);
-    let x = clamp(value('x'), 0, canvasW - w);
-    let y = clamp(value('y'), 0, canvasH - h);
-    inputs.x.value = Math.round(x); inputs.y.value = Math.round(y);
-    inputs.w.value = Math.round(w); inputs.h.value = Math.round(h);
-  }
+  document.querySelectorAll('.editor-zone').forEach(fieldset => {
+    const number = fieldset.dataset.zone;
+    const frame = document.querySelector(`.layout-editor__photo[data-zone="${number}"]`);
+    const handle = frame.querySelector('.layout-editor__handle');
+    const inputs = Object.fromEntries(
+      [...fieldset.querySelectorAll('[data-field]')].map(input => [input.dataset.field, input])
+    );
+    const value = key => Number(inputs[key].value) || 0;
 
-  function render() {
-    normalise();
-    frame.style.left = `${value('x') / canvasW * 100}%`;
-    frame.style.top = `${value('y') / canvasH * 100}%`;
-    frame.style.width = `${value('w') / canvasW * 100}%`;
-    frame.style.height = `${value('h') / canvasH * 100}%`;
-  }
+    function render() {
+      let w = clamp(value('w'), 1, canvasW);
+      let h = clamp(value('h'), 1, canvasH);
+      let x = clamp(value('x'), 0, canvasW - w);
+      let y = clamp(value('y'), 0, canvasH - h);
+      inputs.x.value = Math.round(x); inputs.y.value = Math.round(y);
+      inputs.w.value = Math.round(w); inputs.h.value = Math.round(h);
+      frame.style.left = `${x / canvasW * 100}%`;
+      frame.style.top = `${y / canvasH * 100}%`;
+      frame.style.width = `${w / canvasW * 100}%`;
+      frame.style.height = `${h / canvasH * 100}%`;
+    }
 
-  inputs.x.addEventListener('input', render);
-  inputs.y.addEventListener('input', render);
-  inputs.w.addEventListener('input', () => {
-    if (lockRatio.checked) inputs.h.value = Math.round(value('w') / 1.5);
-    render();
-  });
-  inputs.h.addEventListener('input', () => {
-    if (lockRatio.checked) inputs.w.value = Math.round(value('h') * 1.5);
-    render();
-  });
+    Object.values(inputs).forEach(input => input.addEventListener('input', render));
 
-  function startPointer(event, mode) {
-    event.preventDefault();
-    const start = {clientX: event.clientX, clientY: event.clientY};
-    const initial = {x: value('x'), y: value('y'), w: value('w'), h: value('h')};
-    const rect = editor.getBoundingClientRect();
-    const scaleX = canvasW / rect.width;
-    const scaleY = canvasH / rect.height;
+    function startPointer(event, mode) {
+      event.preventDefault();
+      const start = {clientX: event.clientX, clientY: event.clientY};
+      const initial = {x: value('x'), y: value('y'), w: value('w'), h: value('h')};
+      const rect = editor.getBoundingClientRect();
+      const scaleX = canvasW / rect.width;
+      const scaleY = canvasH / rect.height;
 
-    function move(pointerEvent) {
-      const dx = (pointerEvent.clientX - start.clientX) * scaleX;
-      const dy = (pointerEvent.clientY - start.clientY) * scaleY;
-      if (mode === 'move') {
-        inputs.x.value = Math.round(initial.x + dx);
-        inputs.y.value = Math.round(initial.y + dy);
-      } else {
-        let w = clamp(initial.w + dx, 60, canvasW - initial.x);
-        let h = clamp(initial.h + dy, 40, canvasH - initial.y);
-        if (lockRatio.checked) {
-          h = w / 1.5;
-          if (h > canvasH - initial.y) {
-            h = canvasH - initial.y;
-            w = h * 1.5;
+      function move(pointerEvent) {
+        const dx = (pointerEvent.clientX - start.clientX) * scaleX;
+        const dy = (pointerEvent.clientY - start.clientY) * scaleY;
+        if (mode === 'move') {
+          inputs.x.value = Math.round(initial.x + dx);
+          inputs.y.value = Math.round(initial.y + dy);
+        } else {
+          let w = clamp(initial.w + dx, 60, canvasW - initial.x);
+          let h = clamp(initial.h + dy, 40, canvasH - initial.y);
+          if (lockRatio.checked) {
+            h = w / 1.5;
+            if (h > canvasH - initial.y) {
+              h = canvasH - initial.y;
+              w = h * 1.5;
+            }
           }
+          inputs.w.value = Math.round(w); inputs.h.value = Math.round(h);
         }
-        inputs.w.value = Math.round(w);
-        inputs.h.value = Math.round(h);
+        render();
       }
+      function stop() {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', stop);
+      }
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', stop);
+    }
+
+    frame.addEventListener('pointerdown', event => {
+      if (event.target !== handle) startPointer(event, 'move');
+    });
+    handle.addEventListener('pointerdown', event => startPointer(event, 'resize'));
+    fieldset.querySelector('[data-action="center"]').addEventListener('click', () => {
+      inputs.x.value = Math.round((canvasW - value('w')) / 2);
       render();
-    }
-
-    function stop() {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', stop);
-    }
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', stop);
-  }
-
-  frame.addEventListener('pointerdown', event => {
-    if (event.target !== handle) startPointer(event, 'move');
-  });
-  handle.addEventListener('pointerdown', event => startPointer(event, 'resize'));
-
-  document.getElementById('center-photo').addEventListener('click', () => {
-    inputs.x.value = Math.round((canvasW - value('w')) / 2);
-    inputs.y.value = Math.round((canvasH - value('h')) / 2);
+    });
+    fieldset.querySelector('[data-action="reset"]').addEventListener('click', event => {
+      const data = event.currentTarget.dataset;
+      inputs.x.value = data.x; inputs.y.value = data.y;
+      inputs.w.value = data.w; inputs.h.value = data.h;
+      render();
+    });
     render();
   });
-  document.getElementById('full-photo').addEventListener('click', () => {
-    inputs.x.value = 0; inputs.y.value = 0;
-    inputs.w.value = canvasW; inputs.h.value = canvasH;
-    render();
-  });
-  document.getElementById('reset-photo').addEventListener('click', event => {
-    const data = event.currentTarget.dataset;
-    inputs.x.value = data.x; inputs.y.value = data.y;
-    inputs.w.value = data.w; inputs.h.value = data.h;
-    render();
-  });
-  render();
 })();
 </script>
 {% endblock %}

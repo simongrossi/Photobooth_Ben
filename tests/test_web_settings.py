@@ -36,6 +36,8 @@ class TestLecture:
         assert r.status_code == 200
         assert b"TEMPS_DECOMPTE" in r.data
         assert b"NOM_IMPRIMANTE_10X15" in r.data
+        assert b"ACTIVER_DIAPORAMA_VEILLE" in r.data
+        assert b"ACTIVER_IMPRESSIONS_MULTIPLES" in r.data
         assert b"Exp\xc3\xa9rience" in r.data
         assert b"Impression" in r.data
         assert b"Style photo" in r.data
@@ -49,6 +51,15 @@ class TestLecture:
         r = c.get("/settings/", headers=HEADERS)
         assert b"2 personnalis\xc3\xa9s" in r.data
         assert r.data.count(b"badge--actif") == 2
+
+    def test_affiche_la_valeur_booleenne_sauvegardee(self, ctx):
+        c, overrides_path = ctx
+        with open(overrides_path, "w", encoding="utf-8") as f:
+            json.dump({"ACTIVER_DIAPORAMA_VEILLE": False}, f)
+
+        r = c.get("/settings/", headers=HEADERS)
+        champ = r.data.split(b'id="setting-ACTIVER_DIAPORAMA_VEILLE"', 1)[1].split(b">", 1)[0]
+        assert b"checked" not in champ
 
 
 class TestEnregistrement:
@@ -69,6 +80,7 @@ class TestEnregistrement:
             "GRAIN_INTENSITE": "8",
             "SEUIL_DISQUE_CRITIQUE_MB": "500",
             "SEUIL_TEMP_CRITIQUE_C": "75",
+            "ACTIVER_DIAPORAMA_VEILLE": "on",
             # booléens laissés décochés
         }
         r = c.post("/settings/", data=form, headers=HEADERS, follow_redirects=True)
@@ -77,6 +89,8 @@ class TestEnregistrement:
             data = json.load(f)
         assert data["TEMPS_DECOMPTE"] == 4
         assert data["WATERMARK_TEXT"] == "Mariage"
+        assert data["ACTIVER_DIAPORAMA_VEILLE"] is True
+        assert data["ACTIVER_IMPRESSIONS_MULTIPLES"] is False
 
     def test_entree_invalide_ignoree(self, ctx):
         c, overrides_path = ctx

@@ -4,7 +4,7 @@
 > effets exotiques, hardware, brainstorm), voir [IDEAS.md](IDEAS.md).
 > Pour l'historique de ce qui a été fait, voir [CHANGELOG.md](CHANGELOG.md).
 
-Dernière mise à jour : 2026-07-14 (éditeur de mise en page 10×15)
+Dernière mise à jour : 2026-07-14 (options de veille et d'impressions multiples)
 
 ---
 
@@ -12,7 +12,7 @@ Dernière mise à jour : 2026-07-14 (éditeur de mise en page 10×15)
 
 **Stabilité & bugs** : fuites PIL corrigées, retry caméra + rate-limit, débounce robuste, écrans d'erreur visibles, except Exception typés.
 
-**UX événementiel** : splash caméra, flash + shutter sound, beep décompte, écran "Préparation...", confirmation abandon, slideshow d'attente, compteur photo strip, mode burst.
+**UX événementiel** : splash caméra, flash + shutter sound, beep décompte, écran "Préparation...", confirmation abandon, slideshow d'attente désactivable, compteur photo strip, mode burst et impressions multiples désactivables.
 
 **Architecture modulaire** : split en `core/` + `ui/` — `core/session` (Etat+SessionState+metadata), `core/monitoring` (DiskMonitor+slideshow), UIContext singleton, render functions extraites (DECOMPTE/VALIDATION/FIN/ACCUEIL), event handlers par état, MontageGenerator/CameraManager/PrinterManager encapsulés. `Photobooth_start.py` est importable sans lancer le kiosque ; `main()` initialise le runtime.
 
@@ -28,11 +28,11 @@ Dernière mise à jour : 2026-07-14 (éditeur de mise en page 10×15)
 
 **Déploiement** : guide Raspberry Pi complet (`docs/DEPLOYMENT.md`), doc architecture (`docs/ARCHITECTURE.md`), doc Arduino (`docs/ARDUINO.md`), changelog (`docs/CHANGELOG.md`).
 
-**Admin web optionnelle** (v1) : service systemd séparé (`photobooth-admin.service`), Flask + SQLite, Basic Auth. Dashboard stats, galerie `data/print/`, upload/activation de templates overlays, éditeur d'un sous-ensemble whitelisté de `config.py` (18 clés via `data/config_overrides.json`). Isolation stricte — `web/*` n'importe jamais `Photobooth_start` ni `ui/*`. Voir [ADMIN.md](ADMIN.md).
+**Admin web optionnelle** (v1) : service systemd séparé (`photobooth-admin.service`), Flask + SQLite, Basic Auth. Dashboard stats, galerie `data/print/`, upload/activation de templates overlays, éditeur d'un sous-ensemble whitelisté de `config.py` (20 clés via `data/config_overrides.json`). Isolation stricte — `web/*` n'importe jamais `Photobooth_start` ni `ui/*`. Voir [ADMIN.md](ADMIN.md).
 
-**Éditeur templates 10×15** : composition visuelle fond → photo → overlay,
-déplacement/redimensionnement avec ratio 3:2, coordonnées par template et
-aperçu kiosque identique au rendu final. Extension aux strips à envisager.
+**Éditeur templates 10×15 et strip** : composition visuelle fond → photo(s) →
+overlay, déplacement/redimensionnement par template et aperçu kiosque identique
+au rendu final. Les trois zones strip sont réglables indépendamment.
 
 **Gestion événementielle** : événements nommés avec dates et tags, activation
 exclusive partagée à chaud avec le kiosque, instantané dans chaque session,

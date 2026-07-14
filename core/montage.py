@@ -16,6 +16,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 from config import (
     PATH_TEMP,
     PATH_MISE_EN_PAGE_10X15,
+    PATH_MISE_EN_PAGE_STRIP,
     PATH_PRINT_STRIP,
     PREFIXE_PRINT_10X15, PREFIXE_PRINT_STRIP,
     BG_10X15_FILE, OVERLAY_10X15,
@@ -35,7 +36,12 @@ from config import (
     GRAIN_ENABLED, GRAIN_INTENSITE, GRAIN_SIGMA,
     PRINT_CALIB_TOP, PRINT_CALIB_BOTTOM, PRINT_CALIB_LEFT, PRINT_CALIB_RIGHT,
 )
-from core.mise_en_page import MiseEnPage10x15, charger_mise_en_page
+from core.mise_en_page import (
+    MiseEnPage10x15,
+    MiseEnPageStrip,
+    charger_mise_en_page,
+    charger_mise_en_page_strip,
+)
 
 
 def charger_et_corriger(chemin: str, rotation_forcee: float = 0) -> Image.Image:
@@ -213,35 +219,49 @@ class MontageGeneratorStrip(MontageBase):
     FINAL_ROTATION = STRIP_ROTATION_DEGREES
 
     @classmethod
+    def _mise_en_page_defaut(cls) -> MiseEnPageStrip:
+        photo_w = cls.FINAL_SIZE[0] - (2 * STRIP_MARGE_LATERALE)
+        photo_h = int(photo_w * float(STRIP_PHOTO_RATIO))
+        return MiseEnPageStrip(photos=tuple(
+            MiseEnPage10x15(
+                x=STRIP_MARGE_LATERALE,
+                y=STRIP_MARGE_HAUT + i * (photo_h + STRIP_ESPACE_PHOTOS),
+                largeur=photo_w,
+                hauteur=photo_h,
+            )
+            for i in range(3)
+        ))
+
+    @classmethod
+    def _mise_en_page_active(cls) -> MiseEnPageStrip:
+        return charger_mise_en_page_strip(
+            PATH_MISE_EN_PAGE_STRIP, cls._mise_en_page_defaut(), cls.FINAL_SIZE,
+        )
+
+    @classmethod
+    def _composer(cls, photos: list) -> Image.Image:
+        """Compose fond → trois photos → overlay avec la géométrie active."""
+        canvas = cls._canvas_depuis_bg_ou_blanc(
+            os.path.abspath(BG_STRIPS_FILE), cls.FINAL_SIZE,
+            rotation=cls.FINAL_ROTATION, redresser_si_horizontal=True,
+        )
+        mise_en_page = cls._mise_en_page_active()
+        for chemin, zone in zip(photos[:3], mise_en_page.photos):
+            img = charger_et_corriger(chemin)
+            img_fit = ImageOps.fit(
+                img, (zone.largeur, zone.hauteur), Image.Resampling.LANCZOS,
+            )
+            canvas.paste(img_fit, (zone.x, zone.y))
+        cls._coller_overlay(
+            canvas, OVERLAY_STRIPS, cls.FINAL_SIZE,
+            rotation=cls.FINAL_ROTATION, redresser_si_horizontal=True,
+        )
+        return canvas
+
+    @classmethod
     def preview(cls, photos: list) -> str:
         path_prev = cls._chemin_prev()
-        l_p = cls.PREVIEW_PHOTO_LARGEUR
-        ratio = float(STRIP_PHOTO_RATIO)
-        h_p = int(l_p * ratio)
-        espacement = cls.PREVIEW_ESPACEMENT
-        marge_hb = cls.PREVIEW_MARGE_HAUT_BAS
-        
-        # --- AJUSTEMENT DYNAMIQUE ---
-        # Au lieu d'utiliser PREVIEW_CANEVAS_LARGEUR (fixe), 
-        # on définit une marge latérale fixe (ex: 20px)
-        marge_laterale_interne = 20 
-        largeur_canevas_auto = l_p + (marge_laterale_interne * 2)
-        
-        hauteur_totale = (h_p * 3) + (espacement * 2) + (marge_hb * 2)
-
-        # On crée le canevas avec la largeur adaptée
-        bande_v = Image.new("RGB", (largeur_canevas_auto, hauteur_totale), "white")
-        
-        # Les photos sont maintenant parfaitement centrées avec une marge fixe
-        offset_x = marge_laterale_interne
-
-        for i in range(min(len(photos), 3)):
-            img = charger_et_corriger(photos[i])
-            img_fit = ImageOps.fit(img, (l_p, h_p), Image.Resampling.LANCZOS)
-            pos_y = marge_hb + i * (h_p + espacement)
-            bande_v.paste(img_fit, (offset_x, pos_y))
-
-        # On garde le thumbnail pour l'affichage Pygame
+        bande_v = cls._composer(photos)
         bande_v.thumbnail(cls.PREVIEW_THUMBNAIL_MAX, Image.Resampling.LANCZOS)
         bande_v.save(path_prev, "JPEG", quality=cls.PREVIEW_QUALITY)
         return path_prev
@@ -250,35 +270,7 @@ class MontageGeneratorStrip(MontageBase):
     def final(cls, photos: list, id_session: str) -> str:
         # --- 1. GÉNÉRATION DE LA BANDELETTE (CLEAN) ---
         
-        # On force le chemin absolu pour être sûr que Python trouve le fichier
-        import os
-        chemin_fond = os.path.abspath(BG_STRIPS_FILE)
-        
-        canvas = cls._canvas_depuis_bg_ou_blanc(
-            chemin_fond, cls.FINAL_SIZE,
-            rotation=cls.FINAL_ROTATION, redresser_si_horizontal=True,
-        )
-        
-        # DEBUG : Si c'est toujours blanc, ce print te dira pourquoi dans la console
-        if not os.path.exists(chemin_fond):
-            print(f"!!! ERREUR : Le fond est introuvable ici : {chemin_fond}")
-
-        marge_haut = STRIP_MARGE_HAUT
-        marge_lat = STRIP_MARGE_LATERALE
-        espace_entre = STRIP_ESPACE_PHOTOS
-        photo_w = cls.FINAL_SIZE[0] - (2 * marge_lat)
-        photo_h = int(photo_w * float(STRIP_PHOTO_RATIO))
-
-        for i in range(min(len(photos), 3)):
-            img = charger_et_corriger(photos[i])
-            img_fit = ImageOps.fit(img, (photo_w, photo_h), Image.Resampling.LANCZOS)
-            pos_y = marge_haut + i * (photo_h + espace_entre)
-            canvas.paste(img_fit, (marge_lat, pos_y))
-
-        cls._coller_overlay(
-            canvas, OVERLAY_STRIPS, cls.FINAL_SIZE,
-            rotation=cls.FINAL_ROTATION, redresser_si_horizontal=True,
-        )
+        canvas = cls._composer(photos)
         cls._appliquer_watermark(canvas, WATERMARK_TAILLE_STRIP, WATERMARK_POSITION_STRIP)
         cls._appliquer_grain(canvas)
 

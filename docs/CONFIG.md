@@ -46,6 +46,7 @@ Pour les modifier en production voir [RUNBOOK.md](RUNBOOK.md).
 | `PATH_SKIPPED_RETAKE` | `data/skipped/skipped_retake/` | Rejetées via "Reprendre" |
 | `PATH_SKIPPED_DELETED` | `data/skipped/skipped_deleted/` | Rejetées via "Supprimer" |
 | `PATH_MISE_EN_PAGE_10X15` | `data/mise_en_page_10x15.json` | Zone photo active publiée atomiquement par l'éditeur de templates |
+| `PATH_MISE_EN_PAGE_STRIP` | `data/mise_en_page_strip.json` | Trois zones photo strip actives publiées atomiquement par l'éditeur |
 
 ### Dossiers d'assets (fournis, pas générés)
 
@@ -241,6 +242,9 @@ une position.
 
 ### Preview écran strip
 
+L'aperçu strip est une réduction de la composition finale complète : fond
+orienté pour l'impression, trois zones photo personnalisables et overlay.
+
 | Constante | Défaut | Effet |
 |---|---|---|
 | `STRIP_PREVIEW_PHOTO_LARGEUR` | `520` | Largeur photo preview |
@@ -250,6 +254,12 @@ une position.
 | `STRIP_PREVIEW_THUMBNAIL_MAX` | `(400, 800)` | Taille max thumbnail |
 | `STRIP_PREVIEW_QUALITY` | `90` | JPEG quality preview |
 | `STRIP_FINAL_QUALITY` | `98` | JPEG quality impression |
+
+Le profil `STRIP_FORMAT_MODE` reste le repli sûr pour les trois zones. Lorsqu'un
+template strip actif possède une mise en page personnalisée, l'admin publie les
+coordonnées dans `data/mise_en_page_strip.json`. Chaque photo peut avoir une
+position et une taille différentes ; l'overlay actif est prioritaire sur le
+fond actif.
 
 | `COULEUR_FOND_LOADER` | `(10, 10, 18)` | Couleur fond écrans transitoires |
 
@@ -367,6 +377,7 @@ kiosque. Désactivé par défaut.
 
 | Constante | Défaut | Effet |
 |---|---|---|
+| `ACTIVER_DIAPORAMA_VEILLE` | `True` | `False` conserve l'écran d'accueil, même après une longue inactivité |
 | `DUREE_IDLE_SLIDESHOW` | `30.0` | Secondes d'inactivité avant démarrage |
 | `DUREE_PAR_IMAGE_SLIDESHOW` | `3.5` | Durée d'affichage de chaque image |
 | `NB_MAX_IMAGES_SLIDESHOW` | `40` | Nombre max d'images scannées |
@@ -379,6 +390,7 @@ kiosque. Désactivé par défaut.
 | Constante | Défaut | Effet |
 |---|---|---|
 | `ACTIVER_IMPRESSION` | `True` | `False` pour tester sans gâcher de papier : le montage est archivé dans `data/print/`, aucun job CUPS n'est envoyé, et la session est comptée `print_disabled` |
+| `ACTIVER_IMPRESSIONS_MULTIPLES` | `True` | `False` saute l'écran de sélection et lance une seule feuille (un 10×15 ou une feuille de deux bandelettes) |
 | `NOM_IMPRIMANTE_10X15` | `DNP_10x15` | Nom CUPS de la file 10×15 |
 | `NOM_IMPRIMANTE_STRIP` | `DNP_STRIP` | Nom CUPS de la file strip |
 | `TEMPS_ATTENTE_IMP` | `20` | Affichage roue avant retour accueil (s) |

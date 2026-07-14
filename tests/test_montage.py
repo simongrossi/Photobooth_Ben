@@ -57,6 +57,7 @@ def isoler_paths(monkeypatch, tmp_path_str):
     monkeypatch.setattr(montage, "BG_STRIPS_FILE", "/inexistant/bg_strip.jpg")
     monkeypatch.setattr(montage, "OVERLAY_STRIPS", "/inexistant/ov_strip.png")
     monkeypatch.setattr(montage, "PATH_MISE_EN_PAGE_10X15", os.path.join(tmp_path_str, "layout.json"))
+    monkeypatch.setattr(montage, "PATH_MISE_EN_PAGE_STRIP", os.path.join(tmp_path_str, "layout_strip.json"))
     monkeypatch.setattr(montage, "PATH_PRINT_STRIP", os.path.join(tmp_path_str, "print_strip"))
     return tmp_path_str
 
@@ -315,3 +316,25 @@ class TestCoherenceConfig:
         path = MontageGeneratorStrip.final(trois_photos, "cohérence")
         with Image.open(path) as img:
             assert img.size == (1800, 1200)
+
+    def test_strip_final_utilise_les_trois_zones_actives(self, isoler_paths, trois_photos):
+        import json
+
+        chemin_layout = os.path.join(isoler_paths, "layout_strip.json")
+        with open(chemin_layout, "w", encoding="utf-8") as fichier:
+            json.dump({"photos": [
+                {"x": 20, "y": 20, "largeur": 150, "hauteur": 100},
+                {"x": 220, "y": 500, "largeur": 180, "hauteur": 120},
+                {"x": 400, "y": 1200, "largeur": 160, "hauteur": 110},
+            ]}, fichier)
+
+        MontageGeneratorStrip.final(trois_photos, "layout")
+
+        chemin_clean = os.path.join(
+            isoler_paths, "print_strip", "montage_strip_layout_CLEAN.jpg",
+        )
+        with Image.open(chemin_clean) as image:
+            assert image.getpixel((95, 70))[0] > 240
+            assert image.getpixel((310, 560))[1] > 240
+            assert image.getpixel((480, 1255))[2] > 240
+            assert min(image.getpixel((300, 300))) > 240

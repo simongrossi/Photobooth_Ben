@@ -47,6 +47,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "BG_10X15_FILE", str(fonds / "10x15_background.jpg"))
     monkeypatch.setattr(config, "BG_STRIPS_FILE", str(fonds / "strips_background.jpg"))
     monkeypatch.setattr(config, "PATH_MISE_EN_PAGE_10X15", str(data / "mise_en_page_10x15.json"))
+    monkeypatch.setattr(config, "PATH_MISE_EN_PAGE_STRIP", str(data / "mise_en_page_strip.json"))
     monkeypatch.setattr(config, "PATH_RAW", str(raw))
     import web.db
     import web.routes.templates_route as tr
@@ -64,6 +65,7 @@ def client(tmp_path, monkeypatch):
     # Les routes lisent PATH_OVERLAYS depuis le module importé — on patch aussi.
     monkeypatch.setattr(tr, "PATH_OVERLAYS", str(overlays))
     monkeypatch.setattr(tr, "PATH_MISE_EN_PAGE_10X15", str(data / "mise_en_page_10x15.json"))
+    monkeypatch.setattr(tr, "PATH_MISE_EN_PAGE_STRIP", str(data / "mise_en_page_strip.json"))
     monkeypatch.setattr(tr, "PATH_RAW", str(raw))
 
     app = create_app()
@@ -238,6 +240,7 @@ class TestMigrationCouche:
         conn.close()
         assert "couche" in colonnes
         assert {"photo_x", "photo_y", "photo_largeur", "photo_hauteur"} <= colonnes
+        assert "zones_strip" in colonnes
 
 
 class TestUploadFond:
@@ -494,3 +497,69 @@ class TestEditeurMiseEnPage:
         r = c.get("/templates/photo-exemple", headers=HEADERS)
         assert r.status_code == 200
         assert r.mimetype == "image/jpeg"
+
+    def test_page_editeur_strip_affiche_trois_zones(self, client):
+        c, _, _ = client
+        template_id = _uploader(c, "Cadre strip", "strip", "overlay", _png_bytes(), "strip.png")
+
+        r = c.get(f"/templates/editer/{template_id}", headers=HEADERS)
+
+        html = r.get_data(as_text=True)
+        assert r.status_code == 200
+        assert "Positionner les trois photos" in html
+        assert 'name="photo_1_x"' in html
+        assert 'name="photo_2_x"' in html
+        assert 'name="photo_3_x"' in html
+
+    def test_enregistre_et_publie_geometrie_strip_active(self, client):
+        import json
+        import web.db
+
+        c, _, _ = client
+        template_id = _uploader(c, "Strip actif", "strip", "overlay", _png_bytes(), "actif-strip.png")
+        c.post(f"/templates/activer/{template_id}", headers=HEADERS)
+        donnees = {}
+        for i, y in enumerate((50, 600, 1150), start=1):
+            donnees.update({
+                f"photo_{i}_x": "60", f"photo_{i}_y": str(y),
+                f"photo_{i}_largeur": "480", f"photo_{i}_hauteur": "320",
+            })
+
+        r = c.post(
+            f"/templates/editer/{template_id}", data=donnees,
+            headers=HEADERS, follow_redirects=True,
+        )
+
+        assert r.status_code == 200
+        with connexion() as conn:
+            row = conn.execute(
+                "SELECT zones_strip FROM template WHERE id = ?", (template_id,),
+            ).fetchone()
+        assert json.loads(row["zones_strip"])[1]["y"] == 600
+        chemin = os.path.join(os.path.dirname(web.db.DB_PATH), "mise_en_page_strip.json")
+        with open(chemin, encoding="utf-8") as fichier:
+            actif = json.load(fichier)
+        assert actif["template_id"] == template_id
+        assert len(actif["photos"]) == 3
+
+    def test_refuse_zone_strip_hors_canvas(self, client):
+        c, _, _ = client
+        template_id = _uploader(c, "Strip invalide", "strip", "fond", _jpg_bytes(), "ko-strip.jpg")
+        donnees = {}
+        for i, y in enumerate((0, 600, 1700), start=1):
+            donnees.update({
+                f"photo_{i}_x": "0", f"photo_{i}_y": str(y),
+                f"photo_{i}_largeur": "500", f"photo_{i}_hauteur": "300",
+            })
+
+        r = c.post(
+            f"/templates/editer/{template_id}", data=donnees,
+            headers=HEADERS, follow_redirects=True,
+        )
+
+        assert "rester entièrement" in r.get_data(as_text=True)
+        with connexion() as conn:
+            row = conn.execute(
+                "SELECT zones_strip FROM template WHERE id = ?", (template_id,),
+            ).fetchone()
+        assert row["zones_strip"] is None

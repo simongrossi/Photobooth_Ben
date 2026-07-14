@@ -28,6 +28,7 @@ PATH_SKIPPED_RETAKE  = os.path.join(PATH_SKIPPED, "skipped_retake")
 PATH_SKIPPED_DELETED = os.path.join(PATH_SKIPPED, "skipped_deleted")
 PATH_EVENEMENT_ACTIF = os.path.join(PATH_DATA, "evenement_actif.json")
 PATH_MISE_EN_PAGE_10X15 = os.path.join(PATH_DATA, "mise_en_page_10x15.json")
+PATH_MISE_EN_PAGE_STRIP = os.path.join(PATH_DATA, "mise_en_page_strip.json")
 
 # --- Dossiers Racines des Assets ---
 PATH_ASSETS     = os.path.join(BASE_DIR, "assets")
@@ -372,6 +373,7 @@ TEMP_PATH                  = "/sys/class/thermal/thermal_zone0/temp"
 # --- Slideshow d'attente sur l'accueil (Sprint 6.2) ---
 # Après N secondes sans activité sur l'accueil, les montages passés défilent en plein écran
 # pour attirer les invités.
+ACTIVER_DIAPORAMA_VEILLE  = True
 DUREE_IDLE_SLIDESHOW      = 30   # Secondes d'inactivité avant démarrage
 DUREE_PAR_IMAGE_SLIDESHOW = 3.5    # Durée d'affichage de chaque image
 NB_MAX_IMAGES_SLIDESHOW   = 40     # Plus récentes uniquement, pour éviter de scanner trop
@@ -410,6 +412,7 @@ GRAIN_SIGMA        = 30.0    # Écart-type du bruit gaussien (bas = uniforme, ha
 # 8. CONFIGURATION IMPRESSION
 # ==========================================
 ACTIVER_IMPRESSION = True          # Permet de tester sans gâcher de papier
+ACTIVER_IMPRESSIONS_MULTIPLES = True  # Affiche le choix du nombre de copies
 NOM_IMPRIMANTE_10X15 = "DNP_10x15"  #Par défaut "DNP_10x15",  Pour tets de developpement sans impression mettre "PDF"
 NOM_IMPRIMANTE_STRIP = "DNP_STRIP"   #Par défaut "DNP_STRIP",   Pour tets de developpement sans impression mettre "PDF"
 TEMPS_ATTENTE_IMP    = 15  # Secondes d'affichage de la roue avant retour accueil
@@ -464,7 +467,9 @@ _CONFIG_OVERRIDES_WHITELIST = {
     "NOM_IMPRIMANTE_10X15": str,
     "NOM_IMPRIMANTE_STRIP": str,
     "ACTIVER_IMPRESSION": bool,
+    "ACTIVER_IMPRESSIONS_MULTIPLES": bool,
     "TEMPS_ATTENTE_IMP": int,
+    "ACTIVER_DIAPORAMA_VEILLE": bool,
     "DUREE_IDLE_SLIDESHOW": float,
     "DUREE_PAR_IMAGE_SLIDESHOW": float,
     "NB_MAX_IMAGES_SLIDESHOW": int,

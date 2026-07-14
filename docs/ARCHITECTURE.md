@@ -42,7 +42,7 @@ de données. Document à mettre à jour lors des refactors structurels majeurs.
      │      │  └─────────────────┘   │
      │      │          ▲             │
      │      │  ┌───────┴─────────┐   │
-     │      │  │ mise_en_page    │   │  ◄── géométrie 10×15 JSON tolérante
+     │      │  │ mise_en_page    │   │  ◄── géométries 10×15/strip JSON tolérantes
      │      │  └─────────────────┘   │
      │      │                        │
      │      │  ┌─────────────────┐   │
@@ -75,8 +75,8 @@ de données. Document à mettre à jour lors des refactors structurels majeurs.
   **jamais** `Photobooth_start` ni `ui/*`. Tourne dans un process systemd
   séparé ; la communication avec le kiosque passe uniquement par le
   filesystem (`data/sessions.jsonl` en lecture, `assets/overlays/`,
-  `data/evenement_actif.json`, `data/mise_en_page_10x15.json` et
-  `data/config_overrides.json` en écriture).
+  `data/evenement_actif.json`, `data/mise_en_page_10x15.json`,
+  `data/mise_en_page_strip.json` et `data/config_overrides.json` en écriture).
   Voir `docs/ADMIN.md`.
 
 ---
@@ -132,8 +132,11 @@ de données. Document à mettre à jour lors des refactors structurels majeurs.
 
 ### Slideshow overlay (sur ACCUEIL uniquement)
 
-Déclenché si `time.time() - session.last_activity_ts > DUREE_IDLE_SLIDESHOW`
-et `session.mode_actuel is None`. Première touche réveille sans déclencher d'action.
+Déclenché si `ACTIVER_DIAPORAMA_VEILLE`,
+`time.time() - session.last_activity_ts > DUREE_IDLE_SLIDESHOW` et
+`session.mode_actuel is None`. Première touche réveille sans déclencher d'action.
+Si l'option est désactivée, l'accueil reste visible et la première touche agit
+normalement, quelle que soit la durée d'inactivité.
 
 ---
 
@@ -169,7 +172,8 @@ et `session.mode_actuel is None`. Première touche réveille sans déclencher d'
     • MontageGenerator*.final() dans thread avec spinner animé
     • ACTIVER_IMPRESSION ?
         - non → montage archivé, metadata issue=print_disabled
-        - oui → printer_mgr.is_ready(mode) ?
+        - oui → choix des copies si ACTIVER_IMPRESSIONS_MULTIPLES, sinon une feuille
+          → printer_mgr.is_ready(mode) ?
             - oui → lp -d nom -o fit-to-page chemin, issue=printed
             - non → ecran_erreur(TXT_ERREUR_IMPRIMANTE), issue=print_failed
     • ecran_attente_impression() (TEMPS_ATTENTE_IMP secondes)
@@ -229,11 +233,12 @@ utilisé dans `render_decompte`. Les autres wrappers ont été inlinés.
 `lister_images_slideshow` ne dépendent pas de `SessionState`. Rate-limit interne
 à DiskMonitor, slideshow listing sans state. Testables en isolation.
 
-**Mise en page 10×15 partagée par fichier atomique** : l'admin stocke la zone
-photo de chaque template dans SQLite puis publie celle du template actif dans
-`data/mise_en_page_10x15.json`. `core/mise_en_page.py` valide cette géométrie ;
-`core/montage.py` la relit à chaque aperçu et impression, avec repli sur
-`config.py` si le fichier manque ou est invalide. Le kiosque ne dépend donc pas
+**Mises en page partagées par fichiers atomiques** : l'admin stocke la zone
+10×15 ou les trois zones strip de chaque template dans SQLite puis publie le
+réglage actif dans `data/mise_en_page_10x15.json` ou
+`data/mise_en_page_strip.json`. `core/mise_en_page.py` valide ces géométries ;
+`core/montage.py` les relit à chaque aperçu et impression, avec repli sur
+`config.py` si un fichier manque ou est invalide. Le kiosque ne dépend donc pas
 de Flask ni de SQLite.
 
 **Entrée runtime explicite** : importer `Photobooth_start.py` ne crée plus de

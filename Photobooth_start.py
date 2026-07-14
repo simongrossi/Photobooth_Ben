@@ -3,7 +3,7 @@ from __future__ import annotations
 # Imports explicites depuis config (plus de `import *` pour dépendances visibles).
 # Liste triée alphabétiquement, mise à jour en ajoutant de nouvelles constantes.
 from config import (
-    ACTIVER_IMPRESSION,
+    ACTIVER_DIAPORAMA_VEILLE, ACTIVER_IMPRESSION, ACTIVER_IMPRESSIONS_MULTIPLES,
     ALPHA_TEXTE_REPOS, ARDUINO_BAUDRATE, ARDUINO_ENABLED, ARDUINO_PORT,
     BANDEAU_10X15, BANDEAU_ACCUEIL, BANDEAU_ALPHA,
     BANDEAU_COULEUR, BANDEAU_HAUTEUR, BANDEAU_STRIP, COULEUR_DECOMPTE,
@@ -637,11 +637,12 @@ def traiter_impression_session(session) -> str:
             time.sleep(1.2)
             return "print_disabled"
 
-        # --- APPEL DE LA SELECTION DYNAMIQUE ---
-        nb_copies = demander_nombre_copies(session)
+        # Sans copies multiples, une pression lance directement une seule feuille :
+        # 1 photo en 10×15 ou les 2 bandelettes déjà assemblées en mode strips.
+        est_strip = (session.mode_actuel == "strips")
+        nb_copies = demander_nombre_copies(session) if ACTIVER_IMPRESSIONS_MULTIPLES else (2 if est_strip else 1)
 
         # --- CONVERSION EN IMPRESSIONS PHYSIQUES REELLES ---
-        est_strip = (session.mode_actuel == "strips")
         nb_impressions_reelles = int(nb_copies / 2) if est_strip else nb_copies
 
         # --- MODIFICATION ANTI-FLASH ---
@@ -909,7 +910,7 @@ def render_accueil(session: SessionState) -> None:
     temp_monitor.tick()
 
     idle_seconds = time.time() - session.last_activity_ts
-    if idle_seconds > DUREE_IDLE_SLIDESHOW and session.mode_actuel is None:
+    if ACTIVER_DIAPORAMA_VEILLE and idle_seconds > DUREE_IDLE_SLIDESHOW and session.mode_actuel is None:
         _render_accueil_slideshow(session, idle_seconds)
     else:
         _render_accueil_normal(session)
@@ -1477,7 +1478,8 @@ def main() -> None:
                     # Sprint 6.2 : si le slideshow était actif (idle > seuil en ACCUEIL), la 1re
                     # touche ne déclenche aucune action — elle réveille juste l'interface.
                     slideshow_etait_actif = (
-                        session.etat is Etat.ACCUEIL
+                        ACTIVER_DIAPORAMA_VEILLE
+                        and session.etat is Etat.ACCUEIL
                         and session.mode_actuel is None
                         and (maintenant - session.last_activity_ts) > DUREE_IDLE_SLIDESHOW
                     )

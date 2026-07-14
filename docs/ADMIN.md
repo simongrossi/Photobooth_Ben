@@ -22,8 +22,9 @@ sur le même LAN, sans toucher au code.
   par-dessus la photo) et **fonds** (image sous les photos) — upload, activation
   par format (10×15 / strip), et état « Aucun » par couche×format (photo nue /
   fond blanc, effet à la photo suivante, sans redémarrage du kiosque). Pour le
-  10×15, un éditeur visuel permet de déplacer/redimensionner la photo avec un
-  aperçu exact fond → photo → overlay et mémorise la position par template.
+  10×15 et le strip disposent d'un éditeur visuel. Pour le strip, les trois
+  photos se déplacent et se redimensionnent indépendamment, avec un aperçu
+  exact fond → photos → overlay et mémorisation par template.
 - **Kiosque** : assets globaux de la borne — **fond d'écran d'accueil** et
   **police des textes** (bibliothèque + activation « actif + fallback », effet au
   redémarrage du kiosque, bouton « Revenir au défaut »), et **slides perso**
@@ -56,13 +57,14 @@ sur le même LAN, sans toucher au code.
 | Corbeille galerie | `data/corbeille/<mode>/` | admin | admin (restauration) |
 | Métadonnées templates & assets | `data/admin.db` (SQLite) | admin | admin |
 | Mise en page 10×15 active | `data/mise_en_page_10x15.json` (remplacement atomique) | admin | kiosque à chaque rendu |
+| Mise en page strip active | `data/mise_en_page_strip.json` (remplacement atomique) | admin | kiosque à chaque rendu |
 | Surcharges config | `data/config_overrides.json` | admin | kiosque (à chaque import de `config`) |
 
 Le kiosque n'a **pas besoin** de connaître l'admin : les overrides sont lus au
 démarrage de `config.py` via une whitelist stricte (voir
 `config.py:_CONFIG_OVERRIDES_WHITELIST`).
 
-### Éditeur de mise en page 10×15
+### Éditeur de mise en page 10×15 et strip
 
 Depuis une carte de template 10×15, **Modifier la mise en page** ouvre un
 aperçu à l'échelle avec la dernière photo brute disponible. La photo se déplace
@@ -72,6 +74,9 @@ et hauteur permettent un réglage précis. Le ratio 3:2 est verrouillé par déf
 La géométrie est enregistrée sur le template. Si un fond et un overlay actifs
 ont tous deux une géométrie, celle de l'overlay est prioritaire. Sans réglage
 personnalisé, le moteur reprend les valeurs par défaut de `config.py`.
+Pour un template strip, l'éditeur présente trois cadres numérotés : chacun
+possède ses propres coordonnées X/Y et dimensions. Le fond et l'overlay sont
+orientés comme ils le seront dans le fichier imprimé.
 
 ## Cycle de vie d'un événement
 
@@ -134,8 +139,9 @@ casser les invariants du pipeline de rendu) :
 
 - Timings : `TEMPS_DECOMPTE`, `DELAI_SECURITE`, `TEMPS_ATTENTE_IMP`,
   `DUREE_IDLE_SLIDESHOW`, `DUREE_PAR_IMAGE_SLIDESHOW`, `STRIP_BURST_DELAI_S`.
-- Impression : `ACTIVER_IMPRESSION`, `NOM_IMPRIMANTE_10X15`,
-  `NOM_IMPRIMANTE_STRIP`.
+- Impression : `ACTIVER_IMPRESSION`, `ACTIVER_IMPRESSIONS_MULTIPLES`,
+  `NOM_IMPRIMANTE_10X15`, `NOM_IMPRIMANTE_STRIP`.
+- Diaporama : `ACTIVER_DIAPORAMA_VEILLE`.
 - Effets : `WATERMARK_ENABLED`, `WATERMARK_TEXT`, `GRAIN_ENABLED`,
   `GRAIN_INTENSITE`, `STRIP_MODE_BURST`.
 - Hardware : `ARDUINO_ENABLED`.

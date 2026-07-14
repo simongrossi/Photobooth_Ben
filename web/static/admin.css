@@ -272,7 +272,7 @@ form.inline { display: inline; margin: 0; }
 .etats { list-style: none; padding: 0; }
 .etats li { margin: .4rem 0; display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
 
-/* --- Éditeur de mise en page 10×15 --- */
+/* --- Éditeur de mise en page 10×15 et strip --- */
 .editor-header {
   display: flex; align-items: flex-start; justify-content: space-between;
   gap: 1rem; margin-bottom: 1rem;
@@ -285,6 +285,7 @@ form.inline { display: inline; margin: 0; }
   background: #fff; border: 1px solid var(--bord); border-radius: 10px;
   box-shadow: inset 0 0 0 1px rgb(0 0 0 / 4%); touch-action: none; user-select: none;
 }
+.layout-editor--strip { width: min(100%, 27vh, 320px); aspect-ratio: 1 / 3; margin-inline: auto; }
 .layout-editor__layer {
   position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill;
   pointer-events: none; user-select: none;
@@ -311,6 +312,10 @@ form.inline { display: inline; margin: 0; }
 }
 .editor-hint { margin: .65rem 0 0; }
 .editor-controls h2 { margin-top: 0; }
+.editor-zone {
+  margin: 0 0 .8rem; padding: .75rem; border: 1px solid var(--bord); border-radius: 9px;
+}
+.editor-zone legend { padding: 0 .35rem; color: var(--texte); font-size: .82rem; font-weight: 750; }
 .editor-fields { display: grid; grid-template-columns: 1fr 1fr; gap: .7rem; }
 .editor-fields label { color: var(--texte2); font-size: .74rem; font-weight: 650; }
 .editor-fields input {

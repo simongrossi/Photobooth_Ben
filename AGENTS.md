@@ -9,7 +9,7 @@ Event photobooth app (Pygame + gphoto2 + PIL) targeting a Raspberry Pi with a Ca
 ## Common commands
 
 ```bash
-# Tests (281 tests, ~30 s) — pure-Python modules only
+# Tests (289 tests, ~30 s) — pure-Python modules only
 pytest                                   # full suite
 pytest tests/test_montage.py -v          # single file
 pytest tests/test_montage.py::test_name -v  # single test
