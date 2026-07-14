@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% block titre %}Templates · Photobooth{% endblock %}
 {% block contenu %}
-<h1>Templates (overlays)</h1>
+<h1>Templates</h1>
+
+{% set libelles_couche = {"overlay": "Overlays (cadres PNG)", "fond": "Fonds (sous les photos)"} %}
+{% set libelles_type = {"10x15": "10×15 (grand format)", "strip": "Bandelette (strip)"} %}
 
 <section class="panel">
   <h2>Uploader un nouveau template</h2>
@@ -11,6 +14,13 @@
       <input type="text" name="nom" maxlength="80" placeholder="ex : Mariage Camille &amp; Paul">
     </label>
     <label>
+      Couche
+      <select name="couche" required>
+        <option value="overlay">Overlay (cadre PNG par-dessus)</option>
+        <option value="fond">Fond (image sous les photos)</option>
+      </select>
+    </label>
+    <label>
       Type
       <select name="type" required>
         <option value="10x15">10×15 (grand format)</option>
@@ -18,22 +28,49 @@
       </select>
     </label>
     <label>
-      Fichier PNG (transparence)
-      <input type="file" name="fichier" accept="image/png" required>
+      Fichier (PNG pour overlay ; JPG ou PNG pour fond)
+      <input type="file" name="fichier" accept="image/png,image/jpeg" required>
     </label>
     <button type="submit">Uploader</button>
   </form>
   <p class="muted">
-    Les fichiers sont stockés dans <code>{{ path_overlays }}</code>.
-    Le format attendu : PNG RGBA, aux dimensions finales du montage (1800×1200 pour 10×15, 600×1800 pour strip).
+    Overlays stockés dans <code>{{ path_overlays }}</code>, fonds dans <code>{{ path_fonds }}</code>.
+    Dimensions du montage : 1800×1200 pour 10×15, 600×1800 pour strip.
+    L'overlay doit être un PNG avec transparence.
   </p>
 </section>
 
+{% for couche in couches %}
 <section class="panel">
-  <h2>Templates existants</h2>
-  {% if templates %}
+  <h2>{{ libelles_couche[couche] }}</h2>
+
+  <ul class="etats">
+    {% for type_t in types %}
+      <li>
+        <strong>{{ libelles_type[type_t] }}</strong> —
+        {% set nom_actif = actifs.get((couche, type_t)) %}
+        {% if nom_actif %}
+          <span class="badge badge--actif">Actif : {{ nom_actif }}</span>
+          <form method="post" class="inline"
+                action="{{ url_for('templates.desactiver', couche=couche, type_t=type_t) }}"
+                onsubmit="return confirm('Passer en « aucun template » pour ce mode ?');">
+            <button type="submit" class="btn btn--danger">Aucun (désactiver)</button>
+          </form>
+        {% else %}
+          <span class="badge">Aucun</span>
+          <form method="post" class="inline"
+                action="{{ url_for('templates.desactiver', couche=couche, type_t=type_t) }}">
+            <button type="submit" class="btn" title="Supprime aussi un fichier actif posé à la main">Forcer « aucun »</button>
+          </form>
+        {% endif %}
+      </li>
+    {% endfor %}
+  </ul>
+
+  {% set liste = templates | selectattr("couche", "equalto", couche) | list %}
+  {% if liste %}
     <ul class="templates">
-      {% for t in templates %}
+      {% for t in liste %}
         <li class="templates__item {% if t.actif %}templates__item--actif{% endif %}">
           <img src="{{ url_for('templates.thumb', template_id=t.id) }}" alt="{{ t.nom }}">
           <div class="templates__info">
@@ -60,7 +97,8 @@
       {% endfor %}
     </ul>
   {% else %}
-    <p class="muted">Aucun template enregistré. Uploade un PNG ci-dessus pour commencer.</p>
+    <p class="muted">Aucun template {{ couche }} enregistré. Uploade un fichier ci-dessus.</p>
   {% endif %}
 </section>
+{% endfor %}
 {% endblock %}

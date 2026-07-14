@@ -362,3 +362,19 @@ class TestDesactivation:
         c, _, _ = client
         r = c.post("/templates/desactiver/overlay/13x18", headers=HEADERS)
         assert r.status_code == 404
+
+
+class TestPageDeuxCouches:
+    def test_page_contient_sections_et_desactivation(self, client):
+        c, _, _ = client
+        r = c.get("/templates/", headers=HEADERS)
+        html = r.get_data(as_text=True)
+        assert "Overlays" in html
+        assert "Fonds" in html
+        assert "/templates/desactiver/overlay/10x15" in html
+        assert "/templates/desactiver/fond/strip" in html
+
+    def test_etat_aucun_affiche_par_defaut(self, client):
+        c, _, _ = client
+        r = c.get("/templates/", headers=HEADERS)
+        assert "Aucun" in r.get_data(as_text=True)
