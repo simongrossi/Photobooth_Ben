@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block titre %}Modifier {{ evenement.nom }} · Photobooth{% endblock %}
+{% block contenu %}
+<p><a href="{{ url_for('evenements.index') }}">← Événements</a></p>
+<section class="panel">
+  <h1>Modifier {{ evenement.nom }}</h1>
+  <form class="form" method="post">
+    <label>Nom
+      <input type="text" name="nom" required value="{{ evenement.nom }}">
+    </label>
+    <label>Début
+      <input type="datetime-local" name="debut" required value="{{ evenement.debut }}">
+    </label>
+    <label>Fin
+      <input type="datetime-local" name="fin" required value="{{ evenement.fin }}">
+    </label>
+    <label>Tags, séparés par des virgules
+      <input type="text" name="tags" value="{{ evenement.tags | join(', ') }}">
+    </label>
+    <label>Notes
+      <textarea name="notes" rows="5">{{ evenement.notes }}</textarea>
+    </label>
+    <div class="actions-row">
+      <button class="btn btn--primary" type="submit">Enregistrer</button>
+      <a class="btn" href="{{ url_for('evenements.index') }}">Annuler</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

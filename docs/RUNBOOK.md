@@ -48,6 +48,16 @@ Tout doit être **vert**. Si rouge :
 
 ### 4. Personnalisation événement
 
+Avant toute photo, ouvrir `http://<ip-du-pi>:8080/evenements/` :
+
+- [ ] Créer ou vérifier l'événement (nom, début, fin, tags)
+- [ ] Cliquer sur **Activer** et vérifier la pastille verte « Événement actif »
+- [ ] Faire une session de test puis vérifier son apparition via les raccourcis
+  **Statistiques** et **Galerie**
+
+Sans événement actif, le kiosque continue de fonctionner mais classe les
+nouvelles sessions dans « Sans événement ».
+
 Si overlays ou fonds dédiés à l'événement :
 
 - [ ] Remplacer `assets/backgrounds/10x15_background.jpg` et `strips_background.jpg`
@@ -137,12 +147,16 @@ Ne **pas** couper l'alim du Pi brutalement sauf nécessité — attendre un reto
 cd ~/Photobooth_Ben
 source .venv/bin/activate
 
-# Rapport du jour
-python3 stats.py --date YYYY-MM-DD
+# Rapport ciblé (l'identifiant est visible dans l'URL de la page événement)
+python3 stats.py --event ID_EVENEMENT
 
 # Export JSON pour archivage
-python3 stats.py --date YYYY-MM-DD --json > ~/archives/event-YYYY-MM-DD.json
+python3 stats.py --event ID_EVENEMENT --json > ~/archives/event.json
 ```
+
+Dans l'admin, **Export ZIP** produit directement les statistiques CSV/JSON et
+les images rattachées. Utiliser **ZIP + brutes** uniquement si les originaux
+doivent être livrés ou sauvegardés.
 
 Chiffres intéressants : nombre total de sessions, répartition 10×15 vs strip,
 histogramme horaire (pic d'affluence), temps moyen d'une session.

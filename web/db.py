@@ -5,11 +5,12 @@ source de vérité des overrides config reste `data/config_overrides.json`
 (lisible par config.py sans dépendance au DB). Les sessions restent dans
 `data/sessions.jsonl` (écrit par le kiosque).
 
-Deux tables aujourd'hui :
+Tables principales :
 - `template`      (id, nom, type, couche, fichier, actif, uploaded_at, taille_octets)
 - `asset_kiosque` (id, nom, categorie, fichier, actif, uploaded_at, taille_octets)
   — catégories 'accueil' | 'police' | 'slide' ; un actif max par catégorie ;
   `actif` sans objet pour 'slide' (tous les slides présents tournent).
+- `evenement`, `tag`, `evenement_tag` pour le cycle de vie événementiel.
 
 Les types sont "10x15" ou "strip" ; les couches "overlay" (PNG par-dessus la
 photo) ou "fond" (image sous les photos). La colonne `actif` marque le template
@@ -53,6 +54,37 @@ CREATE TABLE IF NOT EXISTS asset_kiosque (
 );
 
 CREATE INDEX IF NOT EXISTS idx_asset_kiosque_cat_actif ON asset_kiosque (categorie, actif);
+
+CREATE TABLE IF NOT EXISTS evenement (
+    id TEXT PRIMARY KEY,
+    nom TEXT NOT NULL,
+    slug TEXT NOT NULL UNIQUE,
+    debut TEXT NOT NULL,
+    fin TEXT NOT NULL,
+    statut TEXT NOT NULL DEFAULT 'brouillon'
+        CHECK (statut IN ('brouillon', 'actif', 'termine', 'archive')),
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_evenement_unique_actif
+    ON evenement (statut) WHERE statut = 'actif';
+CREATE INDEX IF NOT EXISTS idx_evenement_dates ON evenement (debut, fin);
+
+CREATE TABLE IF NOT EXISTS tag (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nom TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    slug TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS evenement_tag (
+    evenement_id TEXT NOT NULL REFERENCES evenement(id) ON DELETE CASCADE,
+    tag_id INTEGER NOT NULL REFERENCES tag(id) ON DELETE CASCADE,
+    PRIMARY KEY (evenement_id, tag_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_evenement_tag_tag ON evenement_tag (tag_id, evenement_id);
 """
 
 

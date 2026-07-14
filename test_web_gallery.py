@@ -74,7 +74,7 @@ class TestListing:
         app.config["TESTING"] = True
         r = app.test_client().get("/galerie/", headers=HEADERS)
         assert r.status_code == 200
-        assert b"Aucun montage" in r.data
+        assert b"Aucune image" in r.data
 
 
 class TestSecurite:
@@ -211,26 +211,42 @@ class TestFiltrerCategories:
         app.config["TESTING"] = True
         c = app.test_client()
         
-        # 1. Montages (default)
+        # 1. Tout (défaut)
         r = c.get("/galerie/", headers=HEADERS)
         html = r.get_data(as_text=True)
         assert "m1.jpg" in html
-        assert "raw_1.jpg" not in html
+        assert "raw_1.jpg" in html
+        assert "del_1.jpg" in html
+        assert "ret_1.jpg" in html
+        assert '?type=all" class="btn-filter active"' in html
         
-        # 2. Raw
+        # 2. Montages
+        r = c.get("/galerie/?type=montages", headers=HEADERS)
+        html = r.get_data(as_text=True)
+        assert "m1.jpg" in html
+        assert "raw_1.jpg" not in html
+
+        # 3. Raw
         r = c.get("/galerie/?type=raw", headers=HEADERS)
         html = r.get_data(as_text=True)
         assert "raw_1.jpg" in html
         assert "m1.jpg" not in html
         
-        # 3. Deleted
+        # 4. Deleted
         r = c.get("/galerie/?type=deleted", headers=HEADERS)
         html = r.get_data(as_text=True)
         assert "del_1.jpg" in html
         assert "m1.jpg" not in html
         
-        # 4. Retake
+        # 5. Retake
         r = c.get("/galerie/?type=retake", headers=HEADERS)
         html = r.get_data(as_text=True)
         assert "ret_1.jpg" in html
         assert "m1.jpg" not in html
+
+    def test_filtre_inconnu_revient_sur_tout(self, client):
+        r = client.get("/galerie/?type=inconnu", headers=HEADERS)
+        html = r.get_data(as_text=True)
+        assert "photo_001.jpg" in html
+        assert "strip_001.jpg" in html
+        assert '?type=all" class="btn-filter active"' in html

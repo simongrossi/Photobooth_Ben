@@ -79,6 +79,18 @@ class TestFiltrerParDate:
         assert stats.filtrer_par_date(sessions, "2030-01-01") == []
 
 
+class TestFiltrerEvenement:
+    def test_filtre_evenement_tag_et_legacy(self):
+        sessions = [
+            {"event_id": "evt-1", "event_tags": ["Mariage", "Lyon"]},
+            {"event_id": "evt-2", "event_tags": ["Entreprise"]},
+            {"session_id": "legacy"},
+        ]
+        assert stats.filtrer_sessions(sessions, evenement_id="evt-1") == [sessions[0]]
+        assert stats.filtrer_sessions(sessions, tag="mariage") == [sessions[0]]
+        assert stats.filtrer_sessions(sessions, evenement_id="__sans__") == [sessions[2]]
+
+
 # --- Tests calculer_stats ---
 
 class TestCalculerStats:

@@ -4,12 +4,34 @@
 <div class="dashboard-header">
   <h1>Galerie <span class="muted">— {{ total }} image{{ 's' if total > 1 }}</span></h1>
   <div class="filter-group">
-    <a href="?type=montages" class="btn-filter {% if type_galerie == 'montages' %}active{% endif %}">Montages</a>
-    <a href="?type=raw" class="btn-filter {% if type_galerie == 'raw' %}active{% endif %}">Photos brutes</a>
-    <a href="?type=deleted" class="btn-filter {% if type_galerie == 'deleted' %}active{% endif %}">Abandons</a>
-    <a href="?type=retake" class="btn-filter {% if type_galerie == 'retake' %}active{% endif %}">Rejouées</a>
+    <a href="?type=all{% if evenement_filtre %}&amp;evenement={{ evenement_filtre | urlencode }}{% endif %}{% if tag_filtre %}&amp;tag={{ tag_filtre | urlencode }}{% endif %}" class="btn-filter {% if type_galerie == 'all' %}active{% endif %}">Tout</a>
+    <a href="?type=montages{% if evenement_filtre %}&amp;evenement={{ evenement_filtre | urlencode }}{% endif %}{% if tag_filtre %}&amp;tag={{ tag_filtre | urlencode }}{% endif %}" class="btn-filter {% if type_galerie == 'montages' %}active{% endif %}">Montages</a>
+    <a href="?type=raw{% if evenement_filtre %}&amp;evenement={{ evenement_filtre | urlencode }}{% endif %}{% if tag_filtre %}&amp;tag={{ tag_filtre | urlencode }}{% endif %}" class="btn-filter {% if type_galerie == 'raw' %}active{% endif %}">Photos brutes</a>
+    <a href="?type=deleted{% if evenement_filtre %}&amp;evenement={{ evenement_filtre | urlencode }}{% endif %}{% if tag_filtre %}&amp;tag={{ tag_filtre | urlencode }}{% endif %}" class="btn-filter {% if type_galerie == 'deleted' %}active{% endif %}">Abandons</a>
+    <a href="?type=retake{% if evenement_filtre %}&amp;evenement={{ evenement_filtre | urlencode }}{% endif %}{% if tag_filtre %}&amp;tag={{ tag_filtre | urlencode }}{% endif %}" class="btn-filter {% if type_galerie == 'retake' %}active{% endif %}">Rejouées</a>
   </div>
 </div>
+
+<form class="panel filtres-avances" method="get">
+  <input type="hidden" name="type" value="{{ type_galerie }}">
+  <label>Événement
+    <select name="evenement">
+      <option value="">Tous les événements</option>
+      <option value="__sans__" {% if evenement_filtre == '__sans__' %}selected{% endif %}>Sans événement</option>
+      {% for evenement in evenements %}
+      <option value="{{ evenement.id }}" {% if evenement_filtre == evenement.id %}selected{% endif %}>{{ evenement.nom }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Tag
+    <select name="tag">
+      <option value="">Tous les tags</option>
+      {% for tag in tags %}<option value="{{ tag }}" {% if tag_filtre == tag %}selected{% endif %}>{{ tag }}</option>{% endfor %}
+    </select>
+  </label>
+  <button class="btn btn--primary" type="submit">Filtrer</button>
+  {% if evenement_filtre or tag_filtre %}<a class="btn" href="{{ url_for('gallery.index', type=type_galerie) }}">Effacer</a>{% endif %}
+</form>
 
 {% if items %}
   <div class="galerie">
@@ -20,6 +42,8 @@
         </a>
         <div class="galerie__meta">
           <span class="badge badge--{{ item.mode }}">{{ item.mode }}</span>
+          {% if item.event_name %}<span class="badge badge--actif">{{ item.event_name }}</span>{% else %}<span class="badge">Sans événement</span>{% endif %}
+          {% for tag in item.event_tags %}<span class="badge">{{ tag }}</span>{% endfor %}
           <span class="galerie__taille">{{ item.taille_ko }} Ko</span>
           <form method="post" class="inline"
                 action="{{ url_for('gallery.retirer', mode=item.mode, nom=item.nom) }}"
@@ -33,15 +57,15 @@
 
   <nav class="pagination">
     {% if page > 1 %}
-      <a href="{{ url_for('gallery.index', page=page-1) }}">◀ Précédent</a>
+      <a href="{{ url_for('gallery.index', type=type_galerie, evenement=evenement_filtre, tag=tag_filtre, page=page-1) }}">◀ Précédent</a>
     {% endif %}
     <span>Page {{ page }} / {{ total_pages }}</span>
     {% if page < total_pages %}
-      <a href="{{ url_for('gallery.index', page=page+1) }}">Suivant ▶</a>
+      <a href="{{ url_for('gallery.index', type=type_galerie, evenement=evenement_filtre, tag=tag_filtre, page=page+1) }}">Suivant ▶</a>
     {% endif %}
   </nav>
 {% else %}
-  <p class="muted">Aucun montage trouvé dans <code>{{ print_path }}</code>.</p>
+  <p class="muted">Aucune image trouvée pour ce filtre.</p>
 {% endif %}
 
 {% if corbeille %}

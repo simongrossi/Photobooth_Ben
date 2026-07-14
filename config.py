@@ -21,6 +21,7 @@ PATH_SKIPPED    = os.path.join(PATH_DATA, "skipped")
 # Ajout des sous-dossiers pour le tri du skipped
 PATH_SKIPPED_RETAKE  = os.path.join(PATH_SKIPPED, "skipped_retake")
 PATH_SKIPPED_DELETED = os.path.join(PATH_SKIPPED, "skipped_deleted")
+PATH_EVENEMENT_ACTIF = os.path.join(PATH_DATA, "evenement_actif.json")
 
 # --- Dossiers Racines des Assets ---
 PATH_ASSETS     = os.path.join(BASE_DIR, "assets")

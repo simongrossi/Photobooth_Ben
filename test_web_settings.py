@@ -36,6 +36,19 @@ class TestLecture:
         assert r.status_code == 200
         assert b"TEMPS_DECOMPTE" in r.data
         assert b"NOM_IMPRIMANTE_10X15" in r.data
+        assert b"Exp\xc3\xa9rience" in r.data
+        assert b"Impression" in r.data
+        assert b"Style photo" in r.data
+        assert b"Red\xc3\xa9marrage requis" in r.data
+
+    def test_affiche_le_nombre_de_reglages_personnalises(self, ctx):
+        c, overrides_path = ctx
+        with open(overrides_path, "w", encoding="utf-8") as f:
+            json.dump({"TEMPS_DECOMPTE": 4, "ARDUINO_ENABLED": False}, f)
+
+        r = c.get("/settings/", headers=HEADERS)
+        assert b"2 personnalis\xc3\xa9s" in r.data
+        assert r.data.count(b"badge--actif") == 2
 
 
 class TestEnregistrement:

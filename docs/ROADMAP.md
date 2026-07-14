@@ -4,7 +4,7 @@
 > effets exotiques, hardware, brainstorm), voir [IDEAS.md](IDEAS.md).
 > Pour l'historique de ce qui a été fait, voir [CHANGELOG.md](CHANGELOG.md).
 
-Dernière mise à jour : 2026-04-24 (post interface admin web v1)
+Dernière mise à jour : 2026-07-14 (gestion des événements)
 
 ---
 
@@ -29,6 +29,10 @@ Dernière mise à jour : 2026-04-24 (post interface admin web v1)
 **Déploiement** : guide Raspberry Pi complet (`docs/DEPLOYMENT.md`), doc architecture (`docs/ARCHITECTURE.md`), doc Arduino (`docs/ARDUINO.md`), changelog (`docs/CHANGELOG.md`).
 
 **Admin web optionnelle** (v1) : service systemd séparé (`photobooth-admin.service`), Flask + SQLite, Basic Auth. Dashboard stats, galerie `data/print/`, upload/activation de templates overlays, éditeur d'un sous-ensemble whitelisté de `config.py` (18 clés via `data/config_overrides.json`). Isolation stricte — `web/*` n'importe jamais `Photobooth_start` ni `ui/*`. Voir [ADMIN.md](ADMIN.md).
+
+**Gestion événementielle** : événements nommés avec dates et tags, activation
+exclusive partagée à chaud avec le kiosque, instantané dans chaque session,
+filtres dashboard/galerie, compatibilité « Sans événement » et export ZIP/CSV.
 
 ---
 
@@ -104,7 +108,8 @@ et [CHANGELOG.md](CHANGELOG.md)._
 
 - [ ] **Email / SMS delivery** — après impression, écran "Entrez votre email/numéro" (clavier virtuel tactile) → photo envoyée en PJ. SMTP + formulaire. Peut s'implémenter soit côté kiosque (tactile sur place) soit côté admin v2 (envoi différé depuis la galerie).
 - [ ] **Multi-langue** (EN/FR/ES) — toutes les strings extraites dans `i18n/*.json`, toggle sur l'accueil
-- [ ] **Branding par événement** — dossier `events/mariage-smith-2026/` qui surcharge assets + overlays + textes + config. Pourrait s'intégrer à l'admin (sélecteur d'événement actif).
+- [ ] **Branding par événement** — rattacher automatiquement les templates,
+  fonds et textes au registre d'événements désormais livré.
 
 ---
 

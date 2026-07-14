@@ -8,8 +8,13 @@ sur le même LAN, sans toucher au code.
   compteurs du jour avec activité par heure, totaux (taux d'impression, photos,
   durées, modes) et historique par journée. Thème clair/sombre automatique
   (suit le réglage du navigateur/téléphone).
+- **Événements** : création avec dates et tags, activation exclusive, fin et
+  archivage. L'événement actif est appliqué aux nouvelles sessions sans
+  redémarrer le kiosque. Accès direct aux statistiques, à la galerie et à
+  l'export ZIP (avec ou sans photos brutes).
 - **Galerie** : parcours des montages produits (10×15 et strips) avec
-  miniatures à la volée. Bouton « Retirer » par photo → déplacée vers
+  miniatures à la volée, filtrable par événement, tag et type. Bouton
+  « Retirer » par photo → déplacée vers
   `data/corbeille/` (disparaît du slideshow et de la galerie en ≤ 30 s, jamais
   supprimée définitivement), restaurable depuis la section Corbeille.
 - **Templates** : bibliothèque des deux couches d'habillage — **overlays** (PNG
@@ -38,6 +43,8 @@ sur le même LAN, sans toucher au code.
 | Donnée | Stockage | Écrit par | Lu par |
 |---|---|---|---|
 | Sessions | `data/sessions.jsonl` (append-only) | kiosque | kiosque + admin (dashboard) |
+| Événements et tags | `data/admin.db` (SQLite) | admin | admin |
+| Événement actif | `data/evenement_actif.json` (remplacement atomique) | admin | kiosque au début d'une session |
 | Overlays PNG (bibliothèque) | `assets/overlays/*.png` | admin | kiosque (montage) |
 | Fonds JPG/PNG (bibliothèque) | `assets/backgrounds/*` | admin | kiosque (montage) |
 | Couches actives | `assets/overlays/{10x15,strips}_overlay.png` et `assets/backgrounds/{10x15,strips}_background.jpg` (copies du template activé ; fichier absent = « aucun ») | admin | kiosque |
@@ -50,6 +57,25 @@ sur le même LAN, sans toucher au code.
 Le kiosque n'a **pas besoin** de connaître l'admin : les overrides sont lus au
 démarrage de `config.py` via une whitelist stricte (voir
 `config.py:_CONFIG_OVERRIDES_WHITELIST`).
+
+## Cycle de vie d'un événement
+
+1. Créer l'événement avec son nom, ses dates, ses tags et éventuellement des
+   notes internes.
+2. Cliquer sur **Activer** avant les premières prises de vue. Une seule ligne
+   SQLite peut avoir le statut `actif` ; activer un autre événement termine le
+   précédent.
+3. Le kiosque lit `evenement_actif.json` au début de la première capture et
+   copie `event_id`, `event_name` et `event_tags` dans `sessions.jsonl`.
+4. Utiliser les filtres du dashboard et de la galerie. Les anciennes sessions
+   sans ces champs apparaissent sous **Sans événement**.
+5. Cliquer sur **Terminer**, puis télécharger l'export ZIP. L'option
+   **ZIP + brutes** ajoute `data/raw`; l'export standard contient les montages,
+   abandons et rejouées rattachés à l'événement.
+
+Renommer un événement actif met immédiatement à jour l'instantané pour les
+sessions futures. Les sessions déjà terminées gardent leur nom et leurs tags
+d'origine, ce qui préserve l'historique.
 
 ## Installation
 

@@ -3,21 +3,27 @@ from __future__ import annotations
 
 import io
 import os
+import re
 from dataclasses import dataclass
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, url_for
 from PIL import Image
+
+import config
 
 from config import (
     PATH_CORBEILLE, PATH_PRINT, PATH_PRINT_10X15, PATH_PRINT_STRIP,
     PATH_RAW, PATH_SKIPPED_DELETED, PATH_SKIPPED_RETAKE
 )
 from web.auth import require_auth
+from stats import load_sessions
+from web.evenements import lister_evenements, tous_les_tags
 
 bp = Blueprint("gallery", __name__, url_prefix="/galerie")
 
 PAGE_SIZE = 24
 THUMB_MAX = (300, 300)
+TYPES_GALERIE = {"all", "montages", "raw", "deleted", "retake"}
 
 # Racines autorisées : interdit la remontée vers d'autres dossiers.
 _RACINES_AUTORISEES = {
@@ -35,9 +41,23 @@ class Item:
     mode: str
     mtime: float
     taille_ko: int
+    chemin: str
+    session_id: str | None = None
+    event_id: str | None = None
+    event_name: str | None = None
+    event_tags: list[str] | None = None
 
 
-def _lister_tous(type_galerie: str = "montages") -> list[Item]:
+_SESSION_ID_RE = re.compile(r"\d{4}-\d{2}-\d{2}_\d{2}h\d{2}_\d{2}")
+
+
+def _extraire_session_id(nom: str) -> str | None:
+    """Extrait l'identifiant timestamp commun aux fichiers d'une session."""
+    resultat = _SESSION_ID_RE.search(nom)
+    return resultat.group(0) if resultat else None
+
+
+def _lister_tous(type_galerie: str = "all") -> list[Item]:
     items: list[Item] = []
 
     # Déterminer quels modes inclure
@@ -71,6 +91,8 @@ def _lister_tous(type_galerie: str = "montages") -> list[Item]:
                 mode=mode,
                 mtime=st.st_mtime,
                 taille_ko=st.st_size // 1024,
+                chemin=chemin,
+                session_id=_extraire_session_id(nom),
             ))
 
     # Si on cherche les montages et qu'il y a d'anciens montages directement dans PATH_PRINT
@@ -91,6 +113,8 @@ def _lister_tous(type_galerie: str = "montages") -> list[Item]:
                 mode=mode,
                 mtime=st.st_mtime,
                 taille_ko=st.st_size // 1024,
+                chemin=chemin,
+                session_id=_extraire_session_id(nom),
             ))
 
     items.sort(key=lambda i: i.mtime, reverse=True)
@@ -136,7 +160,10 @@ def _lister_corbeille() -> list[Item]:
                 st = os.stat(chemin)
             except OSError:
                 continue
-            items.append(Item(nom=nom, mode=mode, mtime=st.st_mtime, taille_ko=st.st_size // 1024))
+            items.append(Item(
+                nom=nom, mode=mode, mtime=st.st_mtime, taille_ko=st.st_size // 1024,
+                chemin=chemin, session_id=_extraire_session_id(nom),
+            ))
     items.sort(key=lambda i: i.mtime, reverse=True)
     return items
 
@@ -144,8 +171,38 @@ def _lister_corbeille() -> list[Item]:
 @bp.route("/")
 @require_auth
 def index():
-    type_galerie = request.args.get("type", "montages")
+    type_galerie = request.args.get("type", "all")
+    if type_galerie not in TYPES_GALERIE:
+        type_galerie = "all"
     tous = _lister_tous(type_galerie)
+    sessions = load_sessions(os.path.join(config.PATH_DATA, "sessions.jsonl")) or []
+    tags_disponibles = sorted(
+        set(tous_les_tags())
+        | {str(tag) for session in sessions for tag in session.get("event_tags", [])},
+        key=str.casefold,
+    )
+    sessions_par_id = {
+        session.get("session_id"): session
+        for session in sessions
+        if session.get("session_id")
+    }
+    for item in tous:
+        metadata = sessions_par_id.get(item.session_id, {})
+        item.event_id = metadata.get("event_id")
+        item.event_name = metadata.get("event_name")
+        item.event_tags = metadata.get("event_tags") or []
+
+    evenement_filtre = request.args.get("evenement", "")
+    tag_filtre = request.args.get("tag", "")
+    if evenement_filtre == "__sans__":
+        tous = [item for item in tous if not item.event_id]
+    elif evenement_filtre:
+        tous = [item for item in tous if item.event_id == evenement_filtre]
+    if tag_filtre:
+        tous = [
+            item for item in tous
+            if tag_filtre.casefold() in {str(t).casefold() for t in item.event_tags}
+        ]
     page = max(1, int(request.args.get("page", "1") or "1"))
     debut = (page - 1) * PAGE_SIZE
     fin = debut + PAGE_SIZE
@@ -160,6 +217,10 @@ def index():
         corbeille=_lister_corbeille(),
         print_path=PATH_PRINT,
         type_galerie=type_galerie,
+        evenement_filtre=evenement_filtre,
+        tag_filtre=tag_filtre,
+        evenements=lister_evenements(),
+        tags=tags_disponibles,
     )
 
 

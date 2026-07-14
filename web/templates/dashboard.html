@@ -5,10 +5,31 @@
   <h1>Dashboard</h1>
   <div class="filter-group">
     {% for cle, config_periode in periodes.items() %}
-      <a href="?periode={{ cle }}" class="btn-filter {% if periode == cle %}active{% endif %}">{{ config_periode.libelle }}</a>
+      <a href="{{ url_for('dashboard.index', periode=cle, evenement=evenement_filtre, tag=tag_filtre) }}" class="btn-filter {% if periode == cle %}active{% endif %}">{{ config_periode.libelle }}</a>
     {% endfor %}
   </div>
 </div>
+
+<form class="panel filtres-avances" method="get">
+  <input type="hidden" name="periode" value="{{ periode }}">
+  <label>Événement
+    <select name="evenement">
+      <option value="">Tous les événements</option>
+      <option value="__sans__" {% if evenement_filtre == '__sans__' %}selected{% endif %}>Sans événement</option>
+      {% for evenement in evenements %}
+      <option value="{{ evenement.id }}" {% if evenement_filtre == evenement.id %}selected{% endif %}>{{ evenement.nom }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Tag
+    <select name="tag">
+      <option value="">Tous les tags</option>
+      {% for tag in tags %}<option value="{{ tag }}" {% if tag_filtre == tag %}selected{% endif %}>{{ tag }}</option>{% endfor %}
+    </select>
+  </label>
+  <button class="btn btn--primary" type="submit">Filtrer</button>
+  {% if evenement_filtre or tag_filtre %}<a class="btn" href="{{ url_for('dashboard.index', periode=periode) }}">Effacer</a>{% endif %}
+</form>
 
 <!-- Étage 1 : santé matériel -->
 <section class="pastilles">

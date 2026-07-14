@@ -1,56 +1,90 @@
 {% extends "base.html" %}
 {% block titre %}Réglages · Photobooth{% endblock %}
 {% block contenu %}
-<h1>Réglages</h1>
-<p class="muted">
-  Surcharges écrites dans <code>{{ overrides_path }}</code>. Les modifications
-  prennent effet au prochain redémarrage du service kiosque.
-</p>
+<div class="settings-header">
+  <div>
+    <p class="settings-eyebrow">Configuration du kiosque</p>
+    <h1>Réglages</h1>
+    <p class="settings-lead">Personnalisez le comportement du photobooth sans modifier le code.</p>
+  </div>
+  <span class="settings-count {% if nb_overrides %}settings-count--active{% endif %}">
+    {{ nb_overrides }} personnalisé{{ 's' if nb_overrides > 1 }}
+  </span>
+</div>
 
-<form class="form form--settings" method="post" action="{{ url_for('settings.save') }}">
-  <table class="reglages">
-    <thead>
-      <tr>
-        <th>Clé</th>
-        <th>Type</th>
-        <th>Valeur</th>
-        <th>État</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for r in reglages %}
-        <tr>
-          <td><code>{{ r.cle }}</code></td>
-          <td>{{ r.type_nom }}</td>
-          <td>
+<aside class="settings-notice">
+  <span class="settings-notice__mark" aria-hidden="true">↻</span>
+  <div>
+    <strong>Redémarrage requis</strong>
+    <p>Les changements seront appliqués au prochain redémarrage du service kiosque.</p>
+  </div>
+</aside>
+
+<form id="settings-save" class="form form--settings" method="post" action="{{ url_for('settings.save') }}">
+  <div class="settings-grid">
+    {% for colonne in [('experience', 'diaporama', 'style'), ('impression', 'bandelettes', 'systeme')] %}
+    <div class="settings-column">
+      {% for groupe in groupes %}
+      {% if groupe.cle in colonne %}
+      <section class="settings-card settings-card--{{ groupe.cle }}">
+        <header class="settings-card__header">
+          <div>
+            <h2>{{ groupe.titre }}</h2>
+            <p>{{ groupe.description }}</p>
+          </div>
+        </header>
+
+        <div class="settings-list">
+          {% for r in groupe.reglages %}
+          <div class="settings-item {% if r.overridee %}settings-item--override{% endif %}">
+            <div class="settings-item__copy">
+              <div class="settings-item__title">
+                <label for="setting-{{ r.cle }}">{{ r.libelle }}</label>
+                {% if r.overridee %}<span class="badge badge--actif">personnalisé</span>{% endif %}
+              </div>
+              <p>{{ r.description }}</p>
+              <span class="settings-item__key">{{ r.cle }}</span>
+            </div>
+            <div class="settings-item__control">
             {% if r.type_nom == 'bool' %}
-              <input type="checkbox" name="{{ r.cle }}" {% if r.valeur_actuelle %}checked{% endif %}>
+              <label class="settings-toggle" for="setting-{{ r.cle }}">
+                <input id="setting-{{ r.cle }}" type="checkbox" name="{{ r.cle }}" {% if r.valeur_actuelle %}checked{% endif %}>
+                <span class="settings-toggle__track" aria-hidden="true"><span></span></span>
+              </label>
             {% elif r.type_nom == 'int' %}
-              <input type="number" step="1" name="{{ r.cle }}" value="{{ r.valeur_actuelle }}">
+              <input id="setting-{{ r.cle }}" type="number" step="1" name="{{ r.cle }}" value="{{ r.valeur_actuelle }}">
             {% elif r.type_nom == 'float' %}
-              <input type="number" step="0.1" name="{{ r.cle }}" value="{{ r.valeur_actuelle }}">
+              <input id="setting-{{ r.cle }}" type="number" step="0.1" name="{{ r.cle }}" value="{{ r.valeur_actuelle }}">
             {% else %}
-              <input type="text" name="{{ r.cle }}" value="{{ r.valeur_actuelle }}">
+              <input id="setting-{{ r.cle }}" type="text" name="{{ r.cle }}" value="{{ r.valeur_actuelle }}">
             {% endif %}
-          </td>
-          <td>
-            {% if r.overridee %}
-              <span class="badge badge--actif">surchargée</span>
-            {% else %}
-              <span class="muted">défaut</span>
-            {% endif %}
-          </td>
-        </tr>
+            {% if r.unite %}<span class="settings-item__unit">{{ r.unite }}</span>{% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
       {% endfor %}
-    </tbody>
-  </table>
+    </div>
+    {% endfor %}
+  </div>
 
-  <div class="actions">
-    <button type="submit" class="btn btn--primary">Enregistrer</button>
+  <div class="settings-actions">
+    <div class="settings-actions__copy">
+      <strong>Prêt à appliquer vos changements ?</strong>
+      <span>Ils seront conservés après les mises à jour.</span>
+    </div>
+    <button type="submit" class="btn btn--primary">Enregistrer les réglages</button>
+    <button type="submit" form="settings-reset" class="btn btn--danger">Revenir aux valeurs par défaut</button>
   </div>
 </form>
 
-<form class="form" method="post" action="{{ url_for('settings.reset') }}" onsubmit="return confirm('Supprimer toutes les surcharges et revenir aux valeurs par défaut ?');">
-  <button type="submit" class="btn btn--danger">Réinitialiser tous les réglages</button>
-</form>
+<details class="settings-technical">
+  <summary>Informations techniques</summary>
+  <p>Les surcharges sont enregistrées dans <code>{{ overrides_path }}</code>.</p>
+</details>
+
+<form id="settings-reset" method="post" action="{{ url_for('settings.reset') }}"
+      onsubmit="return confirm('Supprimer toutes les surcharges et revenir aux valeurs par défaut ?');"></form>
 {% endblock %}

@@ -12,6 +12,8 @@ Usage :
     python3 stats.py                  # toutes les sessions
     python3 stats.py --date 2026-04-20  # filtre par date
     python3 stats.py --json           # sortie JSON pour scripts
+    python3 stats.py --event ID       # filtre par événement
+    python3 stats.py --tag mariage    # filtre par tag
 
 Exit code : 0 si le fichier existe, 1 sinon.
 """
@@ -52,6 +54,22 @@ def load_sessions(chemin):
 def filtrer_par_date(sessions, date_str):
     """Garde seulement les sessions dont le timestamp commence par date_str (YYYY-MM-DD)."""
     return [s for s in sessions if s.get("ts", "").startswith(date_str)]
+
+
+def filtrer_sessions(sessions, evenement_id=None, tag=None):
+    """Filtre les sessions par événement et/ou tag (comparaison tag insensible à la casse)."""
+    resultat = sessions
+    if evenement_id == "__sans__":
+        resultat = [session for session in resultat if not session.get("event_id")]
+    elif evenement_id:
+        resultat = [session for session in resultat if session.get("event_id") == evenement_id]
+    if tag:
+        tag_normalise = tag.casefold()
+        resultat = [
+            session for session in resultat
+            if tag_normalise in {str(t).casefold() for t in session.get("event_tags", [])}
+        ]
+    return resultat
 
 
 def stats_du_jour(sessions, date_str):
@@ -185,6 +203,8 @@ def main():
     parser = argparse.ArgumentParser(description="Rapport stats photobooth")
     parser.add_argument("--date", help="Filtre YYYY-MM-DD (ex : 2026-04-20)")
     parser.add_argument("--json", action="store_true", help="Sortie JSON")
+    parser.add_argument("--event", help="Identifiant d'événement (__sans__ pour les anciennes sessions)")
+    parser.add_argument("--tag", help="Tag d'événement")
     parser.add_argument(
         "--file", default=os.path.join(PATH_DATA, "sessions.jsonl"),
         help="Chemin du fichier sessions.jsonl",
@@ -198,6 +218,7 @@ def main():
 
     if args.date:
         sessions = filtrer_par_date(sessions, args.date)
+    sessions = filtrer_sessions(sessions, args.event, args.tag)
 
     stats = calculer_stats(sessions)
 

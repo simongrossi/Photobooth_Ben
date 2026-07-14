@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block titre %}Événements · Photobooth{% endblock %}
+{% block contenu %}
+<div class="dashboard-header">
+  <div>
+    <h1>Événements</h1>
+    <p class="muted">Organisez les sessions, statistiques et photos par prestation.</p>
+  </div>
+</div>
+
+{% if actif %}
+<section class="panel evenement-actif">
+  <div>
+    <span class="badge badge--actif">Événement actif</span>
+    <h2>{{ actif.nom }}</h2>
+    <p class="muted">{{ actif.debut | replace('T', ' ') }} → {{ actif.fin | replace('T', ' ') }}</p>
+    <div class="tags">{% for tag in actif.tags %}<span class="badge">{{ tag }}</span>{% endfor %}</div>
+  </div>
+  <div class="actions-row">
+    <a class="btn" href="{{ url_for('dashboard.index', evenement=actif.id, periode='toutes') }}">Statistiques</a>
+    <a class="btn" href="{{ url_for('gallery.index', evenement=actif.id) }}">Galerie</a>
+    <form method="post" action="{{ url_for('evenements.terminer', evenement_id=actif.id) }}">
+      <button class="btn--danger" type="submit">Terminer</button>
+    </form>
+  </div>
+</section>
+{% else %}
+<p class="flash flash--info">Aucun événement actif : les nouvelles sessions seront classées « Sans événement ».</p>
+{% endif %}
+
+<div class="grid-2 evenements-layout">
+  <section class="panel">
+    <h2>Créer un événement</h2>
+    <form class="form" method="post" action="{{ url_for('evenements.creer') }}">
+      <label>Nom
+        <input type="text" name="nom" required placeholder="Mariage Alice & Ben">
+      </label>
+      <label>Début
+        <input type="datetime-local" name="debut" required>
+      </label>
+      <label>Fin
+        <input type="datetime-local" name="fin" required>
+      </label>
+      <label>Tags, séparés par des virgules
+        <input type="text" name="tags" placeholder="mariage, Lyon, 2026">
+      </label>
+      <label>Notes
+        <textarea name="notes" rows="3" placeholder="Contact, lieu, consignes…"></textarea>
+      </label>
+      <button class="btn btn--primary" type="submit">Créer l'événement</button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>Historique</h2>
+    {% if evenements %}
+      <div class="evenements-list">
+      {% for evenement in evenements %}
+        <article class="evenement-card">
+          <header>
+            <div>
+              <span class="badge badge--{{ evenement.statut }}">{{ statuts[evenement.statut] }}</span>
+              <h3>{{ evenement.nom }}</h3>
+            </div>
+            <a href="{{ url_for('evenements.modifier', evenement_id=evenement.id) }}">Modifier</a>
+          </header>
+          <p class="muted">{{ evenement.debut | replace('T', ' ') }} → {{ evenement.fin | replace('T', ' ') }}</p>
+          <div class="tags">{% for tag in evenement.tags %}<span class="badge">{{ tag }}</span>{% endfor %}</div>
+          <div class="actions-row">
+            {% if evenement.statut not in ('actif', 'archive') %}
+            <form method="post" action="{{ url_for('evenements.activer', evenement_id=evenement.id) }}">
+              <button class="btn--primary" type="submit">Activer</button>
+            </form>
+            {% endif %}
+            <a class="btn" href="{{ url_for('dashboard.index', evenement=evenement.id, periode='toutes') }}">Stats</a>
+            <a class="btn" href="{{ url_for('gallery.index', evenement=evenement.id) }}">Photos</a>
+            <a class="btn" href="{{ url_for('evenements.exporter', evenement_id=evenement.id) }}">Export ZIP</a>
+            <a class="btn" href="{{ url_for('evenements.exporter', evenement_id=evenement.id, inclure_raw=1) }}">ZIP + brutes</a>
+            {% if evenement.statut != 'archive' %}
+            <form method="post" action="{{ url_for('evenements.archiver', evenement_id=evenement.id) }}"
+                  onsubmit="return confirm('Archiver cet événement ?');">
+              <button type="submit">Archiver</button>
+            </form>
+            {% endif %}
+          </div>
+        </article>
+      {% endfor %}
+      </div>
+    {% else %}
+      <p class="muted">Aucun événement créé.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

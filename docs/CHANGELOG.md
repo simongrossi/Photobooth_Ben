@@ -5,6 +5,28 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
 ---
 
+## `WIP` — Gestion complète des événements
+
+### Added
+- Registre SQLite des événements et tags avec statuts brouillon/actif/terminé/archive,
+  dates, notes, activation exclusive et détection informative des chevauchements.
+- Page admin `/evenements/` : création, modification, activation, fin,
+  archivage et raccourcis stats/galerie.
+- Passerelle atomique `data/evenement_actif.json`, réparée au démarrage de
+  l'admin et lue par le kiosque au début de chaque nouvelle session.
+- Instantané `event_id`, `event_name`, `event_tags` dans `sessions.jsonl` ; les
+  anciennes lignes restent compatibles sous « Sans événement ».
+- Filtres événement/tag sur le dashboard, la galerie et le CLI `stats.py`.
+- Export ZIP par événement avec manifeste, sessions JSONL/CSV, montages et,
+  sur demande, photos brutes.
+- Tests purs et web couvrant activation exclusive, partage, métadonnées,
+  filtres, compatibilité legacy et contenu de l'export.
+
+### Changed
+- La galerie rapproche les fichiers de leur session via l'identifiant timestamp
+  déjà présent dans les noms et affiche événement/tags sur chaque vignette.
+- `core/session.SessionState` transporte puis réinitialise l'instantané événement.
+
 ## `WIP` — Interface admin web optionnelle (v1)
 
 ### Added

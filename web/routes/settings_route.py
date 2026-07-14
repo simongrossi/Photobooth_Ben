@@ -32,6 +32,49 @@ class Reglage:
     type_nom: str  # "int" | "float" | "bool" | "str"
     valeur_actuelle: Any
     overridee: bool
+    groupe: str
+    libelle: str
+    description: str
+    unite: str = ""
+
+
+@dataclass
+class GroupeReglages:
+    cle: str
+    titre: str
+    description: str
+    reglages: list[Reglage]
+
+
+_GROUPES = (
+    ("experience", "Expérience", "Rythme de prise de vue et sécurité des interactions."),
+    ("impression", "Impression", "Files d'impression et délai affiché aux invités."),
+    ("diaporama", "Diaporama", "Déclenchement et rotation des souvenirs à l'écran."),
+    ("bandelettes", "Bandelettes", "Enchaînement automatique des trois prises de vue."),
+    ("style", "Style photo", "Signature visuelle appliquée aux montages générés."),
+    ("systeme", "Système", "Surveillance du Raspberry Pi et contrôleur Arduino."),
+)
+
+_META_REGLAGES = {
+    "TEMPS_DECOMPTE": ("experience", "Durée du décompte", "Temps avant le déclenchement de la photo.", "s"),
+    "DELAI_SECURITE": ("experience", "Délai anti-rebond", "Ignore les doubles pressions involontaires.", "s"),
+    "NOM_IMPRIMANTE_10X15": ("impression", "Imprimante 10×15", "Nom exact de la file CUPS grand format.", ""),
+    "NOM_IMPRIMANTE_STRIP": ("impression", "Imprimante bandelettes", "Nom exact de la file CUPS strips.", ""),
+    "ACTIVER_IMPRESSION": ("impression", "Autoriser l'impression", "Active l'envoi des montages vers CUPS.", ""),
+    "TEMPS_ATTENTE_IMP": ("impression", "Attente annoncée", "Durée indicative affichée pendant l'impression.", "s"),
+    "DUREE_IDLE_SLIDESHOW": ("diaporama", "Démarrer après inactivité", "Temps sans interaction avant le diaporama.", "s"),
+    "DUREE_PAR_IMAGE_SLIDESHOW": ("diaporama", "Durée par image", "Temps d'affichage de chaque souvenir.", "s"),
+    "NB_MAX_IMAGES_SLIDESHOW": ("diaporama", "Nombre maximal d'images", "Limite la mémoire utilisée par le diaporama.", "images"),
+    "STRIP_MODE_BURST": ("bandelettes", "Mode rafale", "Enchaîne automatiquement les trois photos.", ""),
+    "STRIP_BURST_DELAI_S": ("bandelettes", "Pause entre les photos", "Délai de respiration entre deux prises.", "s"),
+    "WATERMARK_ENABLED": ("style", "Filigrane", "Ajoute un texte discret sur le montage final.", ""),
+    "WATERMARK_TEXT": ("style", "Texte du filigrane", "Nom de l'événement ou message à afficher.", ""),
+    "GRAIN_ENABLED": ("style", "Grain photo", "Ajoute une texture argentique au rendu.", ""),
+    "GRAIN_INTENSITE": ("style", "Intensité du grain", "Force de la texture appliquée aux photos.", "%"),
+    "SEUIL_DISQUE_CRITIQUE_MB": ("systeme", "Alerte espace disque", "Seuil sous lequel l'interface signale un danger.", "Mo"),
+    "SEUIL_TEMP_CRITIQUE_C": ("systeme", "Alerte température CPU", "Seuil thermique critique du Raspberry Pi.", "°C"),
+    "ARDUINO_ENABLED": ("systeme", "Boîtier Arduino", "Active les trois boutons physiques et leurs LED.", ""),
+}
 
 
 def _type_nom(t: type) -> str:
@@ -62,13 +105,30 @@ def _lister_reglages() -> list[Reglage]:
     overrides = _charger_overrides()
     reglages: list[Reglage] = []
     for cle, type_attendu in _CONFIG_OVERRIDES_WHITELIST.items():
+        groupe, libelle, description, unite = _META_REGLAGES[cle]
         reglages.append(Reglage(
             cle=cle,
             type_nom=_type_nom(type_attendu),
             valeur_actuelle=getattr(config, cle),
             overridee=cle in overrides,
+            groupe=groupe,
+            libelle=libelle,
+            description=description,
+            unite=unite,
         ))
     return reglages
+
+
+def _grouper_reglages(reglages: list[Reglage]) -> list[GroupeReglages]:
+    return [
+        GroupeReglages(
+            cle=cle,
+            titre=titre,
+            description=description,
+            reglages=[reglage for reglage in reglages if reglage.groupe == cle],
+        )
+        for cle, titre, description in _GROUPES
+    ]
 
 
 def _parser_valeur(valeur_brute: str, type_attendu: type) -> Any:
@@ -89,9 +149,11 @@ def _parser_valeur(valeur_brute: str, type_attendu: type) -> Any:
 @bp.route("/", methods=["GET"])
 @require_auth
 def index():
+    reglages = _lister_reglages()
     return render_template(
         "settings.html",
-        reglages=_lister_reglages(),
+        groupes=_grouper_reglages(reglages),
+        nb_overrides=sum(reglage.overridee for reglage in reglages),
         overrides_path=CONFIG_OVERRIDES_PATH,
     )
 

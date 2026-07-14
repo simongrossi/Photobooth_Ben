@@ -29,6 +29,11 @@ python3 stats.py --date 2026-04-20   # filtrer par date
 python3 stats.py --json              # export machine-readable
 ```
 
+L'admin web permet également de créer et activer un événement nommé avec ses
+dates et tags. Les nouvelles sessions héritent de cet événement ; dashboard et
+galerie sont filtrables par événement/tag, avec export ZIP/CSV depuis la page
+`/evenements/`. Voir [docs/ADMIN.md](docs/ADMIN.md).
+
 **Avant le premier lancement**, vérifie que les dossiers d'assets sont en place :
 
 ```
@@ -122,7 +127,8 @@ Chaque fin de session écrit une ligne JSON dans `data/sessions.jsonl` :
 ```json
 {"session_id": "2026-04-20_14h30_15", "mode": "strips",
  "issue": "printed", "nb_photos": 3, "duree_s": 78.5,
- "ts": "2026-04-20 14:30:45"}
+ "ts": "2026-04-20 14:30:45", "event_id": "…",
+ "event_name": "Mariage Alice & Ben", "event_tags": ["mariage", "Lyon"]}
 ```
 
 `issue` vaut `printed` / `abandoned` / `capture_failed` / `print_failed` /

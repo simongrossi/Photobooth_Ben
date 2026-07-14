@@ -59,6 +59,7 @@ from core.session import (  # noqa: E402
     SessionState,
     terminer_session_et_revenir_accueil as _terminer_session_et_revenir_accueil,
 )
+from core.evenements import charger_evenement_actif  # noqa: E402
 
 
 # ========================================================================================================
@@ -961,6 +962,13 @@ def render_decompte(session: SessionState) -> None:
     if len(session.photos_validees) == 0:
         session.id_session_timestamp = datetime.now().strftime(FORMAT_TIMESTAMP)
         session.session_start_ts = time.time()
+        if not session.evenement_charge:
+            evenement = charger_evenement_actif()
+            session.evenement_charge = True
+            if evenement:
+                session.evenement_id = evenement["id"]
+                session.evenement_nom = evenement["nom"]
+                session.evenement_tags = evenement["tags"]
         log_info(f"🚀 NOUVELLE SESSION : {session.id_session_timestamp}")
 
     # Boucle du décompte visuel (+ instrumentation perf #20 : compte les frames

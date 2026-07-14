@@ -25,6 +25,10 @@ de données. Document à mettre à jour lors des refactors structurels majeurs.
      │      │  └─────────────────┘   │
      │      │                        │
      │      │  ┌─────────────────┐   │
+     │      │  │ evenements      │   │  ◄── lecture tolérante de l'instantané actif
+     │      │  └─────────────────┘   │
+     │      │                        │
+     │      │  ┌─────────────────┐   │
      │      │  │ monitoring      │   │  ◄── DiskMonitor + lister_images_slideshow
      │      │  └─────────────────┘   │
      │      │                        │
@@ -66,8 +70,9 @@ de données. Document à mettre à jour lors des refactors structurels majeurs.
 - `web/*` (admin web optionnelle) importe `core/*`, `config`, `stats` — mais
   **jamais** `Photobooth_start` ni `ui/*`. Tourne dans un process systemd
   séparé ; la communication avec le kiosque passe uniquement par le
-  filesystem (`data/sessions.jsonl` en lecture, `assets/overlays/` et
-  `data/config_overrides.json` en écriture). Voir `docs/ADMIN.md`.
+  filesystem (`data/sessions.jsonl` en lecture, `assets/overlays/`,
+  `data/evenement_actif.json` et `data/config_overrides.json` en écriture).
+  Voir `docs/ADMIN.md`.
 
 ---
 
@@ -135,6 +140,7 @@ et `session.mode_actuel is None`. Première touche réveille sans déclencher d'
  2.        ▼  Etat.DECOMPTE
     • session.id_session_timestamp = timestamp
     • session.session_start_ts = time.time()
+    • lecture data/evenement_actif.json puis copie id/nom/tags dans SessionState
     • LiveView caméra affiché (30 FPS via camera_mgr.get_preview_frame())
     • Décompte N → 1 avec beep
     • camera_mgr.capture_hq() :
@@ -179,7 +185,8 @@ et `session.mode_actuel is None`. Première touche réveille sans déclencher d'
 | `PATH_PRINT_<mode>/<prefix>_<id>.jpg` | si imprimé | `shutil.copy` |
 | `PATH_SKIPPED_RETAKE/retake_<id>.jpg` | si recommencer | `shutil.move` |
 | `PATH_SKIPPED_DELETED/deleted_<id>.jpg` | si abandon | `shutil.move` |
-| `data/sessions.jsonl` (append) | fin de session | `ecrire_metadata_session()` |
+| `data/sessions.jsonl` (append, avec instantané événement) | fin de session | `ecrire_metadata_session()` |
+| `data/evenement_actif.json` (remplacement atomique) | activation/modification/fin d'événement | admin web |
 | `logs/photobooth.log` (rotation 2 Mo × 5) | continu | `core.logger` |
 
 ---

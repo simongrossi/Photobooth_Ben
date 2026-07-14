@@ -6,6 +6,8 @@ from datetime import date, timedelta
 
 from flask import Blueprint, render_template, request
 
+import config
+
 from config import (
     INTERVALLE_CHECK_DISQUE_S,
     INTERVALLE_CHECK_TEMP_S,
@@ -19,8 +21,9 @@ from config import (
 )
 from core.monitoring import DiskMonitor, TempMonitor
 from core.printer import PrinterManager
-from stats import calculer_stats, load_sessions, stats_du_jour, stats_par_jour
+from stats import calculer_stats, filtrer_sessions, load_sessions, stats_du_jour, stats_par_jour
 from web.auth import require_auth
+from web.evenements import lister_evenements, tous_les_tags
 
 bp = Blueprint("dashboard", __name__, url_prefix="/dashboard")
 
@@ -95,9 +98,17 @@ def _construire_sante(disk: DiskMonitor, temp: TempMonitor) -> list[dict]:
 @require_auth
 def index():
     periode = request.args.get("periode", "7jours")
-    sessions_path = os.path.join(PATH_DATA, "sessions.jsonl")
+    evenement_filtre = request.args.get("evenement", "")
+    tag_filtre = request.args.get("tag", "")
+    sessions_path = os.path.join(config.PATH_DATA, "sessions.jsonl")
     sessions = load_sessions(sessions_path) or []
-    sessions_a_calculer, periode = _filtrer_sessions_par_periode(sessions, periode)
+    tags_disponibles = sorted(
+        set(tous_les_tags())
+        | {str(tag) for session in sessions for tag in session.get("event_tags", [])},
+        key=str.casefold,
+    )
+    sessions_filtrees = filtrer_sessions(sessions, evenement_filtre, tag_filtre)
+    sessions_a_calculer, periode = _filtrer_sessions_par_periode(sessions_filtrees, periode)
 
     stats = calculer_stats(sessions_a_calculer)
 
@@ -117,7 +128,7 @@ def index():
     temp.intervalle_s = 0
     temp.tick()
 
-    jour = stats_du_jour(sessions, date.today().strftime("%Y-%m-%d"))
+    jour = stats_du_jour(sessions_filtrees, date.today().strftime("%Y-%m-%d"))
     limite_hist = 100 if periode == "toutes" else 7
     historique = stats_par_jour(sessions_a_calculer, limite=limite_hist)
     max_total = max((j["total"] for j in historique), default=0)
@@ -151,4 +162,8 @@ def index():
         periode=periode,
         periodes=PERIODES,
         periode_libelle=PERIODES[periode]["libelle"],
+        evenement_filtre=evenement_filtre,
+        tag_filtre=tag_filtre,
+        evenements=lister_evenements(),
+        tags=tags_disponibles,
     )

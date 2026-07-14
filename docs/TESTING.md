@@ -11,7 +11,7 @@ Voir aussi : [DEVELOPMENT.md](DEVELOPMENT.md) pour le setup local, pre-commit et
 ## Lancer les tests
 
 ```bash
-# Tous les tests (147 tests, ~6 s)
+# Toute la suite
 pytest
 
 # Un fichier précis
@@ -44,10 +44,12 @@ au-dessus de **87 %**.
 | [test_printer.py](../test_printer.py) | 13 | `core/printer.py` (PrinterManager, lpstat/lp) | mock `subprocess.run`/`Popen` |
 | [test_logger.py](../test_logger.py) | 4 | `core/logger.py` (log_error wrapper legacy) | `caplog` pytest |
 | [test_session.py](../test_session.py) | 11 | `core/session.py` (Etat, SessionState, metadata JSONL) | monkeypatch `PATH_DATA` |
+| [test_evenements.py](../test_evenements.py) | 4 | partage actif + instantané de session | `tmp_path`, JSON synthétique |
 | [test_monitoring.py](../test_monitoring.py) | 21 | `core/monitoring.py` (DiskMonitor, TempMonitor, lister_images_slideshow) | fixtures `tmp_path` |
 | [test_status.py](../test_status.py) | 18 | `status.py` (diagnostic hardware/assets) | fixtures assets factices dans `tmp_path` |
 | [test_stats.py](../test_stats.py) | 17 | `stats.py` (parsing `sessions.jsonl`, histogramme horaire, CLI) | fixtures JSONL synthétiques |
 | [test_integration.py](../test_integration.py) | 8 | chaîne `CameraManager` → `MontageGenerator` → `PrinterManager`, import sans runtime | mocks gphoto2/CUPS/pygame, réels PIL |
+| [test_web_evenements.py](../test_web_evenements.py) | 6 | CRUD, activation, filtres et export ZIP | Flask test client + SQLite/filesystem isolés |
 
 **Non couvert en CI** (nécessite pygame/gphoto2/caméra réelle) :
 - `Photobooth_start.py` — boucle principale, render functions, event handlers

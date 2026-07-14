@@ -63,6 +63,7 @@ Photobooth_Ben/
 ├── core/                 # modules métier (testables sans pygame)
 │   ├── arduino.py        # pyserial + thread → injecte KEYDOWN, pilote LEDs
 │   ├── camera.py         # gphoto2 optionnel + lock + retry
+│   ├── evenements.py     # lecture tolérante de l'événement actif
 │   ├── logger.py         # logging rotatif + sessions.jsonl
 │   ├── monitoring.py     # DiskMonitor + lister_images_slideshow
 │   ├── montage.py        # PIL : MontageGenerator10x15/Strip

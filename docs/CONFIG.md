@@ -150,6 +150,7 @@ retombe sur le défaut. Effet au redémarrage du kiosque (slides : à chaud).
 | `PATH_FONTS_BIBLIO` | `assets/fonts/bibliotheque/` | Bibliothèque de polices |
 | `PATH_SLIDESHOW_PERSO` | `assets/slideshow/` | Visuels perso ajoutés à la rotation du slideshow |
 | `PATH_CORBEILLE` | `data/corbeille/` | Photos retirées de la galerie/slideshow (restaurables) |
+| `PATH_EVENEMENT_ACTIF` | `data/evenement_actif.json` | Instantané atomique de l'événement lu par le kiosque au début d'une session |
 | `BG_ACCUEIL_EFFECTIF` | résolu à l'import | Actif si présent, sinon `FILE_BG_ACCUEIL` |
 | `POLICE_EFFECTIVE` | résolu à l'import | Active si présente, sinon `POLICE_FICHIER` |
 

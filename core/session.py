@@ -44,6 +44,10 @@ class SessionState:
     dernier_clic_time: float = 0.0
     abandon_confirm_until: float = 0.0  # timestamp limite de la fenêtre de confirmation
     last_activity_ts: float = 0.0       # pour déclenchement slideshow idle
+    evenement_id: Optional[str] = None
+    evenement_nom: Optional[str] = None
+    evenement_tags: list[str] = field(default_factory=list)
+    evenement_charge: bool = False
 
     def reset_pour_accueil(self) -> None:
         """Reset complet après fin de session (printed/abandoned/capture_failed/print_failed/print_disabled).
@@ -54,6 +58,10 @@ class SessionState:
         self.id_session_timestamp = ""
         self.img_preview_cache = None
         self.path_montage = ""
+        self.evenement_id = None
+        self.evenement_nom = None
+        self.evenement_tags = []
+        self.evenement_charge = False
 
 
 def ecrire_metadata_session(
@@ -79,6 +87,9 @@ def ecrire_metadata_session(
             "nb_photos": nb_photos,
             "duree_s": round(duree_s, 1),
             "ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "event_id": session.evenement_id,
+            "event_name": session.evenement_nom,
+            "event_tags": list(session.evenement_tags),
         }
         chemin = os.path.join(PATH_DATA, "sessions.jsonl")
         with open(chemin, "a", encoding="utf-8") as f:
