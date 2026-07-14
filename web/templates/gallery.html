@@ -1,7 +1,15 @@
 {% extends "base.html" %}
 {% block titre %}Galerie · Photobooth{% endblock %}
 {% block contenu %}
-<h1>Galerie <span class="muted">— {{ total }} montage{{ 's' if total > 1 }}</span></h1>
+<div class="dashboard-header">
+  <h1>Galerie <span class="muted">— {{ total }} image{{ 's' if total > 1 }}</span></h1>
+  <div class="filter-group">
+    <a href="?type=montages" class="btn-filter {% if type_galerie == 'montages' %}active{% endif %}">Montages</a>
+    <a href="?type=raw" class="btn-filter {% if type_galerie == 'raw' %}active{% endif %}">Photos brutes</a>
+    <a href="?type=deleted" class="btn-filter {% if type_galerie == 'deleted' %}active{% endif %}">Abandons</a>
+    <a href="?type=retake" class="btn-filter {% if type_galerie == 'retake' %}active{% endif %}">Rejouées</a>
+  </div>
+</div>
 
 {% if items %}
   <div class="galerie">

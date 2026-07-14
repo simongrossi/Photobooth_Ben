@@ -166,3 +166,71 @@ class TestCorbeille:
         html = r.get_data(as_text=True)
         assert "Corbeille" in html
         assert "m1.jpg" in html
+
+
+class TestFiltrerCategories:
+    def test_filtrer_categories(self, tmp_path, monkeypatch):
+        data = tmp_path / "data"
+        (data / "print" / "print_10x15").mkdir(parents=True)
+        (data / "print" / "print_strip").mkdir(parents=True)
+        (data / "raw").mkdir(parents=True)
+        (data / "skipped" / "deleted").mkdir(parents=True)
+        (data / "skipped" / "retake").mkdir(parents=True)
+        
+        monkeypatch.setenv("PHOTOBOOTH_ADMIN_PASS", "test")
+        
+        import config
+        monkeypatch.setattr(config, "PATH_DATA", str(data))
+        monkeypatch.setattr(config, "PATH_PRINT", str(data / "print"))
+        monkeypatch.setattr(config, "PATH_PRINT_10X15", str(data / "print" / "print_10x15"))
+        monkeypatch.setattr(config, "PATH_PRINT_STRIP", str(data / "print" / "print_strip"))
+        monkeypatch.setattr(config, "PATH_RAW", str(data / "raw"))
+        monkeypatch.setattr(config, "PATH_SKIPPED_DELETED", str(data / "skipped" / "deleted"))
+        monkeypatch.setattr(config, "PATH_SKIPPED_RETAKE", str(data / "skipped" / "retake"))
+        
+        import web.db
+        import web.routes.gallery as g
+        monkeypatch.setattr(web.db, "DB_PATH", str(data / "admin.db"))
+        
+        # Override _RACINES_AUTORISEES to use temporary directories
+        monkeypatch.setattr(g, "_RACINES_AUTORISEES", {
+            "10x15": str(data / "print" / "print_10x15"),
+            "strip": str(data / "print" / "print_strip"),
+            "raw": str(data / "raw"),
+            "deleted": str(data / "skipped" / "deleted"),
+            "retake": str(data / "skipped" / "retake"),
+        })
+        
+        # Write fake images
+        _png(data / "print" / "print_10x15" / "m1.jpg")
+        _png(data / "raw" / "raw_1.jpg")
+        _png(data / "skipped" / "deleted" / "del_1.jpg")
+        _png(data / "skipped" / "retake" / "ret_1.jpg")
+        
+        app = create_app()
+        app.config["TESTING"] = True
+        c = app.test_client()
+        
+        # 1. Montages (default)
+        r = c.get("/galerie/", headers=HEADERS)
+        html = r.get_data(as_text=True)
+        assert "m1.jpg" in html
+        assert "raw_1.jpg" not in html
+        
+        # 2. Raw
+        r = c.get("/galerie/?type=raw", headers=HEADERS)
+        html = r.get_data(as_text=True)
+        assert "raw_1.jpg" in html
+        assert "m1.jpg" not in html
+        
+        # 3. Deleted
+        r = c.get("/galerie/?type=deleted", headers=HEADERS)
+        html = r.get_data(as_text=True)
+        assert "del_1.jpg" in html
+        assert "m1.jpg" not in html
+        
+        # 4. Retake
+        r = c.get("/galerie/?type=retake", headers=HEADERS)
+        html = r.get_data(as_text=True)
+        assert "ret_1.jpg" in html
+        assert "m1.jpg" not in html

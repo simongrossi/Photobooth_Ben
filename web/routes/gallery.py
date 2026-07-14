@@ -8,7 +8,10 @@ from dataclasses import dataclass
 from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, url_for
 from PIL import Image
 
-from config import PATH_CORBEILLE, PATH_PRINT, PATH_PRINT_10X15, PATH_PRINT_STRIP
+from config import (
+    PATH_CORBEILLE, PATH_PRINT, PATH_PRINT_10X15, PATH_PRINT_STRIP,
+    PATH_RAW, PATH_SKIPPED_DELETED, PATH_SKIPPED_RETAKE
+)
 from web.auth import require_auth
 
 bp = Blueprint("gallery", __name__, url_prefix="/galerie")
@@ -20,6 +23,9 @@ THUMB_MAX = (300, 300)
 _RACINES_AUTORISEES = {
     "10x15": PATH_PRINT_10X15,
     "strip": PATH_PRINT_STRIP,
+    "raw": PATH_RAW,
+    "deleted": PATH_SKIPPED_DELETED,
+    "retake": PATH_SKIPPED_RETAKE,
 }
 
 
@@ -31,10 +37,24 @@ class Item:
     taille_ko: int
 
 
-def _lister_tous() -> list[Item]:
+def _lister_tous(type_galerie: str = "montages") -> list[Item]:
     items: list[Item] = []
-    for mode, dossier in _RACINES_AUTORISEES.items():
-        if not os.path.isdir(dossier):
+
+    # Déterminer quels modes inclure
+    if type_galerie == "raw":
+        modes_a_lister = ["raw"]
+    elif type_galerie == "deleted":
+        modes_a_lister = ["deleted"]
+    elif type_galerie == "retake":
+        modes_a_lister = ["retake"]
+    elif type_galerie == "all":
+        modes_a_lister = ["10x15", "strip", "raw", "deleted", "retake"]
+    else:  # "montages"
+        modes_a_lister = ["10x15", "strip"]
+
+    for mode in modes_a_lister:
+        dossier = _RACINES_AUTORISEES.get(mode)
+        if not dossier or not os.path.isdir(dossier):
             continue
         for nom in os.listdir(dossier):
             chemin = os.path.join(dossier, nom)
@@ -52,6 +72,27 @@ def _lister_tous() -> list[Item]:
                 mtime=st.st_mtime,
                 taille_ko=st.st_size // 1024,
             ))
+
+    # Si on cherche les montages et qu'il y a d'anciens montages directement dans PATH_PRINT
+    if type_galerie in ("montages", "all") and os.path.isdir(PATH_PRINT):
+        for nom in os.listdir(PATH_PRINT):
+            chemin = os.path.join(PATH_PRINT, nom)
+            if not os.path.isfile(chemin):
+                continue
+            if not nom.lower().endswith((".jpg", ".jpeg", ".png")):
+                continue
+            try:
+                st = os.stat(chemin)
+            except OSError:
+                continue
+            mode = "strip" if "strip" in nom.lower() else "10x15"
+            items.append(Item(
+                nom=nom,
+                mode=mode,
+                mtime=st.st_mtime,
+                taille_ko=st.st_size // 1024,
+            ))
+
     items.sort(key=lambda i: i.mtime, reverse=True)
     return items
 
@@ -61,13 +102,23 @@ def _resoudre_chemin(mode: str, nom: str) -> str:
     racine = _RACINES_AUTORISEES.get(mode)
     if racine is None:
         abort(404)
+
+    # Tenter de trouver dans le dossier spécifique
     chemin = os.path.realpath(os.path.join(racine, nom))
     racine_resolue = os.path.realpath(racine)
-    if not chemin.startswith(racine_resolue + os.sep) and chemin != racine_resolue:
-        abort(404)
-    if not os.path.isfile(chemin):
-        abort(404)
-    return chemin
+    if chemin.startswith(racine_resolue + os.sep) or chemin == racine_resolue:
+        if os.path.isfile(chemin):
+            return chemin
+
+    # Pour les montages legacy (mode 10x15 ou strip), vérifier également dans PATH_PRINT
+    if mode in ("10x15", "strip"):
+        chemin_racine = os.path.realpath(os.path.join(PATH_PRINT, nom))
+        racine_print_resolue = os.path.realpath(PATH_PRINT)
+        if chemin_racine.startswith(racine_print_resolue + os.sep) or chemin_racine == racine_print_resolue:
+            if os.path.isfile(chemin_racine):
+                return chemin_racine
+
+    abort(404)
 
 
 def _lister_corbeille() -> list[Item]:
@@ -93,7 +144,8 @@ def _lister_corbeille() -> list[Item]:
 @bp.route("/")
 @require_auth
 def index():
-    tous = _lister_tous()
+    type_galerie = request.args.get("type", "montages")
+    tous = _lister_tous(type_galerie)
     page = max(1, int(request.args.get("page", "1") or "1"))
     debut = (page - 1) * PAGE_SIZE
     fin = debut + PAGE_SIZE
@@ -107,6 +159,7 @@ def index():
         total=len(tous),
         corbeille=_lister_corbeille(),
         print_path=PATH_PRINT,
+        type_galerie=type_galerie,
     )
 
 
