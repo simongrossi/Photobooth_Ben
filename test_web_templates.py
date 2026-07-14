@@ -286,3 +286,79 @@ class TestUploadFond:
                headers=HEADERS, content_type="multipart/form-data",
                follow_redirects=True)
         assert os.listdir(overlays) == [] and os.listdir(fonds) == []
+
+
+def _uploader(c, nom, type_t, couche, contenu, nom_fichier):
+    """Helper : upload + retourne l'id du template créé."""
+    c.post("/templates/upload", data={
+        "nom": nom, "type": type_t, "couche": couche,
+        "fichier": (io.BytesIO(contenu), nom_fichier),
+    }, headers=HEADERS, content_type="multipart/form-data", follow_redirects=True)
+    import sqlite3
+    import web.db
+    conn = sqlite3.connect(web.db.DB_PATH)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT id FROM template WHERE nom = ?", (nom,)).fetchone()
+    conn.close()
+    return row["id"]
+
+
+class TestActivationFond:
+    def test_activer_fond_copie_vers_cible_bg(self, client):
+        c, _, fonds = client
+        tid = _uploader(c, "FondM", "10x15", "fond", _jpg_bytes(), "f.jpg")
+        r = c.post(f"/templates/activer/{tid}", headers=HEADERS, follow_redirects=True)
+        assert r.status_code == 200
+        assert os.path.isfile(os.path.join(fonds, "10x15_background.jpg"))
+
+    def test_activation_independante_entre_couches(self, client):
+        """Activer un fond 10x15 ne doit PAS désactiver l'overlay 10x15."""
+        c, overlays, _ = client
+        tid_ov = _uploader(c, "Cadre", "10x15", "overlay", _png_bytes(), "c.png")
+        tid_fd = _uploader(c, "Fond", "10x15", "fond", _jpg_bytes(), "f.jpg")
+        c.post(f"/templates/activer/{tid_ov}", headers=HEADERS, follow_redirects=True)
+        c.post(f"/templates/activer/{tid_fd}", headers=HEADERS, follow_redirects=True)
+
+        import sqlite3
+        import web.db
+        conn = sqlite3.connect(web.db.DB_PATH)
+        actifs = conn.execute("SELECT COUNT(*) FROM template WHERE actif = 1").fetchone()[0]
+        conn.close()
+        assert actifs == 2  # un par couche
+
+
+class TestDesactivation:
+    def test_desactiver_supprime_cible_et_actif(self, client):
+        c, overlays, _ = client
+        tid = _uploader(c, "Cadre", "10x15", "overlay", _png_bytes(), "c.png")
+        c.post(f"/templates/activer/{tid}", headers=HEADERS, follow_redirects=True)
+        cible = os.path.join(overlays, "10x15_overlay.png")
+        assert os.path.isfile(cible)
+
+        r = c.post("/templates/desactiver/overlay/10x15",
+                   headers=HEADERS, follow_redirects=True)
+        assert r.status_code == 200
+        assert not os.path.exists(cible)
+
+        import sqlite3
+        import web.db
+        conn = sqlite3.connect(web.db.DB_PATH)
+        actifs = conn.execute("SELECT COUNT(*) FROM template WHERE actif = 1").fetchone()[0]
+        conn.close()
+        assert actifs == 0
+
+    def test_desactiver_idempotent_si_deja_aucun(self, client):
+        c, _, _ = client
+        r = c.post("/templates/desactiver/fond/strip",
+                   headers=HEADERS, follow_redirects=True)
+        assert r.status_code == 200  # no-op poli, pas d'erreur
+
+    def test_desactiver_couche_inconnue_404(self, client):
+        c, _, _ = client
+        r = c.post("/templates/desactiver/cadre/10x15", headers=HEADERS)
+        assert r.status_code == 404
+
+    def test_desactiver_type_inconnu_404(self, client):
+        c, _, _ = client
+        r = c.post("/templates/desactiver/overlay/13x18", headers=HEADERS)
+        assert r.status_code == 404

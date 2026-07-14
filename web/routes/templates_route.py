@@ -216,6 +216,30 @@ def activer(template_id: int):
     return redirect(url_for("templates.index"))
 
 
+@bp.route("/desactiver/<couche>/<type_t>", methods=["POST"])
+@require_auth
+def desactiver(couche: str, type_t: str):
+    """État « Aucun » : supprime le fichier actif de la couche pour ce mode.
+
+    Le kiosque gère nativement l'absence (fond → toile blanche, overlay → photo
+    nue), effet à la photo suivante. Idempotent si déjà aucun template actif.
+    """
+    if couche not in COUCHES_AUTORISEES or type_t not in TYPES_AUTORISES:
+        abort(404)
+    cible_active = _CIBLE_ACTIVE[(couche, type_t)]
+    try:
+        os.remove(cible_active)
+    except FileNotFoundError:
+        pass
+    with connexion() as conn:
+        conn.execute(
+            "UPDATE template SET actif = 0 WHERE couche = ? AND type = ?",
+            (couche, type_t),
+        )
+    flash(f"Aucun template {couche} pour le mode {type_t} (désactivé).", "success")
+    return redirect(url_for("templates.index"))
+
+
 @bp.route("/supprimer/<int:template_id>", methods=["POST"])
 @require_auth
 def supprimer(template_id: int):
