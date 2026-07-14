@@ -136,6 +136,23 @@ Pour les modifier en production voir [RUNBOOK.md](RUNBOOK.md).
 | `COULEUR_TEXTE_M` | vert | Bouton milieu (Valider / Imprimer) |
 | `COULEUR_TEXTE_D` | rouge | Bouton droit (Supprimer / Accueil) |
 
+### Assets kiosque gérés par l'admin web (volet 2)
+
+L'admin web peut activer un fond d'accueil et une police personnalisés. Le
+kiosque préfère le fichier « actif » s'il existe (`resoudre_actif()`), sinon
+retombe sur le défaut. Effet au redémarrage du kiosque (slides : à chaud).
+
+| Constante | Défaut | Usage |
+|---|---|---|
+| `FILE_BG_ACCUEIL_ACTIF` | `assets/interface/accueil_actif.jpg` | Fond d'accueil activé par l'admin |
+| `POLICE_FICHIER_ACTIF` | `assets/fonts/police_active.ttf` | Police activée par l'admin |
+| `PATH_ACCUEIL_BIBLIO` | `assets/interface/accueil/` | Bibliothèque de fonds d'accueil |
+| `PATH_FONTS_BIBLIO` | `assets/fonts/bibliotheque/` | Bibliothèque de polices |
+| `PATH_SLIDESHOW_PERSO` | `assets/slideshow/` | Visuels perso ajoutés à la rotation du slideshow |
+| `PATH_CORBEILLE` | `data/corbeille/` | Photos retirées de la galerie/slideshow (restaurables) |
+| `BG_ACCUEIL_EFFECTIF` | résolu à l'import | Actif si présent, sinon `FILE_BG_ACCUEIL` |
+| `POLICE_EFFECTIVE` | résolu à l'import | Active si présente, sinon `POLICE_FICHIER` |
+
 ### Tailles de police
 
 | Constante | Défaut | Usage |

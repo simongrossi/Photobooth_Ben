@@ -149,6 +149,26 @@ COULEUR_TEXTE_D = (255, 0, 0)     # Rouge (Accueil / Supprimer)
 
 # --- Polices ---
 POLICE_FICHIER  = os.path.join(BASE_DIR, "assets/fonts/WesternBangBang-Regular.ttf")
+
+
+# --- Volet 2 : assets kiosque gérés par l'admin web (fond accueil, police, slides) ---
+def resoudre_actif(chemin_actif, chemin_defaut):
+    """Préfère le fichier activé par l'admin web s'il existe, sinon le défaut.
+    Évalué à l'import : le kiosque charge ses assets au boot."""
+    return chemin_actif if os.path.exists(chemin_actif) else chemin_defaut
+
+
+FILE_BG_ACCUEIL_ACTIF = os.path.join(PATH_INTERFACE, "accueil_actif.jpg")
+POLICE_FICHIER_ACTIF  = os.path.join(BASE_DIR, "assets/fonts/police_active.ttf")
+PATH_ACCUEIL_BIBLIO   = os.path.join(PATH_INTERFACE, "accueil")
+PATH_FONTS_BIBLIO     = os.path.join(BASE_DIR, "assets/fonts/bibliotheque")
+PATH_SLIDESHOW_PERSO  = os.path.join(PATH_ASSETS, "slideshow")
+PATH_CORBEILLE        = os.path.join(PATH_DATA, "corbeille")
+
+BG_ACCUEIL_EFFECTIF = resoudre_actif(FILE_BG_ACCUEIL_ACTIF, FILE_BG_ACCUEIL)
+POLICE_EFFECTIVE    = resoudre_actif(POLICE_FICHIER_ACTIF, POLICE_FICHIER)
+
+
 TAILLE_DECOMPTE      = 300  # Chiffre 3, 2, 1...
 TAILLE_TITRE_ACCUEIL = 180  # Le nom du Photobooth ou gros messages
 TAILLE_TEXTE_BOUTON  = 60   # "GRAND FORMAT" / "BANDELETTES" (ecran choix du mode)
