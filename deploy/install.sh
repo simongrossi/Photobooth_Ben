@@ -33,15 +33,6 @@ TARGET_USER="${SUDO_USER}"
 TARGET_HOME="$(getent passwd "${TARGET_USER}" | cut -d: -f6)"
 PROJET_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-if [[ "${PROJET_DIR}" != "${TARGET_HOME}/Photobooth_Ben" ]]; then
-    echo "⚠  Le projet n'est pas dans ${TARGET_HOME}/Photobooth_Ben." >&2
-    echo "   Chemin détecté : ${PROJET_DIR}"
-    echo "   Le service systemd utilise ce chemin fixe. Déplace le projet ou édite"
-    echo "   le service manuellement après installation."
-    read -rp "Continuer quand même ? [y/N] " reply
-    [[ "${reply}" =~ ^[Yy]$ ]] || exit 1
-fi
-
 echo "→ Utilisateur cible : ${TARGET_USER}"
 echo "→ Répertoire projet : ${PROJET_DIR}"
 echo
@@ -66,6 +57,7 @@ echo "→ Génération de ${SERVICE_DEST}..."
 sed \
     -e "s|@USER@|${TARGET_USER}|g" \
     -e "s|@HOME@|${TARGET_HOME}|g" \
+    -e "s|@PROJET_DIR@|${PROJET_DIR}|g" \
     "${SERVICE_SRC}" > "${SERVICE_DEST}"
 
 # --- 4. Activation systemd ---

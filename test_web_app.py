@@ -169,13 +169,37 @@ class TestDashboardV2:
         # Par défaut (récent) : seulement la session récente
         r1 = client.get("/dashboard/", headers=HEADERS_OK)
         html1 = r1.get_data(as_text=True)
-        # La card "Sessions (total)" doit valoir 1
-        assert "Sessions (total)</div>" in html1
+        # La période par défaut est explicitement de 7 jours.
+        assert "Sessions — 7 derniers jours</div>" in html1
         assert "1" in html1
         
         # Avec filtre toutes : les deux sessions
         r2 = client.get("/dashboard/?periode=toutes", headers=HEADERS_OK)
         html2 = r2.get_data(as_text=True)
-        # La card "Sessions (total)" doit valoir 2
-        assert "Sessions (total)</div>" in html2
+        assert "Sessions — Tout depuis le début</div>" in html2
         assert "2" in html2
+
+    def test_filtres_en_jours_calendaires(self):
+        from datetime import date, timedelta
+
+        from web.routes.dashboard import _filtrer_sessions_par_periode
+
+        aujourd_hui = date(2026, 7, 14)
+        sessions = [
+            {"ts": f"{(aujourd_hui - timedelta(days=delta)).isoformat()} 12:00:00"}
+            for delta in (0, 1, 2, 6, 7, 30)
+        ]
+
+        assert len(_filtrer_sessions_par_periode(sessions, "aujourdhui", aujourd_hui)[0]) == 1
+        assert len(_filtrer_sessions_par_periode(sessions, "2jours", aujourd_hui)[0]) == 2
+        assert len(_filtrer_sessions_par_periode(sessions, "7jours", aujourd_hui)[0]) == 4
+        assert len(_filtrer_sessions_par_periode(sessions, "toutes", aujourd_hui)[0]) == 6
+
+    def test_ancien_filtre_recent_reste_compatible(self):
+        from datetime import date
+
+        from web.routes.dashboard import _filtrer_sessions_par_periode
+
+        sessions, periode = _filtrer_sessions_par_periode([], "recent", date(2026, 7, 14))
+        assert sessions == []
+        assert periode == "7jours"

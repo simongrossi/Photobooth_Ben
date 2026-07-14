@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from datetime import date
+from datetime import date, timedelta
 
 from flask import Blueprint, render_template, request
 
@@ -28,6 +28,38 @@ bp = Blueprint("dashboard", __name__, url_prefix="/dashboard")
 printer_mgr = PrinterManager(NOM_IMPRIMANTE_10X15, NOM_IMPRIMANTE_STRIP)
 
 HEURES_ORDRE = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6, 7]
+
+PERIODES = {
+    "aujourdhui": {"libelle": "Aujourd'hui", "nb_jours": 1},
+    "2jours": {"libelle": "2 derniers jours", "nb_jours": 2},
+    "7jours": {"libelle": "7 derniers jours", "nb_jours": 7},
+    "toutes": {"libelle": "Tout depuis le début", "nb_jours": None},
+}
+
+
+def _filtrer_sessions_par_periode(
+    sessions: list[dict], periode: str, aujourd_hui: date | None = None,
+) -> tuple[list[dict], str]:
+    """Filtre par jours calendaires, aujourd'hui étant inclus dans la période."""
+    # Compatibilité avec les anciens liens/bookmarks du dashboard.
+    if periode == "recent":
+        periode = "7jours"
+    if periode not in PERIODES:
+        periode = "7jours"
+    if periode == "toutes":
+        return sessions, periode
+
+    aujourd_hui = aujourd_hui or date.today()
+    date_seuil = aujourd_hui - timedelta(days=PERIODES[periode]["nb_jours"] - 1)
+    resultat = []
+    for session in sessions:
+        try:
+            date_session = date.fromisoformat(session.get("ts", "")[:10])
+        except (TypeError, ValueError):
+            continue
+        if date_seuil <= date_session <= aujourd_hui:
+            resultat.append(session)
+    return resultat, periode
 
 
 def _pastille_imprimante(mode: str, libelle: str) -> dict:
@@ -62,17 +94,10 @@ def _construire_sante(disk: DiskMonitor, temp: TempMonitor) -> list[dict]:
 @bp.route("/")
 @require_auth
 def index():
-    periode = request.args.get("periode", "recent")
+    periode = request.args.get("periode", "7jours")
     sessions_path = os.path.join(PATH_DATA, "sessions.jsonl")
     sessions = load_sessions(sessions_path) or []
-
-    if periode == "toutes":
-        sessions_a_calculer = sessions
-    else:
-        # Par défaut : les 7 derniers jours (depuis aujourd'hui)
-        from datetime import timedelta
-        date_seuil = (date.today() - timedelta(days=7)).strftime("%Y-%m-%d")
-        sessions_a_calculer = [s for s in sessions if s.get("ts", "") >= date_seuil]
+    sessions_a_calculer, periode = _filtrer_sessions_par_periode(sessions, periode)
 
     stats = calculer_stats(sessions_a_calculer)
 
@@ -124,4 +149,6 @@ def index():
         sessions_path=sessions_path,
         print_path=PATH_PRINT,
         periode=periode,
+        periodes=PERIODES,
+        periode_libelle=PERIODES[periode]["libelle"],
     )

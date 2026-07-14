@@ -1049,6 +1049,28 @@ def _dessiner_texte_centre_avec_garde(screen, text: str, font, color: tuple, y: 
     screen.blit(surf, (WIDTH // 2 - surf.get_width() // 2, y))
 
 
+def _dessiner_actions_bandeau(actions: tuple[tuple[str, tuple], ...], y_bandeau: int) -> None:
+    """Répartit les actions dans des zones égales sans chevauchement."""
+    largeur_zone = WIDTH / len(actions)
+    largeur_max = int(largeur_zone - 48)
+    hauteur_max = BANDEAU_HAUTEUR - 10
+
+    for index, (texte, couleur) in enumerate(actions):
+        surf = font_bandeau.render(texte, True, couleur)
+        facteur = min(1.0, largeur_max / surf.get_width(), hauteur_max / surf.get_height())
+        if facteur < 1.0:
+            nouvelle_taille = (
+                max(1, round(surf.get_width() * facteur)),
+                max(1, round(surf.get_height() * facteur)),
+            )
+            surf = pygame.transform.smoothscale(surf, nouvelle_taille)
+
+        centre_x = (index + 0.5) * largeur_zone
+        x = round(centre_x - surf.get_width() / 2)
+        y = y_bandeau + (BANDEAU_HAUTEUR - surf.get_height()) // 2
+        screen.blit(surf, (x, y))
+
+
 def render_validation(session: SessionState) -> bool:
     """VALIDATION : aperçu de la dernière photo + bandeau boutons + burst countdown.
 
@@ -1103,7 +1125,6 @@ def render_validation(session: SessionState) -> bool:
     # 3. Bandeau + boutons
     y_b = HEIGHT - BANDEAU_HAUTEUR
     screen.blit(BANDEAU_CACHE, (0, y_b))
-    y_t = y_b + (BANDEAU_HAUTEUR // 2) - (font_bandeau.get_height() // 2)
 
     if session.mode_actuel == "strips":
         txt_g = config.TXT_VALID_REPRENDRE_STRIP
@@ -1114,11 +1135,11 @@ def render_validation(session: SessionState) -> bool:
         txt_m = config.TXT_VALID_VALIDER_10X15
         txt_d = config.TXT_VALID_ACCUEIL_10X15
 
-    screen.blit(font_bandeau.render(txt_g, True, config.COULEUR_TEXTE_G), (80, y_t))
-    t_m = font_bandeau.render(txt_m, True, config.COULEUR_TEXTE_M)
-    screen.blit(t_m, (WIDTH // 2 - t_m.get_width() // 2, y_t))
-    t_d = font_bandeau.render(txt_d, True, config.COULEUR_TEXTE_D)
-    screen.blit(t_d, (WIDTH - 80 - t_d.get_width(), y_t))
+    _dessiner_actions_bandeau((
+        (txt_g, config.COULEUR_TEXTE_G),
+        (txt_m, config.COULEUR_TEXTE_M),
+        (txt_d, config.COULEUR_TEXTE_D),
+    ), y_b)
 
     # Compteur PHOTO N/3 (strips)
     if session.mode_actuel == "strips":
@@ -1194,19 +1215,11 @@ def render_fin(session: SessionState) -> None:
     # 4. Bandeau de boutons
     y_b = HEIGHT - BANDEAU_HAUTEUR
     screen.blit(BANDEAU_CACHE, (0, y_b))
-    y_t = y_b + (BANDEAU_HAUTEUR // 2) - (font_bandeau.get_height() // 2)
-    
-    # Bouton Reprendre (Gauche)
-    txt_g_surf = font_bandeau.render(config.TXT_BOUTON_REPRENDRE, True, config.COULEUR_TEXTE_G)
-    screen.blit(txt_g_surf, (80, y_t))
-    
-    # Bouton Imprimer (Milieu)
-    t_m = font_bandeau.render(config.TXT_BOUTON_IMPRIMER, True, config.COULEUR_TEXTE_M)
-    screen.blit(t_m, (WIDTH // 2 - t_m.get_width() // 2, y_t))
-    
-    # Bouton Supprimer (Droite)
-    t_d = font_bandeau.render(config.TXT_BOUTON_SUPPRIMER, True, config.COULEUR_TEXTE_D)
-    screen.blit(t_d, (WIDTH - 80 - t_d.get_width(), y_t))
+    _dessiner_actions_bandeau((
+        (config.TXT_BOUTON_REPRENDRE, config.COULEUR_TEXTE_G),
+        (config.TXT_BOUTON_IMPRIMER, config.COULEUR_TEXTE_M),
+        (config.TXT_BOUTON_SUPPRIMER, config.COULEUR_TEXTE_D),
+    ), y_b)
 
     # 5. Overlay de confirmation d'abandon
     if session.abandon_confirm_until and time.time() < session.abandon_confirm_until:

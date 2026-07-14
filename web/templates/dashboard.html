@@ -4,8 +4,9 @@
 <div class="dashboard-header">
   <h1>Dashboard</h1>
   <div class="filter-group">
-    <a href="?periode=recent" class="btn-filter {% if periode == 'recent' %}active{% endif %}">Derniers jours</a>
-    <a href="?periode=toutes" class="btn-filter {% if periode == 'toutes' %}active{% endif %}">Tout depuis le début</a>
+    {% for cle, config_periode in periodes.items() %}
+      <a href="?periode={{ cle }}" class="btn-filter {% if periode == cle %}active{% endif %}">{{ config_periode.libelle }}</a>
+    {% endfor %}
   </div>
 </div>
 
@@ -44,11 +45,11 @@
 <!-- Étage 3 : totaux -->
 <section class="cards">
   <div class="card">
-    <div class="card__label">Sessions (total)</div>
+    <div class="card__label">Sessions — {{ periode_libelle }}</div>
     <div class="card__value">{{ stats.total }}</div>
   </div>
   <div class="card card--ok">
-    <div class="card__label">Taux imprimées</div>
+    <div class="card__label">Taux imprimées — {{ periode_libelle }}</div>
     <div class="card__value">{% if taux_imprimees is not none %}{{ taux_imprimees }} %{% else %}—{% endif %}</div>
   </div>
   <div class="card">
@@ -70,7 +71,7 @@
 <!-- Étage 4 : Répartition horaire globale -->
 {% if heures_total %}
 <section class="panel">
-  <h2>Répartition horaire</h2>
+  <h2>Répartition horaire — {{ periode_libelle }}</h2>
   {% set max_total_h = heures_total | map(attribute='nb') | list | max %}
   <div class="barres barres--large">
     {% for item in heures_total %}
@@ -85,7 +86,7 @@
 
 <!-- Étage 5 : historique -->
 <section class="panel">
-  <h2>Historique par journée</h2>
+  <h2>Historique par journée — {{ periode_libelle }}</h2>
   {% if historique %}
     <table class="histo-table">
       <tr><th>Date</th><th>Sessions</th><th>Imprimées</th><th class="histo-table__barre-col"></th></tr>

@@ -1,6 +1,6 @@
 # Unit systemd de l'interface admin web (optionnel).
 #
-# Les placeholders @USER@ et @HOME@ sont remplacés par deploy/install-admin.sh.
+# Les placeholders @USER@ et @PROJET_DIR@ sont remplacés par deploy/install-admin.sh.
 # Indépendant du service principal photobooth.service : peut être start/stop
 # sans impact sur le kiosque.
 #
@@ -10,7 +10,7 @@
 
 [Unit]
 Description=Photobooth Ben — interface admin web
-Documentation=file://@HOME@/Photobooth_Ben/docs/ADMIN.md
+Documentation=file://@PROJET_DIR@/docs/ADMIN.md
 After=network.target
 
 [Service]
@@ -18,7 +18,7 @@ Type=simple
 User=@USER@
 Group=@USER@
 
-WorkingDirectory=@HOME@/Photobooth_Ben
+WorkingDirectory=@PROJET_DIR@
 
 # Fichier d'env avec PHOTOBOOTH_ADMIN_PASS=... et (optionnel) PHOTOBOOTH_ADMIN_PORT
 EnvironmentFile=/etc/photobooth-admin.env
@@ -30,8 +30,8 @@ RestartSec=5
 StartLimitBurst=5
 StartLimitIntervalSec=60
 
-StandardOutput=append:@HOME@/Photobooth_Ben/logs/admin.log
-StandardError=append:@HOME@/Photobooth_Ben/logs/admin.log
+StandardOutput=append:@PROJET_DIR@/logs/admin.log
+StandardError=append:@PROJET_DIR@/logs/admin.log
 
 # Limite mémoire défensive (l'admin doit rester léger)
 MemoryMax=256M

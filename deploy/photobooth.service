@@ -1,7 +1,7 @@
 # Unit systemd du photobooth Ben — à installer dans /etc/systemd/system/.
 #
-# Les placeholders @USER@ et @HOME@ sont remplacés par deploy/install.sh, ou
-# manuellement (sed -i "s|@USER@|pi|g; s|@HOME@|/home/pi|g" photobooth.service).
+# Les placeholders @USER@ et @PROJET_DIR@ sont remplacés par deploy/install.sh, ou
+# manuellement (sed -i "s|@USER@|pi|g; s|@PROJET_DIR@|/home/pi/Photobooth_Ben|g" photobooth.service).
 #
 # Watchdog : systemd redémarre automatiquement le photobooth en cas de crash
 # (Restart=on-failure), avec backoff de 5 s. Si 5 crashs se produisent en moins
@@ -13,7 +13,7 @@
 
 [Unit]
 Description=Photobooth Ben (kiosque événementiel)
-Documentation=file://@HOME@/Photobooth_Ben/docs/DEPLOYMENT.md
+Documentation=file://@PROJET_DIR@/docs/DEPLOYMENT.md
 After=graphical.target cups.service
 Wants=graphical.target
 # Si les assets réseau sont utilisés (NAS, upload), ajouter :
@@ -31,11 +31,11 @@ Environment="XAUTHORITY=@HOME@/.Xauthority"
 # Active le mode plein écran pygame (lit PHOTOBOOTH_KIOSK dans config.py)
 Environment="PHOTOBOOTH_KIOSK=1"
 
-WorkingDirectory=@HOME@/Photobooth_Ben
+WorkingDirectory=@PROJET_DIR@
 
 # Lance le wrapper kiosk.sh qui configure l'écran (xset, unclutter) avant
 # d'exec le process Python. Le venv est chargé à l'intérieur du wrapper.
-ExecStart=@HOME@/Photobooth_Ben/deploy/kiosk.sh
+ExecStart=@PROJET_DIR@/deploy/kiosk.sh
 
 # Watchdog — relance sur crash uniquement, pas sur exit propre (Échap)
 Restart=on-failure
@@ -47,8 +47,8 @@ StartLimitBurst=5
 StartLimitIntervalSec=60
 
 # Logs : journalctl + fichier dédié (utile pour diff rapide J+1).
-StandardOutput=append:@HOME@/Photobooth_Ben/logs/systemd.log
-StandardError=append:@HOME@/Photobooth_Ben/logs/systemd.log
+StandardOutput=append:@PROJET_DIR@/logs/systemd.log
+StandardError=append:@PROJET_DIR@/logs/systemd.log
 
 # Fuite mémoire ? Force un restart si > 1 Go (sanity check, hors conditions normales)
 MemoryMax=1G

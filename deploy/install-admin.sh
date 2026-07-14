@@ -76,6 +76,7 @@ echo "→ Génération de ${SERVICE_DEST}..."
 sed \
     -e "s|@USER@|${TARGET_USER}|g" \
     -e "s|@HOME@|${TARGET_HOME}|g" \
+    -e "s|@PROJET_DIR@|${PROJET_DIR}|g" \
     "${SERVICE_SRC}" > "${SERVICE_DEST}"
 
 # --- 4. Dossier logs ---
