@@ -1,3 +1,32 @@
+#!/usr/bin/env python3
+"""simuler_rendu.py — simulation locale des rendus 10x15 + strip (sans matériel).
+
+Place 3 photos de test nommées photo1.jpg, photo2.jpg et photo3.jpg à la
+racine du projet, puis lance :
+
+    python3 simuler_rendu.py
+
+Génère le montage 10x15, le strip simple, puis une version « double strip »
+côte à côte au format d'impression (fichier *_DOUBLE_IMPRESSION.jpg).
+Pratique pour calibrer les templates/géométries sans caméra ni imprimante.
+"""
+import os
+import sys
+
+from PIL import Image
+
+from core.montage import MontageGenerator10x15, MontageGeneratorStrip
+
+# Photos sources attendues à la racine du projet
+PHOTOS_TEST = ["photo1.jpg", "photo2.jpg", "photo3.jpg"]
+ID_SESSION_TEST = "simulation"
+
+
+def verifier_images_sources() -> bool:
+    """Vérifie que les 3 photos de test sont présentes à la racine."""
+    return all(os.path.isfile(p) for p in PHOTOS_TEST)
+
+
 def simuler_montages():
     if not verifier_images_sources():
         print("\n⚠️ Erreur : Place d'abord 3 photos de test nommées photo1.jpg, photo2.jpg et photo3.jpg dans ce dossier.")
@@ -50,3 +79,6 @@ def simuler_montages():
         print(f"💥 Échec de la génération Strip : {e}")
 
     print("\n🎉 Simulation terminée ! Vérifie le fichier _DOUBLE_IMPRESSION.jpg.")
+
+if __name__ == "__main__":
+    simuler_montages()
