@@ -233,3 +233,8 @@ h2 { font-size: 1.2em; margin-top: 0; }
 .reglages th { color: var(--fg-muted); font-weight: 500; font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.5px; }
 .reglages input[type="text"],
 .reglages input[type="number"] { width: 220px; }
+
+/* --- Page Templates : états par couche×format (deux couches) --- */
+.etats { list-style: none; padding: 0; }
+.etats li { margin: .4rem 0; display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+form.inline { display: inline; margin: 0; }
