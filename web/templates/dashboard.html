@@ -19,13 +19,13 @@
     <span class="warn">{{ jour.abandoned }} abandons</span> ·
     <span class="err">{{ jour.capture_failed }} échecs</span>
   </div>
-  {% if jour.heures %}
-    {% set max_h = jour.heures.values() | list | max %}
+  {% if heures_jour %}
+    {% set max_h = heures_jour | map(attribute='nb') | list | max %}
     <div class="barres">
-      {% for h in jour.heures.keys() | sort %}
-        <div class="barres__col" title="{{ '%02d'|format(h) }}h : {{ jour.heures[h] }}">
-          <div class="barres__bar" style="height: {{ (jour.heures[h] * 100 / max_h) | round }}%"></div>
-          <div class="barres__h">{{ '%02d'|format(h) }}</div>
+      {% for item in heures_jour %}
+        <div class="barres__col" title="{{ '%02d'|format(item.heure) }}h : {{ item.nb }}">
+          <div class="barres__bar" style="height: {{ (item.nb * 100 / max_h) | round if max_h else 0 }}%"></div>
+          <div class="barres__h">{{ '%02d'|format(item.heure) }}</div>
         </div>
       {% endfor %}
     </div>
@@ -61,7 +61,23 @@
   {% endfor %}
 </section>
 
-<!-- Étage 4 : historique -->
+<!-- Étage 4 : Répartition horaire globale -->
+{% if heures_total %}
+<section class="panel">
+  <h2>Répartition horaire</h2>
+  {% set max_total_h = heures_total | map(attribute='nb') | list | max %}
+  <div class="barres barres--large">
+    {% for item in heures_total %}
+      <div class="barres__col" title="{{ '%02d'|format(item.heure) }}h : {{ item.nb }}">
+        <div class="barres__bar" style="height: {{ (item.nb * 100 / max_total_h) | round if max_total_h else 0 }}%"></div>
+        <div class="barres__h">{{ '%02d'|format(item.heure) }}</div>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<!-- Étage 5 : historique -->
 <section class="panel">
   <h2>Historique par journée</h2>
   {% if historique %}

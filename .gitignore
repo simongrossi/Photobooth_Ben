@@ -17,3 +17,4 @@ assets/sounds/*.wav
 .idea/
 *.swp
 .DS_Store
+.superpowers/

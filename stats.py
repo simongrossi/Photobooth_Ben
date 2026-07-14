@@ -172,7 +172,7 @@ def afficher_texte(stats, date_filter=None):
     if stats["heures"]:
         print(f"\n{BOLD}Répartition horaire{RESET}")
         max_n = max(stats["heures"].values())
-        for h in sorted(stats["heures"].keys()):
+        for h in sorted(stats["heures"].keys(), key=lambda h: (h - 8) % 24):
             n = stats["heures"][h]
             barre_len = int(30 * n / max_n) if max_n else 0
             barre = "█" * barre_len

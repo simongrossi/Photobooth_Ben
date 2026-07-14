@@ -116,6 +116,7 @@ class TestDashboard:
         assert r.status_code == 200
         # La card "Imprimées" doit contenir 1.
         assert b"Imprim" in r.data
+        assert b"R\xc3\xa9partition horaire" in r.data
 
 
 class TestDashboardV2:

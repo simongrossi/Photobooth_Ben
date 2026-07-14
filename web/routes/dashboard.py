@@ -27,6 +27,8 @@ bp = Blueprint("dashboard", __name__, url_prefix="/dashboard")
 # Singleton module (pattern projet) — monkeypatché dans les tests.
 printer_mgr = PrinterManager(NOM_IMPRIMANTE_10X15, NOM_IMPRIMANTE_STRIP)
 
+HEURES_ORDRE = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6, 7]
+
 
 def _pastille_imprimante(mode: str, libelle: str) -> dict:
     """is_ready renvoie True (prête) ou une chaîne d'erreur (contrat PrinterManager)."""
@@ -89,6 +91,15 @@ def index():
     total = stats.get("total", 0)
     taux_imprimees = round(stats.get("printed", 0) * 100 / total) if total else None
 
+    # Préparation des listes de répartition horaire ordonnées (début à 8h)
+    heures_jour = []
+    if jour.get("total", 0) > 0:
+        heures_jour = [{"heure": h, "nb": jour.get("heures", {}).get(h, 0)} for h in HEURES_ORDRE]
+
+    heures_total = []
+    if stats.get("total", 0) > 0:
+        heures_total = [{"heure": h, "nb": stats.get("heures", {}).get(h, 0)} for h in HEURES_ORDRE]
+
     return render_template(
         "dashboard.html",
         sante=_construire_sante(disk, temp),
@@ -97,6 +108,8 @@ def index():
         stats=stats,
         taux_imprimees=taux_imprimees,
         historique=historique,
+        heures_jour=heures_jour,
+        heures_total=heures_total,
         sessions_path=sessions_path,
         print_path=PATH_PRINT,
     )
