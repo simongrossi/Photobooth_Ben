@@ -22,7 +22,7 @@ VENV_PYTHON="${PROJET_DIR}/.venv/bin/python3"
 MAIN_SCRIPT="${PROJET_DIR}/Photobooth_start.py"
 
 # --- 1. Configuration X11 (tolérant si outils absents) ---
-export DISPLAY=:0
+export DISPLAY="${DISPLAY:-:0}"
 # `xset` : économiseur + DPMS off (l'écran ne doit jamais s'éteindre)
 if command -v xset >/dev/null 2>&1; then
     xset s off 2>/dev/null || true
