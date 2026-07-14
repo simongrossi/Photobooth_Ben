@@ -15,6 +15,9 @@ Pour les modifier en production voir [RUNBOOK.md](RUNBOOK.md).
   calculs et valider au chargement (voir `_valider_config()` en bas de fichier).
 - L'import est **tolérant** : `config.py` se charge sans `pygame` (pour
   `status.py`), grâce au `try/except ImportError` en haut.
+- `config.py` définit `PYGAME_HIDE_SUPPORT_PROMPT=1` par défaut avant l'import
+  de Pygame afin que les sorties machine, notamment `stats.py --json`, ne
+  soient jamais polluées par le message d'accueil de la bibliothèque.
 - La validation au chargement lève `AssertionError` en cas d'incohérence —
   bien plus clair qu'un bug visuel à mi-événement.
 - **Overrides optionnels** via `data/config_overrides.json` : un sous-ensemble
@@ -42,6 +45,7 @@ Pour les modifier en production voir [RUNBOOK.md](RUNBOOK.md).
 | `PATH_SKIPPED` | `data/skipped/` | Photos rejetées |
 | `PATH_SKIPPED_RETAKE` | `data/skipped/skipped_retake/` | Rejetées via "Reprendre" |
 | `PATH_SKIPPED_DELETED` | `data/skipped/skipped_deleted/` | Rejetées via "Supprimer" |
+| `PATH_MISE_EN_PAGE_10X15` | `data/mise_en_page_10x15.json` | Zone photo active publiée atomiquement par l'éditeur de templates |
 
 ### Dossiers d'assets (fournis, pas générés)
 
@@ -216,17 +220,24 @@ retombe sur le défaut. Effet au redémarrage du kiosque (slides : à chaud).
 | Constante | Défaut | Effet |
 |---|---|---|
 | `MONTAGE_10X15_PREVIEW_SIZE` | `(900, 600)` | Canvas preview |
-| `MONTAGE_10X15_PREVIEW_PHOTO_FIT` | `(840, 540)` | Zone photo |
-| `MONTAGE_10X15_PREVIEW_PHOTO_OFFSET` | `(30, 30)` | Position photo |
 | `MONTAGE_10X15_PREVIEW_QUALITY` | `80` | JPEG quality preview |
+
+L'aperçu est une réduction de la composition finale complète : il utilise donc
+la même zone photo personnalisée, le même fond et le même overlay.
 
 ### Montage final 10×15
 
 | Constante | Défaut | Effet |
 |---|---|---|
-| `MONTAGE_10X15_FINAL_PHOTO_FIT` | `(1640, 1040)` | Zone photo finale |
-| `MONTAGE_10X15_FINAL_PHOTO_OFFSET` | `(80, 80)` | Position photo finale |
+| `MONTAGE_10X15_FINAL_PHOTO_FIT` | `(1300, 866)` | Zone photo finale par défaut |
+| `MONTAGE_10X15_FINAL_PHOTO_OFFSET` | `(250, 175)` | Position photo finale par défaut |
 | `MONTAGE_10X15_FINAL_QUALITY` | `98` | JPEG quality impression |
+
+Ces valeurs restent le repli sûr. Lorsqu'un template 10×15 actif possède une
+mise en page personnalisée, l'admin publie ses coordonnées dans
+`data/mise_en_page_10x15.json` ; le moteur les relit à chaque aperçu et montage
+final. L'overlay actif est prioritaire sur le fond actif si les deux définissent
+une position.
 
 ### Preview écran strip
 

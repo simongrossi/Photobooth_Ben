@@ -56,6 +56,8 @@ def isoler_paths(monkeypatch, tmp_path_str):
     monkeypatch.setattr(montage, "OVERLAY_10X15", "/inexistant/ov10x15.png")
     monkeypatch.setattr(montage, "BG_STRIPS_FILE", "/inexistant/bg_strip.jpg")
     monkeypatch.setattr(montage, "OVERLAY_STRIPS", "/inexistant/ov_strip.png")
+    monkeypatch.setattr(montage, "PATH_MISE_EN_PAGE_10X15", os.path.join(tmp_path_str, "layout.json"))
+    monkeypatch.setattr(montage, "PATH_PRINT_STRIP", os.path.join(tmp_path_str, "print_strip"))
     return tmp_path_str
 
 
@@ -131,6 +133,37 @@ class TestMontageGenerator10x15:
         with Image.open(path) as img:
             assert img.size == (1800, 1200)
 
+    def test_final_utilise_mise_en_page_active(self, isoler_paths, photo_factice):
+        import json
+
+        with open(montage.PATH_MISE_EN_PAGE_10X15, "w", encoding="utf-8") as fichier:
+            json.dump({"x": 100, "y": 120, "largeur": 600, "hauteur": 400}, fichier)
+
+        path = MontageGenerator10x15.final([photo_factice], "layout")
+
+        with Image.open(path) as img:
+            assert all(canal > 245 for canal in img.getpixel((50, 50)))
+            bleu = img.getpixel((200, 200))
+            assert bleu[2] > bleu[0]
+
+    def test_preview_reprend_fond_et_overlay_du_final(self, isoler_paths, photo_factice, monkeypatch):
+        bg = os.path.join(isoler_paths, "fond.png")
+        overlay = os.path.join(isoler_paths, "overlay.png")
+        Image.new("RGB", (1800, 1200), "green").save(bg)
+        couche = Image.new("RGBA", (1800, 1200), (0, 0, 0, 0))
+        for x in range(0, 100):
+            for y in range(0, 100):
+                couche.putpixel((x, y), (255, 0, 0, 255))
+        couche.save(overlay)
+        monkeypatch.setattr(montage, "BG_10X15_FILE", bg)
+        monkeypatch.setattr(montage, "OVERLAY_10X15", overlay)
+
+        path = MontageGenerator10x15.preview([photo_factice])
+
+        with Image.open(path) as img:
+            rouge = img.getpixel((10, 10))
+            assert rouge[0] > rouge[1]
+
 
 # --- Tests MontageGeneratorStrip ---
 
@@ -156,6 +189,9 @@ class TestMontageGeneratorStrip:
         path = MontageGeneratorStrip.final(trois_photos, "test_session")
         with Image.open(path) as img:
             assert img.size == (1800, 1200)
+        assert os.path.exists(os.path.join(
+            isoler_paths, "print_strip", "montage_strip_test_session_CLEAN.jpg",
+        ))
 
     def test_final_session_id_dans_nom(self, isoler_paths, trois_photos):
         id_sess = "2026-04-20_22h10_01"

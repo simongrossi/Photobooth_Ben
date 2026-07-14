@@ -5,6 +5,21 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
 ---
 
+## `WIP` — Éditeur visuel de mise en page 10×15
+
+### Added
+- Éditeur admin par template avec aperçu fond → photo → overlay, déplacement,
+  redimensionnement, coordonnées précises, verrouillage 3:2 et préréglages.
+- Géométrie mémorisée dans SQLite et publiée atomiquement dans
+  `data/mise_en_page_10x15.json` pour le kiosque.
+- `core/mise_en_page.py` : validation et lecture tolérante avec repli sur les
+  coordonnées par défaut de `config.py`.
+
+### Changed
+- L'aperçu de validation 10×15 réutilise désormais la composition du rendu
+  final, incluant le fond, la position personnalisée et l'overlay.
+- Si fond et overlay actifs ont chacun un réglage, l'overlay est prioritaire.
+
 ## `WIP` — Rangement de la suite de tests
 
 ### Changed
@@ -13,6 +28,16 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
   nouveaux chemins.
 - Le générateur manuel `tests/test_DNP_cut.py` conserve ses accès aux dossiers
   racine `assets/` et `test/` après son déplacement.
+- La galerie et le diaporama ignorent les mires de calibration et les sorties
+  historiques de tests (`test_session`, `strip_wm`, `strip_grain`,
+  `cohérence`, timestamp fixture et `soakstrip_*`).
+- Les tests de montage strip redirigent désormais `PATH_PRINT_STRIP` vers
+  `tmp_path` et ne peuvent plus polluer `data/print/` sur le Raspberry Pi.
+- `nettoyer_sorties_tests.py` inventorie puis déplace, sur demande et sans
+  suppression, les fichiers techniques existants vers
+  `data/corbeille/sorties_tests/`.
+- Le message d'accueil de Pygame est masqué afin de préserver une sortie JSON
+  valide pour `stats.py --json` sur les Raspberry Pi où Pygame est installé.
 
 ## `WIP` — Gestion complète des événements
 

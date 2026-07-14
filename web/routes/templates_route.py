@@ -14,6 +14,7 @@ import io
 import os
 import shutil
 from dataclasses import dataclass
+from typing import Optional
 
 from flask import (
     Blueprint,
@@ -25,7 +26,7 @@ from flask import (
     send_file,
     url_for,
 )
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from config import (
     BG_10X15_FILE,
@@ -33,8 +34,14 @@ from config import (
     OVERLAY_10X15,
     OVERLAY_STRIPS,
     PATH_FONDS,
+    PATH_MISE_EN_PAGE_10X15,
     PATH_OVERLAYS,
+    PATH_RAW,
+    MONTAGE_10X15_FINAL_PHOTO_FIT,
+    MONTAGE_10X15_FINAL_PHOTO_OFFSET,
+    MONTAGE_10X15_SIZE,
 )
+from core.mise_en_page import MiseEnPage10x15, ecrire_mise_en_page
 from web.auth import require_auth
 from web.db import connexion
 
@@ -74,6 +81,17 @@ class TemplateRow:
     actif: bool
     uploaded_at: str
     taille_ko: int
+    photo_x: Optional[int]
+    photo_y: Optional[int]
+    photo_largeur: Optional[int]
+    photo_hauteur: Optional[int]
+
+    @property
+    def mise_en_page_personnalisee(self) -> bool:
+        return all(
+            valeur is not None
+            for valeur in (self.photo_x, self.photo_y, self.photo_largeur, self.photo_hauteur)
+        )
 
 
 def _safe_filename(nom: str) -> str:
@@ -143,10 +161,46 @@ def _synchroniser_disque_et_db() -> None:
                 print(f"Erreur d'importation automatique du template d'origine ({couche}, {type_t}) : {e}")
 
 
+def _mise_en_page_defaut() -> MiseEnPage10x15:
+    return MiseEnPage10x15(
+        x=MONTAGE_10X15_FINAL_PHOTO_OFFSET[0],
+        y=MONTAGE_10X15_FINAL_PHOTO_OFFSET[1],
+        largeur=MONTAGE_10X15_FINAL_PHOTO_FIT[0],
+        hauteur=MONTAGE_10X15_FINAL_PHOTO_FIT[1],
+    )
+
+
+def _synchroniser_mise_en_page_active() -> None:
+    """Publie la zone du template actif : overlay prioritaire, puis fond."""
+    with connexion() as conn:
+        row = conn.execute(
+            "SELECT id, photo_x, photo_y, photo_largeur, photo_hauteur FROM template "
+            "WHERE actif = 1 AND type = '10x15' "
+            "AND photo_x IS NOT NULL AND photo_y IS NOT NULL "
+            "AND photo_largeur IS NOT NULL AND photo_hauteur IS NOT NULL "
+            "ORDER BY CASE couche WHEN 'overlay' THEN 0 ELSE 1 END LIMIT 1"
+        ).fetchone()
+    if row is None:
+        try:
+            os.remove(PATH_MISE_EN_PAGE_10X15)
+        except FileNotFoundError:
+            pass
+        return
+    mise_en_page = MiseEnPage10x15(
+        x=row["photo_x"], y=row["photo_y"],
+        largeur=row["photo_largeur"], hauteur=row["photo_hauteur"],
+    )
+    ecrire_mise_en_page(
+        PATH_MISE_EN_PAGE_10X15, mise_en_page, MONTAGE_10X15_SIZE,
+        template_id=row["id"],
+    )
+
+
 def _lister() -> list[TemplateRow]:
     with connexion() as conn:
         rows = conn.execute(
-            "SELECT id, nom, type, couche, fichier, actif, uploaded_at, taille_octets "
+            "SELECT id, nom, type, couche, fichier, actif, uploaded_at, taille_octets, "
+            "photo_x, photo_y, photo_largeur, photo_hauteur "
             "FROM template ORDER BY couche, type, uploaded_at DESC"
         ).fetchall()
     return [
@@ -155,6 +209,8 @@ def _lister() -> list[TemplateRow]:
             fichier=r["fichier"],
             actif=bool(r["actif"]), uploaded_at=r["uploaded_at"],
             taille_ko=r["taille_octets"] // 1024,
+            photo_x=r["photo_x"], photo_y=r["photo_y"],
+            photo_largeur=r["photo_largeur"], photo_hauteur=r["photo_hauteur"],
         )
         for r in rows
     ]
@@ -164,6 +220,7 @@ def _lister() -> list[TemplateRow]:
 @require_auth
 def index():
     _synchroniser_disque_et_db()
+    _synchroniser_mise_en_page_active()
     templates = _lister()
     actifs = {(t.couche, t.type): t.nom for t in templates if t.actif}
     return render_template(
@@ -262,6 +319,7 @@ def activer(template_id: int):
             "UPDATE template SET actif = 0 WHERE couche = ? AND type = ?", (couche, type_t),
         )
         conn.execute("UPDATE template SET actif = 1 WHERE id = ?", (template_id,))
+    _synchroniser_mise_en_page_active()
     flash(f"Template « {row['nom']} » activé ({couche} {type_t}).", "success")
     return redirect(url_for("templates.index"))
 
@@ -286,6 +344,7 @@ def desactiver(couche: str, type_t: str):
             "UPDATE template SET actif = 0 WHERE couche = ? AND type = ?",
             (couche, type_t),
         )
+    _synchroniser_mise_en_page_active()
     flash(f"Aucun template {couche} pour le mode {type_t} (désactivé).", "success")
     return redirect(url_for("templates.index"))
 
@@ -333,3 +392,112 @@ def thumb(template_id: int):
         return send_file(buf, mimetype="image/png")
     except OSError:
         abort(404)
+
+
+@bp.route("/fichier/<int:template_id>")
+@require_auth
+def fichier(template_id: int):
+    """Retourne l'image originale utilisée comme calque par l'éditeur."""
+    with connexion() as conn:
+        row = conn.execute(
+            "SELECT fichier, couche FROM template WHERE id = ?", (template_id,),
+        ).fetchone()
+    if row is None:
+        abort(404)
+    chemin = _chemin_fichier(row["fichier"], row["couche"])
+    if not os.path.isfile(chemin):
+        abort(404)
+    return send_file(chemin, conditional=True)
+
+
+@bp.route("/photo-exemple")
+@require_auth
+def photo_exemple():
+    """Retourne la dernière photo brute, ou un visuel neutre si aucune n'existe."""
+    try:
+        candidats = [
+            os.path.join(PATH_RAW, nom)
+            for nom in os.listdir(PATH_RAW)
+            if nom.casefold().endswith((".jpg", ".jpeg", ".png"))
+            and os.path.isfile(os.path.join(PATH_RAW, nom))
+        ]
+    except FileNotFoundError:
+        candidats = []
+    if candidats:
+        return send_file(max(candidats, key=os.path.getmtime), conditional=True)
+
+    image = Image.new("RGB", (1200, 800), "#d9dde5")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((40, 40, 1160, 760), outline="#7b8497", width=8)
+    draw.line((40, 40, 1160, 760), fill="#a0a8b7", width=5)
+    draw.line((1160, 40, 40, 760), fill="#a0a8b7", width=5)
+    draw.text((470, 380), "PHOTO EXEMPLE", fill="#303747")
+    buf = io.BytesIO()
+    image.save(buf, "JPEG", quality=88)
+    buf.seek(0)
+    return send_file(buf, mimetype="image/jpeg")
+
+
+@bp.route("/editer/<int:template_id>", methods=["GET", "POST"])
+@require_auth
+def editer(template_id: int):
+    with connexion() as conn:
+        row = conn.execute("SELECT * FROM template WHERE id = ?", (template_id,)).fetchone()
+    if row is None:
+        abort(404)
+    if row["type"] != "10x15":
+        flash("L'éditeur visuel est disponible pour le 10×15 dans cette première version.", "error")
+        return redirect(url_for("templates.index"))
+
+    if request.method == "POST":
+        try:
+            mise_en_page = MiseEnPage10x15(
+                x=int(request.form["photo_x"]),
+                y=int(request.form["photo_y"]),
+                largeur=int(request.form["photo_largeur"]),
+                hauteur=int(request.form["photo_hauteur"]),
+            )
+        except (KeyError, TypeError, ValueError):
+            flash("Coordonnées invalides.", "error")
+            return redirect(url_for("templates.editer", template_id=template_id))
+        if not mise_en_page.est_valide(MONTAGE_10X15_SIZE):
+            flash("La zone photo doit rester entièrement dans le 10×15.", "error")
+            return redirect(url_for("templates.editer", template_id=template_id))
+        with connexion() as conn:
+            conn.execute(
+                "UPDATE template SET photo_x = ?, photo_y = ?, photo_largeur = ?, photo_hauteur = ? "
+                "WHERE id = ?",
+                (
+                    mise_en_page.x, mise_en_page.y,
+                    mise_en_page.largeur, mise_en_page.hauteur, template_id,
+                ),
+            )
+        _synchroniser_mise_en_page_active()
+        flash(f"Mise en page de « {row['nom']} » enregistrée.", "success")
+        return redirect(url_for("templates.editer", template_id=template_id))
+
+    valeurs = _mise_en_page_defaut()
+    champs = ("photo_x", "photo_y", "photo_largeur", "photo_hauteur")
+    if all(row[champ] is not None for champ in champs):
+        valeurs = MiseEnPage10x15(
+            x=row["photo_x"], y=row["photo_y"],
+            largeur=row["photo_largeur"], hauteur=row["photo_hauteur"],
+        )
+    autre_couche = "fond" if row["couche"] == "overlay" else "overlay"
+    with connexion() as conn:
+        autre = conn.execute(
+            "SELECT id FROM template WHERE type = '10x15' AND couche = ? AND actif = 1",
+            (autre_couche,),
+        ).fetchone()
+    fond_id = template_id if row["couche"] == "fond" else (autre["id"] if autre else None)
+    overlay_id = template_id if row["couche"] == "overlay" else (autre["id"] if autre else None)
+    return render_template(
+        "template_editeur.html",
+        template=row,
+        valeurs=valeurs,
+        canvas_w=MONTAGE_10X15_SIZE[0],
+        canvas_h=MONTAGE_10X15_SIZE[1],
+        fond_id=fond_id,
+        overlay_id=overlay_id,
+        defaut=_mise_en_page_defaut(),
+    )

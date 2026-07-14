@@ -161,6 +161,28 @@ def formater_ligne_perf(
     )
 
 
+_SESSIONS_TEST_MONTAGE = {
+    "2026-04-20_22h10_01",
+    "cohérence",
+    "strip_grain",
+    "strip_wm",
+    "test_session",
+}
+
+
+def est_image_publique(nom: str) -> bool:
+    """False pour les mires et sorties connues de la suite de tests."""
+    nom_normalise = nom.casefold()
+    if "mire" in nom_normalise or nom_normalise.startswith("resultat_test_"):
+        return False
+    if nom_normalise.startswith("montage_strip_soakstrip_"):
+        return False
+    return not any(
+        nom_normalise.startswith(f"montage_strip_{session.casefold()}_")
+        for session in _SESSIONS_TEST_MONTAGE
+    )
+
+
 def lister_images_slideshow(dossiers: list[str], nb_max: int) -> list[str]:
     """Scan les `dossiers` (typiquement PATH_PRINT_10X15 + PATH_PRINT_STRIP) pour
     alimenter le slideshow d'attente.
@@ -179,7 +201,9 @@ def lister_images_slideshow(dossiers: list[str], nb_max: int) -> list[str]:
         try:
             for nom in os.listdir(dossier):
                 chemin = os.path.join(dossier, nom)
-                if os.path.isfile(chemin) and nom.lower().endswith((".jpg", ".jpeg", ".png")):
+                nom_normalise = nom.casefold()
+                est_image = nom_normalise.endswith((".jpg", ".jpeg", ".png"))
+                if os.path.isfile(chemin) and est_image and est_image_publique(nom):
                     try:
                         fichiers.append((os.path.getmtime(chemin), chemin))
                     except OSError:

@@ -6,7 +6,7 @@ source de vérité des overrides config reste `data/config_overrides.json`
 `data/sessions.jsonl` (écrit par le kiosque).
 
 Tables principales :
-- `template`      (id, nom, type, couche, fichier, actif, uploaded_at, taille_octets)
+- `template`      (fichier/couche/actif + zone photo 10×15 optionnelle)
 - `asset_kiosque` (id, nom, categorie, fichier, actif, uploaded_at, taille_octets)
   — catégories 'accueil' | 'police' | 'slide' ; un actif max par catégorie ;
   `actif` sans objet pour 'slide' (tous les slides présents tournent).
@@ -38,7 +38,11 @@ CREATE TABLE IF NOT EXISTS template (
     fichier TEXT NOT NULL UNIQUE,
     actif INTEGER NOT NULL DEFAULT 0,
     uploaded_at TEXT NOT NULL DEFAULT (datetime('now')),
-    taille_octets INTEGER NOT NULL DEFAULT 0
+    taille_octets INTEGER NOT NULL DEFAULT 0,
+    photo_x INTEGER,
+    photo_y INTEGER,
+    photo_largeur INTEGER,
+    photo_hauteur INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_template_type_actif ON template (type, actif);
@@ -106,6 +110,9 @@ def _migrer(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE template ADD COLUMN couche TEXT NOT NULL DEFAULT 'overlay'"
         )
+    for colonne in ("photo_x", "photo_y", "photo_largeur", "photo_hauteur"):
+        if colonne not in colonnes:
+            conn.execute(f"ALTER TABLE template ADD COLUMN {colonne} INTEGER")
 
 
 def init_db(path: Optional[str] = None) -> None:

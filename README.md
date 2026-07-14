@@ -77,7 +77,7 @@ Photobooth_Ben/
 │   └── __init__.py       # re-exporte pour `from ui import X`
 ├── status.py             # diagnostic autonome pré-événement
 ├── stats.py              # rapport fin de soirée (sessions.jsonl)
-├── tests/                # suite pytest (254 tests)
+├── tests/                # suite pytest (281 tests)
 │   └── test_*.py
 ├── README.md
 ├── deploy/                 # infra Pi (systemd + kiosque)

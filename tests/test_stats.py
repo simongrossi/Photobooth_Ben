@@ -208,6 +208,27 @@ class TestCLI:
         # heure_pointe sérialisé en dict en mode --json
         assert data["heure_pointe"]["heure"] == 14
 
+    def test_mode_json_masque_le_message_accueil_pygame(self, jsonl_factice, tmp_path):
+        faux_module = tmp_path / "pygame.py"
+        faux_module.write_text(
+            "import os\n"
+            "if os.environ.get('PYGAME_HIDE_SUPPORT_PROMPT') != '1':\n"
+            "    print('Hello from the pygame community.')\n"
+            "K_g, K_m, K_d = 103, 109, 100\n"
+        )
+        env = os.environ.copy()
+        env.pop("PYGAME_HIDE_SUPPORT_PROMPT", None)
+        env["PYTHONPATH"] = os.pathsep.join((str(tmp_path), os.getcwd()))
+
+        result = subprocess.run(
+            [sys.executable, "stats.py", "--json", "--file", jsonl_factice],
+            capture_output=True, text=True, cwd=os.getcwd(), env=env,
+        )
+
+        assert result.returncode == 0
+        assert json.loads(result.stdout)["total"] == 8
+        assert "pygame community" not in result.stdout
+
     def test_filtre_date_via_cli(self, jsonl_factice):
         result = subprocess.run(
             [sys.executable, "stats.py", "--date", "2026-04-21",

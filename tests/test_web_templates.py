@@ -9,6 +9,7 @@ import pytest
 from PIL import Image
 
 from web.app import create_app
+from web.db import connexion
 
 HEADERS = {"Authorization": "Basic " + base64.b64encode(b"admin:test").decode()}
 
@@ -33,6 +34,8 @@ def client(tmp_path, monkeypatch):
     overlays.mkdir()
     fonds = tmp_path / "fonds"
     fonds.mkdir()
+    raw = tmp_path / "raw"
+    raw.mkdir()
     monkeypatch.setenv("PHOTOBOOTH_ADMIN_PASS", "test")
 
     import config
@@ -43,6 +46,8 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "OVERLAY_STRIPS", str(overlays / "strips_overlay.png"))
     monkeypatch.setattr(config, "BG_10X15_FILE", str(fonds / "10x15_background.jpg"))
     monkeypatch.setattr(config, "BG_STRIPS_FILE", str(fonds / "strips_background.jpg"))
+    monkeypatch.setattr(config, "PATH_MISE_EN_PAGE_10X15", str(data / "mise_en_page_10x15.json"))
+    monkeypatch.setattr(config, "PATH_RAW", str(raw))
     import web.db
     import web.routes.templates_route as tr
     monkeypatch.setattr(web.db, "DB_PATH", str(data / "admin.db"))
@@ -58,6 +63,8 @@ def client(tmp_path, monkeypatch):
     })
     # Les routes lisent PATH_OVERLAYS depuis le module importé — on patch aussi.
     monkeypatch.setattr(tr, "PATH_OVERLAYS", str(overlays))
+    monkeypatch.setattr(tr, "PATH_MISE_EN_PAGE_10X15", str(data / "mise_en_page_10x15.json"))
+    monkeypatch.setattr(tr, "PATH_RAW", str(raw))
 
     app = create_app()
     app.config["TESTING"] = True
@@ -230,6 +237,7 @@ class TestMigrationCouche:
         colonnes = {r[1] for r in conn.execute("PRAGMA table_info(template)")}
         conn.close()
         assert "couche" in colonnes
+        assert {"photo_x", "photo_y", "photo_largeur", "photo_hauteur"} <= colonnes
 
 
 class TestUploadFond:
@@ -406,3 +414,83 @@ class TestAutoImport:
         assert row["nom"] == "Gabarit d'origine (10x15)"
         assert row["actif"] == 1
         assert "origine" in row["fichier"]
+
+
+class TestEditeurMiseEnPage:
+    def test_page_editeur_affiche_calques_et_controles(self, client):
+        c, _, _ = client
+        template_id = _uploader(c, "Cadre editable", "10x15", "overlay", _png_bytes(), "cadre.png")
+
+        r = c.get(f"/templates/editer/{template_id}", headers=HEADERS)
+
+        html = r.get_data(as_text=True)
+        assert r.status_code == 200
+        assert "Positionner la photo" in html
+        assert 'name="photo_x"' in html
+        assert f"/templates/fichier/{template_id}" in html
+
+    def test_enregistre_geometrie_et_la_publie_si_actif(self, client):
+        import json
+        import web.db
+
+        c, _, _ = client
+        template_id = _uploader(c, "Cadre actif", "10x15", "overlay", _png_bytes(), "actif.png")
+        c.post(f"/templates/activer/{template_id}", headers=HEADERS)
+
+        r = c.post(f"/templates/editer/{template_id}", data={
+            "photo_x": "120", "photo_y": "90",
+            "photo_largeur": "1500", "photo_hauteur": "1000",
+        }, headers=HEADERS, follow_redirects=True)
+
+        assert r.status_code == 200
+        with connexion() as conn:
+            row = conn.execute(
+                "SELECT photo_x, photo_y, photo_largeur, photo_hauteur FROM template WHERE id = ?",
+                (template_id,),
+            ).fetchone()
+        assert tuple(row) == (120, 90, 1500, 1000)
+        chemin = os.path.join(os.path.dirname(web.db.DB_PATH), "mise_en_page_10x15.json")
+        with open(chemin, encoding="utf-8") as fichier:
+            actif = json.load(fichier)
+        assert actif["template_id"] == template_id
+        assert actif["largeur"] == 1500
+
+    def test_refuse_zone_hors_canvas(self, client):
+        c, _, _ = client
+        template_id = _uploader(c, "Cadre invalide", "10x15", "overlay", _png_bytes(), "ko.png")
+
+        r = c.post(f"/templates/editer/{template_id}", data={
+            "photo_x": "1700", "photo_y": "0",
+            "photo_largeur": "500", "photo_hauteur": "500",
+        }, headers=HEADERS, follow_redirects=True)
+
+        assert "rester entièrement" in r.get_data(as_text=True)
+        with connexion() as conn:
+            row = conn.execute("SELECT photo_x FROM template WHERE id = ?", (template_id,)).fetchone()
+        assert row["photo_x"] is None
+
+    def test_overlay_actif_prioritaire_sur_fond(self, client):
+        import json
+        import web.db
+
+        c, _, _ = client
+        fond_id = _uploader(c, "Fond position", "10x15", "fond", _jpg_bytes(), "fond.jpg")
+        overlay_id = _uploader(c, "Overlay position", "10x15", "overlay", _png_bytes(), "ov.png")
+        for template_id, x in ((fond_id, 40), (overlay_id, 200)):
+            c.post(f"/templates/editer/{template_id}", data={
+                "photo_x": str(x), "photo_y": "100",
+                "photo_largeur": "1200", "photo_hauteur": "800",
+            }, headers=HEADERS)
+            c.post(f"/templates/activer/{template_id}", headers=HEADERS)
+
+        chemin = os.path.join(os.path.dirname(web.db.DB_PATH), "mise_en_page_10x15.json")
+        with open(chemin, encoding="utf-8") as fichier:
+            actif = json.load(fichier)
+        assert actif["template_id"] == overlay_id
+        assert actif["x"] == 200
+
+    def test_photo_exemple_fallback_disponible(self, client):
+        c, _, _ = client
+        r = c.get("/templates/photo-exemple", headers=HEADERS)
+        assert r.status_code == 200
+        assert r.mimetype == "image/jpeg"

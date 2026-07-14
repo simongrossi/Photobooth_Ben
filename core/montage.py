@@ -15,14 +15,14 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from config import (
     PATH_TEMP,
+    PATH_MISE_EN_PAGE_10X15,
     PATH_PRINT_STRIP,
     PREFIXE_PRINT_10X15, PREFIXE_PRINT_STRIP,
     BG_10X15_FILE, OVERLAY_10X15,
     BG_STRIPS_FILE, OVERLAY_STRIPS,
     MONTAGE_10X15_SIZE, MONTAGE_STRIP_SIZE, STRIP_ROTATION_DEGREES,
     STRIP_PHOTO_RATIO, STRIP_MARGE_HAUT, STRIP_MARGE_LATERALE, STRIP_ESPACE_PHOTOS,
-    MONTAGE_10X15_PREVIEW_SIZE, MONTAGE_10X15_PREVIEW_PHOTO_FIT,
-    MONTAGE_10X15_PREVIEW_PHOTO_OFFSET, MONTAGE_10X15_PREVIEW_QUALITY,
+    MONTAGE_10X15_PREVIEW_SIZE, MONTAGE_10X15_PREVIEW_QUALITY,
     MONTAGE_10X15_FINAL_PHOTO_FIT, MONTAGE_10X15_FINAL_PHOTO_OFFSET,
     MONTAGE_10X15_FINAL_QUALITY,
     STRIP_PREVIEW_PHOTO_LARGEUR, STRIP_PREVIEW_ESPACEMENT, STRIP_PREVIEW_MARGE_HB,
@@ -35,6 +35,7 @@ from config import (
     GRAIN_ENABLED, GRAIN_INTENSITE, GRAIN_SIGMA,
     PRINT_CALIB_TOP, PRINT_CALIB_BOTTOM, PRINT_CALIB_LEFT, PRINT_CALIB_RIGHT,
 )
+from core.mise_en_page import MiseEnPage10x15, charger_mise_en_page
 
 
 def charger_et_corriger(chemin: str, rotation_forcee: float = 0) -> Image.Image:
@@ -144,8 +145,6 @@ class MontageGenerator10x15(MontageBase):
     Toutes les dimensions sont configurables dans config.py (section Sprint 4.8)."""
 
     PREVIEW_SIZE         = MONTAGE_10X15_PREVIEW_SIZE
-    PREVIEW_PHOTO_FIT    = MONTAGE_10X15_PREVIEW_PHOTO_FIT
-    PREVIEW_PHOTO_OFFSET = MONTAGE_10X15_PREVIEW_PHOTO_OFFSET
     PREVIEW_QUALITY      = MONTAGE_10X15_PREVIEW_QUALITY
 
     FINAL_SIZE           = MONTAGE_10X15_SIZE
@@ -154,23 +153,42 @@ class MontageGenerator10x15(MontageBase):
     FINAL_QUALITY        = MONTAGE_10X15_FINAL_QUALITY
 
     @classmethod
+    def _mise_en_page_active(cls) -> MiseEnPage10x15:
+        defaut = MiseEnPage10x15(
+            x=cls.FINAL_PHOTO_OFFSET[0],
+            y=cls.FINAL_PHOTO_OFFSET[1],
+            largeur=cls.FINAL_PHOTO_FIT[0],
+            hauteur=cls.FINAL_PHOTO_FIT[1],
+        )
+        return charger_mise_en_page(PATH_MISE_EN_PAGE_10X15, defaut, cls.FINAL_SIZE)
+
+    @classmethod
+    def _composer(cls, chemin_photo: str) -> Image.Image:
+        """Compose fond → photo → overlay avec la géométrie active."""
+        canvas = cls._canvas_depuis_bg_ou_blanc(BG_10X15_FILE, cls.FINAL_SIZE)
+        mise_en_page = cls._mise_en_page_active()
+        img_brute = charger_et_corriger(chemin_photo)
+        photo_fit = ImageOps.fit(
+            img_brute,
+            (mise_en_page.largeur, mise_en_page.hauteur),
+            Image.Resampling.LANCZOS,
+        )
+        canvas.paste(photo_fit, (mise_en_page.x, mise_en_page.y))
+        cls._coller_overlay(canvas, OVERLAY_10X15, cls.FINAL_SIZE)
+        return canvas
+
+    @classmethod
     def preview(cls, photos: list) -> str:
         path_prev = cls._chemin_prev()
-        canvas = Image.new("RGB", cls.PREVIEW_SIZE, "white")
-        img_brute = charger_et_corriger(photos[0])
-        photo_fit = ImageOps.fit(img_brute, cls.PREVIEW_PHOTO_FIT, Image.Resampling.LANCZOS)
-        canvas.paste(photo_fit, cls.PREVIEW_PHOTO_OFFSET)
-        canvas.save(path_prev, quality=cls.PREVIEW_QUALITY)
+        canvas = cls._composer(photos[0])
+        apercu = canvas.resize(cls.PREVIEW_SIZE, Image.Resampling.LANCZOS)
+        apercu.save(path_prev, quality=cls.PREVIEW_QUALITY)
         return path_prev
 
     @classmethod
     def final(cls, photos: list, id_session: str) -> str:
         path_hd = os.path.join(PATH_TEMP, f"{PREFIXE_PRINT_10X15}_{id_session}.jpg")
-        canvas = cls._canvas_depuis_bg_ou_blanc(BG_10X15_FILE, cls.FINAL_SIZE)
-        img_brute = charger_et_corriger(photos[0])
-        photo_fit = ImageOps.fit(img_brute, cls.FINAL_PHOTO_FIT, Image.Resampling.LANCZOS)
-        canvas.paste(photo_fit, cls.FINAL_PHOTO_OFFSET)
-        cls._coller_overlay(canvas, OVERLAY_10X15, cls.FINAL_SIZE)
+        canvas = cls._composer(photos[0])
         cls._appliquer_watermark(canvas, WATERMARK_TAILLE_10X15, WATERMARK_POSITION_10X15)
         cls._appliquer_grain(canvas)
         canvas.save(path_hd, quality=cls.FINAL_QUALITY)

@@ -272,6 +272,60 @@ form.inline { display: inline; margin: 0; }
 .etats { list-style: none; padding: 0; }
 .etats li { margin: .4rem 0; display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
 
+/* --- Éditeur de mise en page 10×15 --- */
+.editor-header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 1rem; margin-bottom: 1rem;
+}
+.editor-header h1 { margin: .1rem 0 .25rem; }
+.editor-layout { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(280px, .8fr); gap: 1rem; }
+.editor-preview-panel { min-width: 0; }
+.layout-editor {
+  position: relative; width: 100%; aspect-ratio: 3 / 2; overflow: hidden;
+  background: #fff; border: 1px solid var(--bord); border-radius: 10px;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 4%); touch-action: none; user-select: none;
+}
+.layout-editor__layer {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill;
+  pointer-events: none; user-select: none;
+}
+.layout-editor__background { z-index: 1; }
+.layout-editor__photo {
+  position: absolute; z-index: 2; overflow: visible; cursor: grab;
+  outline: 2px solid #2f80ed; box-shadow: 0 0 0 1px rgb(255 255 255 / 80%);
+}
+.layout-editor__photo:active { cursor: grabbing; }
+.layout-editor__photo img {
+  display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none;
+}
+.layout-editor__overlay { z-index: 3; }
+.layout-editor__label {
+  position: absolute; z-index: 4; top: .35rem; left: .35rem; padding: .12rem .35rem;
+  border-radius: 4px; background: rgb(47 128 237 / 88%); color: white;
+  font-size: .62rem; font-weight: 750; letter-spacing: .06em;
+}
+.layout-editor__handle {
+  position: absolute; z-index: 5; right: -8px; bottom: -8px; width: 18px; height: 18px;
+  padding: 0; border: 2px solid white; border-radius: 50%; background: #2f80ed;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 35%); cursor: nwse-resize;
+}
+.editor-hint { margin: .65rem 0 0; }
+.editor-controls h2 { margin-top: 0; }
+.editor-fields { display: grid; grid-template-columns: 1fr 1fr; gap: .7rem; }
+.editor-fields label { color: var(--texte2); font-size: .74rem; font-weight: 650; }
+.editor-fields input {
+  width: 100%; box-sizing: border-box; margin-top: .2rem; padding: .55rem;
+  border: 1px solid var(--bord); border-radius: 8px; background: var(--bg); color: var(--texte);
+}
+.editor-ratio { display: flex; align-items: center; gap: .45rem; margin: .85rem 0; font-size: .82rem; }
+.editor-presets { display: flex; flex-wrap: wrap; gap: .45rem; }
+.editor-save { width: 100%; margin-top: 1rem; }
+.editor-notice { margin: 1rem 0 0; }
+@media (max-width: 860px) {
+  .editor-layout { grid-template-columns: 1fr; }
+  .editor-header { flex-direction: column; }
+}
+
 /* --- Réglages --- */
 .settings-header {
   display: flex; align-items: flex-start; justify-content: space-between;

@@ -15,6 +15,7 @@ from config import (
     PATH_CORBEILLE, PATH_PRINT, PATH_PRINT_10X15, PATH_PRINT_STRIP,
     PATH_RAW, PATH_SKIPPED_DELETED, PATH_SKIPPED_RETAKE
 )
+from core.monitoring import est_image_publique
 from web.auth import require_auth
 from stats import load_sessions
 from web.evenements import lister_evenements, tous_les_tags
@@ -82,6 +83,8 @@ def _lister_tous(type_galerie: str = "all") -> list[Item]:
                 continue
             if not nom.lower().endswith((".jpg", ".jpeg", ".png")):
                 continue
+            if not est_image_publique(nom):
+                continue
             try:
                 st = os.stat(chemin)
             except OSError:
@@ -102,6 +105,8 @@ def _lister_tous(type_galerie: str = "all") -> list[Item]:
             if not os.path.isfile(chemin):
                 continue
             if not nom.lower().endswith((".jpg", ".jpeg", ".png")):
+                continue
+            if not est_image_publique(nom):
                 continue
             try:
                 st = os.stat(chemin)

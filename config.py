@@ -1,4 +1,9 @@
 import os
+
+# Empêche Pygame d'écrire son message d'accueil sur stdout. Indispensable pour
+# garder les sorties machine de stats.py --json strictement parsables.
+os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
+
 # Import tolérant : permet à status.py (diagnostic) de charger config.py sans pygame
 try:
     import pygame
@@ -22,6 +27,7 @@ PATH_SKIPPED    = os.path.join(PATH_DATA, "skipped")
 PATH_SKIPPED_RETAKE  = os.path.join(PATH_SKIPPED, "skipped_retake")
 PATH_SKIPPED_DELETED = os.path.join(PATH_SKIPPED, "skipped_deleted")
 PATH_EVENEMENT_ACTIF = os.path.join(PATH_DATA, "evenement_actif.json")
+PATH_MISE_EN_PAGE_10X15 = os.path.join(PATH_DATA, "mise_en_page_10x15.json")
 
 # --- Dossiers Racines des Assets ---
 PATH_ASSETS     = os.path.join(BASE_DIR, "assets")
@@ -249,10 +255,8 @@ MONTAGE_STRIP_SIZE = (600, 1800)
 STRIP_ROTATION_DEGREES = 180
 
 # --- Dimensions de preview écran (mode 10x15) ---
-# Canvas + zone photo + offset = cadre blanc fin autour de la photo
+# L'aperçu réduit la composition finale complète à cette taille.
 MONTAGE_10X15_PREVIEW_SIZE         = (900, 600)
-MONTAGE_10X15_PREVIEW_PHOTO_FIT    = (840, 540)
-MONTAGE_10X15_PREVIEW_PHOTO_OFFSET = (30, 30)
 MONTAGE_10X15_PREVIEW_QUALITY      = 80
 
 # --- Dimensions finales de montage (mode 10x15) ---

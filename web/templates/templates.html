@@ -78,9 +78,13 @@
             <p>
               <span class="badge badge--{{ t.type }}">{{ t.type }}</span>
               {% if t.actif %}<span class="badge badge--actif">Actif</span>{% endif %}
+              {% if t.mise_en_page_personnalisee %}<span class="badge">Position personnalisée</span>{% endif %}
               <span class="muted">{{ t.taille_ko }} Ko — {{ t.uploaded_at }}</span>
             </p>
             <div class="actions">
+              {% if t.type == '10x15' %}
+                <a class="btn" href="{{ url_for('templates.editer', template_id=t.id) }}">Modifier la mise en page</a>
+              {% endif %}
               {% if not t.actif %}
                 <form method="post" action="{{ url_for('templates.activer', template_id=t.id) }}">
                   <button type="submit" class="btn btn--primary">Activer</button>

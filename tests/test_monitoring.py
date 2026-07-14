@@ -14,6 +14,7 @@ from core import monitoring
 from core.monitoring import (
     DiskMonitor,
     TempMonitor,
+    est_image_publique,
     formater_ligne_perf,
     lire_rss_mb,
     lister_images_slideshow,
@@ -190,6 +191,29 @@ class TestListerImages:
     def test_respecte_nb_max(self, dossier_avec_images):
         fichiers = lister_images_slideshow([dossier_avec_images], nb_max=2)
         assert len(fichiers) == 2
+
+    def test_exclut_les_mires_de_calibration(self, tmp_path):
+        (tmp_path / "photo_invites.jpg").write_bytes(b"x")
+        (tmp_path / "mire_test_cut_DNP.jpg").write_bytes(b"x")
+        (tmp_path / "RESULTAT_TEST_CUT_DNP.jpg").write_bytes(b"x")
+
+        fichiers = lister_images_slideshow([str(tmp_path)], nb_max=10)
+
+        assert [os.path.basename(f) for f in fichiers] == ["photo_invites.jpg"]
+
+    @pytest.mark.parametrize("nom", [
+        "montage_strip_test_session_CLEAN.jpg",
+        "montage_strip_2026-04-20_22h10_01_CLEAN.jpg",
+        "montage_strip_strip_wm_CLEAN.jpg",
+        "montage_strip_strip_grain_CLEAN.jpg",
+        "montage_strip_cohérence_CLEAN.jpg",
+        "montage_strip_soakstrip_1499_CLEAN.jpg",
+    ])
+    def test_exclut_sorties_connues_des_tests(self, nom):
+        assert not est_image_publique(nom)
+
+    def test_conserve_montage_reel(self):
+        assert est_image_publique("montage_strip_2026-07-14_18h30_12_CLEAN.jpg")
 
     def test_tri_mtime_desc(self, tmp_path):
         d = tmp_path / "p"

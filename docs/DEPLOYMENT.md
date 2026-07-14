@@ -111,6 +111,14 @@ pip install Pillow pytest pytest-cov ruff
 python3 -m pytest
 ```
 
+Si une ancienne version des tests a déjà écrit des mires dans `data/print`, le
+nettoyage est réversible :
+
+```bash
+python3 nettoyer_sorties_tests.py             # inventaire sans modification
+python3 nettoyer_sorties_tests.py --appliquer # déplace vers data/corbeille/sorties_tests/
+```
+
 > **Note** : `--system-site-packages` permet au venv de voir les paquets système
 > (pygame, gphoto2) déjà installés via apt. Évite de recompiler pygame dans le venv.
 

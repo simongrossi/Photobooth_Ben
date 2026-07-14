@@ -40,6 +40,10 @@ de données. Document à mettre à jour lors des refactors structurels majeurs.
      │      │  ┌─────────────────┐   │
      │ ◄────┼──│ montage (PIL)   │   │  ◄── lazy import dans ui.get_pygame_surf
      │      │  └─────────────────┘   │
+     │      │          ▲             │
+     │      │  ┌───────┴─────────┐   │
+     │      │  │ mise_en_page    │   │  ◄── géométrie 10×15 JSON tolérante
+     │      │  └─────────────────┘   │
      │      │                        │
      │      │  ┌─────────────────┐   │
      │      │  │ printer (CUPS)  │   │
@@ -71,7 +75,8 @@ de données. Document à mettre à jour lors des refactors structurels majeurs.
   **jamais** `Photobooth_start` ni `ui/*`. Tourne dans un process systemd
   séparé ; la communication avec le kiosque passe uniquement par le
   filesystem (`data/sessions.jsonl` en lecture, `assets/overlays/`,
-  `data/evenement_actif.json` et `data/config_overrides.json` en écriture).
+  `data/evenement_actif.json`, `data/mise_en_page_10x15.json` et
+  `data/config_overrides.json` en écriture).
   Voir `docs/ADMIN.md`.
 
 ---
@@ -223,6 +228,13 @@ utilisé dans `render_decompte`. Les autres wrappers ont été inlinés.
 **Sous-systèmes indépendants dans `core/monitoring.py`** : `DiskMonitor` et
 `lister_images_slideshow` ne dépendent pas de `SessionState`. Rate-limit interne
 à DiskMonitor, slideshow listing sans state. Testables en isolation.
+
+**Mise en page 10×15 partagée par fichier atomique** : l'admin stocke la zone
+photo de chaque template dans SQLite puis publie celle du template actif dans
+`data/mise_en_page_10x15.json`. `core/mise_en_page.py` valide cette géométrie ;
+`core/montage.py` la relit à chaque aperçu et impression, avec repli sur
+`config.py` si le fichier manque ou est invalide. Le kiosque ne dépend donc pas
+de Flask ni de SQLite.
 
 **Entrée runtime explicite** : importer `Photobooth_start.py` ne crée plus de
 fenêtre pygame et ne démarre ni caméra ni Arduino. `main()` initialise les

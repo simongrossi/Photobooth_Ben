@@ -176,6 +176,17 @@ rsync -avh data/ /media/usb/photobooth-YYYY-MM-DD/
 
 ### 4. Nettoyage
 
+Pour retirer uniquement les mires et anciennes sorties de tests, sans toucher
+aux vraies photos :
+
+```bash
+python3 nettoyer_sorties_tests.py
+python3 nettoyer_sorties_tests.py --appliquer
+```
+
+Les fichiers sont déplacés dans `data/corbeille/sorties_tests/` et restent
+récupérables manuellement.
+
 Une fois l'archivage validé :
 
 ```bash

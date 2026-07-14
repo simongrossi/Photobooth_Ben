@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import io
+import os
 
 import pytest
 from PIL import Image
@@ -75,6 +76,20 @@ class TestListing:
         r = app.test_client().get("/galerie/", headers=HEADERS)
         assert r.status_code == 200
         assert b"Aucune image" in r.data
+
+    def test_masquer_sorties_de_tests(self, client):
+        import web.routes.gallery as gallery
+
+        dossier_strip = gallery._RACINES_AUTORISEES["strip"]
+        _png(os.path.join(dossier_strip, "montage_strip_test_session_CLEAN.jpg"))
+        _png(os.path.join(dossier_strip, "montage_strip_2026-04-20_22h10_01_CLEAN.jpg"))
+        _png(os.path.join(dossier_strip, "montage_strip_soakstrip_42_CLEAN.jpg"))
+
+        r = client.get("/galerie/", headers=HEADERS)
+
+        assert b"montage_strip_test_session" not in r.data
+        assert b"montage_strip_2026-04-20_22h10_01" not in r.data
+        assert b"montage_strip_soakstrip_42" not in r.data
 
 
 class TestSecurite:
