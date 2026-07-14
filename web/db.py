@@ -5,8 +5,11 @@ source de vérité des overrides config reste `data/config_overrides.json`
 (lisible par config.py sans dépendance au DB). Les sessions restent dans
 `data/sessions.jsonl` (écrit par le kiosque).
 
-Une seule table aujourd'hui :
-- `template`  (id, nom, type, couche, fichier, actif, uploaded_at, taille_octets)
+Deux tables aujourd'hui :
+- `template`      (id, nom, type, couche, fichier, actif, uploaded_at, taille_octets)
+- `asset_kiosque` (id, nom, categorie, fichier, actif, uploaded_at, taille_octets)
+  — catégories 'accueil' | 'police' | 'slide' ; un actif max par catégorie ;
+  `actif` sans objet pour 'slide' (tous les slides présents tournent).
 
 Les types sont "10x15" ou "strip" ; les couches "overlay" (PNG par-dessus la
 photo) ou "fond" (image sous les photos). La colonne `actif` marque le template
@@ -38,6 +41,18 @@ CREATE TABLE IF NOT EXISTS template (
 );
 
 CREATE INDEX IF NOT EXISTS idx_template_type_actif ON template (type, actif);
+
+CREATE TABLE IF NOT EXISTS asset_kiosque (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nom TEXT NOT NULL,
+    categorie TEXT NOT NULL,
+    fichier TEXT NOT NULL UNIQUE,
+    actif INTEGER NOT NULL DEFAULT 0,
+    uploaded_at TEXT NOT NULL DEFAULT (datetime('now')),
+    taille_octets INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_asset_kiosque_cat_actif ON asset_kiosque (categorie, actif);
 """
 
 
