@@ -28,18 +28,22 @@ from config import (
     TOUCHE_DROITE, TOUCHE_GAUCHE, TOUCHE_MILIEU,
     TXT_BURST_COUNTDOWN, TXT_ERREUR_CAPTURE,
     TXT_ERREUR_IMPRIMANTE, TXT_PREPARATION_IMP, TXT_SLIDESHOW_INVITATION, WIDTH, ZOOM_FACTOR,
+    MAX_COPIES_IMPRESSION,
 )
 import config  # accès qualifié `config.X` dans les render functions
 try:
     import pygame
 except ImportError:
     pygame = None  # type: ignore[assignment]
+import gc
 import os
 import signal
 import sys
 import time
 import shutil
 import math
+
+import threading # Assure-toi que cet import est présent au tout début de ton script global
 from typing import Optional
 
 from PIL import Image, ImageOps
@@ -304,7 +308,13 @@ from core.arduino import ArduinoController  # noqa: E402
 
 
 # --- Monitoring disque + slideshow listing (extraits dans core/monitoring.py) ---
-from core.monitoring import DiskMonitor, TempMonitor, lister_images_slideshow  # noqa: E402
+from core.monitoring import (  # noqa: E402
+    DiskMonitor,
+    TempMonitor,
+    formater_ligne_perf,
+    lire_rss_mb,
+    lister_images_slideshow,
+)
 
 
 screen = None
@@ -335,6 +345,7 @@ slideshow_images = []
 slideshow_last_refresh = 0.0
 slideshow_cached_surface = None
 slideshow_cached_for_idx = -1
+_perf_capture_num = 0  # compteur de captures depuis le lancement (instrumentation #20)
 fond_accueil = None
 icon_10x15_norm = None
 icon_10x15_select = None
@@ -494,9 +505,118 @@ def _destination_montage_imprime(session: SessionState) -> str:
         return os.path.join(PATH_PRINT_STRIP, "READY_TO_PRINT", f"{PREFIXE_PRINT_STRIP}_{session.id_session_timestamp}_READY_TO_PRINT.jpg")
     return os.path.join(PATH_PRINT_10X15, f"{PREFIXE_PRINT_10X15}_{session.id_session_timestamp}.jpg")
 
+def demander_nombre_copies(session: SessionState) -> int:
+    """Affiche un écran avec un compteur dynamique pour choisir le nombre de copies.
+    - S'adapte au mode 'strips' en proposant uniquement des multiples de 2 (2 ou 4 copies).
+    - Titre à HEIGHT // 5
+    - Gros chiffre central en blanc
+    - Bouton central vert : IMPRIMER
+    - MOINS en blanc (ou gris intermédiaire si min atteint)
+    - PLUS en rouge (ou gris intermédiaire si max atteint)
+    - Bandeau de 90px collé tout en bas de l'écran."""
+    log_info(f"📺 Affichage de l'écran choix du nombre de copies (Mode actuel : {session.mode_actuel})")
+    
+    # En mode strips, le minimum est de 2 bandelettes, sinon 1 pour le 10x15
+    est_strip = (session.mode_actuel == "strips")
+    compteur = 2 if est_strip else 1 
+    
+    selection_validee = False
+    temps_debut = time.time()
+    DELAI_CHOIX = 20.0 
 
-def traiter_impression_session(session: SessionState) -> str:
-    """Génère, archive et imprime le montage final avec diagnostic précis."""
+    # --- PALETTE DE COULEURS DE L'ÉCRAN ---
+    COULEUR_VERTE = (0, 200, 0)
+    COULEUR_BLANCHE = (255, 255, 255)
+    COULEUR_ROUGE = (220, 50, 50)       
+    COULEUR_GRIS_LISIBLE = (70, 70, 70) 
+
+    # --- CONFIGURATION ET POSITIONNEMENT DU BANDEAU ---
+    HAUTEUR_BANDEAU_CHOIX = 90  
+    bandeau_bas = pygame.Surface((WIDTH, HAUTEUR_BANDEAU_CHOIX))
+    bandeau_bas.fill((0, 0, 0))
+    bandeau_bas.set_alpha(90)   
+    y_bandeau = HEIGHT - HAUTEUR_BANDEAU_CHOIX
+
+    while not selection_validee:
+        # Définition dynamique du pas (step) et du maximum selon le mode
+        pas = 2 if est_strip else 1
+        minimum_autorise = 2 if est_strip else 1
+        maximum_autorise = 4 if est_strip else MAX_COPIES_IMPRESSION
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+                
+            elif event.type == pygame.KEYDOWN:
+                if event.key == TOUCHE_GAUCHE:
+                    if compteur > minimum_autorise:
+                        compteur -= pas
+                        jouer_son("click")
+                        
+                elif event.key == TOUCHE_DROITE:
+                    if compteur < maximum_autorise:
+                        compteur += pas
+                        jouer_son("click")
+                        
+                elif event.key == TOUCHE_MILIEU:
+                    selection_validee = True
+
+        if time.time() - temps_debut > DELAI_CHOIX:
+            log_info("⏰ Temps écoulé, validation auto.")
+            selection_validee = True
+
+        # 1. FOND DE L'ACCUEIL
+        inserer_background(screen, fond_accueil)
+        
+        # 2. TITRE
+        texte_titre = "NOMBRE D'IMPRESSIONS" if est_strip else "NOMBRE D'IMPRESSIONS"
+        txt_question = font_boutons.render(texte_titre, True, COULEUR_BLANCHE)
+        y_titre = HEIGHT // 5 
+        screen.blit(txt_question, (WIDTH // 2 - txt_question.get_width() // 2, y_titre))
+
+        # 3. LE COMPTEUR (Gros chiffre central en blanc)
+        txt_compteur = font_decompte.render(str(compteur), True, COULEUR_BLANCHE)
+        cx = WIDTH // 2 - txt_compteur.get_width() // 2
+        cy = HEIGHT // 2 - txt_compteur.get_height() // 2
+        screen.blit(txt_compteur, (cx, cy))
+
+        # 4. RENDU DU BANDEAU NOIR COLLÉ EN BAS
+        screen.blit(bandeau_bas, (0, y_bandeau))
+
+        # 5. GESTION DYNAMIQUE DES COULEURS DES TEXTES
+        couleur_moins = COULEUR_BLANCHE if compteur > minimum_autorise else COULEUR_GRIS_LISIBLE
+        couleur_plus = COULEUR_ROUGE if compteur < maximum_autorise else COULEUR_GRIS_LISIBLE
+
+        txt_btn_gauche = font_boutons.render("[ - ] MOINS", True, couleur_moins)
+        txt_btn_milieu = font_boutons.render("[ IMPRIMER ]", True, COULEUR_VERTE)
+        txt_btn_droite = font_boutons.render("PLUS [ + ]", True, couleur_plus)
+
+        # Alignement vertical au milieu du bandeau du bas
+        y_boutons = y_bandeau + (HAUTEUR_BANDEAU_CHOIX // 2) - (txt_btn_milieu.get_height() // 2)
+        MARGE_BORD = 80 
+        
+        screen.blit(txt_btn_gauche, (MARGE_BORD, y_boutons))
+        screen.blit(txt_btn_milieu, (WIDTH // 2 - txt_btn_milieu.get_width() // 2, y_boutons))
+        pos_droite = WIDTH - txt_btn_droite.get_width() - MARGE_BORD
+        screen.blit(txt_btn_droite, (pos_droite, y_boutons))
+
+        pygame.display.flip()
+        clock.tick(30)
+
+    # --- CALCUL DYNAMIQUE ET ADAPTÉ DU TEMPS POUR LE FICHIER CONFIG ---
+    if est_strip:
+        # 2 bandelettes = 1 impression réelle = 15s | 4 bandelettes = 2 impressions réelles = 30s
+        config.TEMPS_ATTENTE_IMP = int((compteur / 2) * 15)
+    else:
+        config.TEMPS_ATTENTE_IMP = compteur * 15
+
+    log_info(f"🔢 Choix validé : {compteur} | Temps configuré : {config.TEMPS_ATTENTE_IMP}s")
+    return compteur
+
+
+def traiter_impression_session(session) -> str:
+    """Genere, archive et imprime le montage final avec diagnostic precis."""
     try:
         p = executer_avec_spinner(
             lambda: _generer_montage_final(session),
@@ -504,17 +624,24 @@ def traiter_impression_session(session: SessionState) -> str:
         )
         destination = _destination_montage_imprime(session)
 
-        # Copie si nécessaire (Strips gèrent leur propre chemin)
+        # Copie si necessaire (Strips gerent leur propre chemin)
         if session.mode_actuel != "strips":
             shutil.copy(p, destination)
         else:
             destination = p
 
         if not ACTIVER_IMPRESSION:
-            log_info(f"Impression désactivée : montage enregistré ({destination})")
-            afficher_message_plein_ecran("Impression désactivée - montage enregistré", couleur=(255, 215, 0))
+            log_info(f"Impression desactivee : montage enregistre ({destination})")
+            afficher_message_plein_ecran("Impression desactivee - montage enregistre", couleur=(255, 215, 0))
             time.sleep(1.2)
             return "print_disabled"
+
+        # --- APPEL DE LA SELECTION DYNAMIQUE ---
+        nb_copies = demander_nombre_copies(session)
+
+        # --- CONVERSION EN IMPRESSIONS PHYSIQUES REELLES ---
+        est_strip = (session.mode_actuel == "strips")
+        nb_impressions_reelles = int(nb_copies / 2) if est_strip else nb_copies
 
         # --- MODIFICATION ANTI-FLASH ---
         from ui import helpers
@@ -523,37 +650,81 @@ def traiter_impression_session(session: SessionState) -> str:
             pygame.display.flip()
 
         # ===========================================================
-        # --- NOUVELLE VÉRIFICATION DE SÉCURITÉ (Saturations/État) ---
+        # --- VERIFICATION DE SECURITE (Etat initial de la machine) ---
         # ===========================================================
-        # On appelle is_ready qui renvoie désormais True ou False
-        if printer_mgr.is_ready(session.mode_actuel):
-            if printer_mgr.send(destination, session.mode_actuel):
-                jouer_son("success")
-                ecran_attente_impression()
-                return "printed"
-            else:
-                # En cas d'échec d'envoi, on affiche l'erreur stockée
-                ecran_erreur(printer_mgr.last_error or TXT_ERREUR_IMPRIMANTE)
-                return "print_failed"
-        else:
-            # ICI : Au lieu d'afficher "status" (qui est juste False),
-            # on affiche le message texte précis qu'on a mémorisé.
-            log_warning(f"Impression bloquée : {printer_mgr.last_error}")
-            ecran_erreur(printer_mgr.last_error) 
+        # is_ready renvoie True si prêt, sinon une chaîne décrivant le problème
+        # (mémorisée aussi dans last_error). Une chaîne est truthy : on teste
+        # `is not True` pour ne PAS partir imprimer sur « FILE D'ATTENTE PLEINE ».
+        etat_imprimante = printer_mgr.is_ready(session.mode_actuel)
+        if etat_imprimante is not True:
+            log_warning(f"Impression bloquée : {etat_imprimante}")
+            ecran_erreur(printer_mgr.last_error or TXT_ERREUR_IMPRIMANTE)
             return "print_failed"
+
         # ===========================================================
+        # --- ETAPE 1 : FONCTION INTERNE D'ENVOI EN ARRIÈRE-PLAN ---
+        # ===========================================================
+        def boucle_envoi_dnp():
+            for i in range(nb_impressions_reelles):
+                log_info(f"🚀 [Thread DNP] Envoi de l'impression physique {i+1}/{nb_impressions_reelles}...")
+                
+                chemin_unique_copie = destination.replace(".jpg", f"_ticket_{i}.jpg")
+                try:
+                    shutil.copy(destination, chemin_unique_copie)
+                except Exception:
+                    chemin_unique_copie = destination
+
+                # Envoi effectif
+                printer_mgr.send(chemin_unique_copie, session.mode_actuel)
+                
+                # Nettoyage
+                if os.path.exists(chemin_unique_copie) and chemin_unique_copie != destination:
+                    try:
+                        os.remove(chemin_unique_copie)
+                    except Exception:
+                        pass
+
+                # Attente entre deux impressions pour ne pas saturer CUPS
+                if nb_impressions_reelles > 1 and i < (nb_impressions_reelles - 1):
+                    log_info("⏳ Thread DNP : Pause de 15s avant le prochain envoi...")
+                    time.sleep(15.0)
+            
+            # Une fois toutes les impressions envoyées, on joue le son de succès
+            jouer_son("success")
+
+        # ===========================================================
+        # --- ETAPE 2 : CONFIGURATION DU TIMER ET LANCEMENT CONCURRENT ---
+        # ===========================================================
+        # 1 photo = 15s | 2 photos = 32s | 3 photos = 48s
+        if nb_impressions_reelles == 1:
+            helpers.TEMPS_ATTENTE_IMP = 14
+        else:
+            helpers.TEMPS_ATTENTE_IMP = nb_impressions_reelles * 13
+
+        log_info(f"⏱️ Configuration de la roue visuelle sur {helpers.TEMPS_ATTENTE_IMP}s")
+        
+        # ON LANCE L'ENVOI DANS UN THREAD SÉPARÉ (Il s'exécute en arrière-plan)
+        thread_imprimante = threading.Thread(target=boucle_envoi_dnp)
+        thread_imprimante.daemon = True # S'arrête automatiquement si le programme principal coupe
+        thread_imprimante.start()
+
+        # ON LANCE IMMEDIATEMENT L'ECRAN DE LA ROUE (Qui s'affiche en même temps)
+        ecran_attente_impression()
+        
+        return "printed"
 
     except Exception as e:
         log_critical(f"Erreur impression finale : {e}")
         ecran_erreur(TXT_ERREUR_IMPRIMANTE)
         return "print_failed"
 
+
 def demander_arret(signum=None, frame=None) -> None:
-    """Demande un arrêt propre de la boucle principale."""
+    """Demande un arret propre de la boucle principale."""
     global running
     running = False
     if signum is not None:
-        log_info(f"Signal d'arrêt reçu ({signum})")
+        log_info(f"Signal d'arret recu ({signum})")
 
 
 
@@ -792,13 +963,17 @@ def render_decompte(session: SessionState) -> None:
         session.session_start_ts = time.time()
         log_info(f"🚀 NOUVELLE SESSION : {session.id_session_timestamp}")
 
-    # Boucle du décompte visuel
+    # Boucle du décompte visuel (+ instrumentation perf #20 : compte les frames
+    # preview pour mesurer le fps réel du LiveView pendant le décompte)
+    perf_frames_ok = 0
+    perf_t0 = time.time()
     for i in range(TEMPS_DECOMPTE, 0, -1):
         jouer_son("beep_final" if i == 1 else "beep")
         t_start = time.time()
         while time.time() - t_start < 1:
             surf = get_canon_frame()
             if surf:
+                perf_frames_ok += 1
                 # 1. On applique la symétrie horizontale sur l'image reçue (True = Horizontal, False = Vertical)
                 surf_miroir = pygame.transform.flip(surf, True, False)
     
@@ -833,9 +1008,25 @@ def render_decompte(session: SessionState) -> None:
             pygame.display.flip()
             pygame.event.pump()
 
-    # CAPTURE HQ + transition
+    # --- Instrumentation perf #20 : fps preview mesuré sur le décompte ---
+    perf_elapsed = time.time() - perf_t0
+    perf_fps = (perf_frames_ok / perf_elapsed) if perf_elapsed > 0 else None
+
+    # CAPTURE HQ + transition (chronométrée pour le log PERF)
     index_photo = len(session.photos_validees) + 1
+    perf_t_cap = time.time()
     chemin_photo = capturer_hq(session.id_session_timestamp, index_photo)
+    perf_capture_s = time.time() - perf_t_cap
+
+    global _perf_capture_num
+    _perf_capture_num += 1
+    log_info(formater_ligne_perf(
+        capture_num=_perf_capture_num,
+        preview_fps=perf_fps,
+        capture_s=perf_capture_s,
+        rss_mb=lire_rss_mb(),
+        gc_objs=len(gc.get_objects()),
+    ))
 
     if chemin_photo:
         session.photos_validees.append(chemin_photo)

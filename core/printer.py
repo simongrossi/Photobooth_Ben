@@ -17,23 +17,33 @@ class PrinterManager:
 
     def __init__(self, nom_10x15: str, nom_strip: str) -> None:
         self._noms: dict[str, str] = {"10x15": nom_10x15, "strips": nom_strip}
+        # Dernier message d'erreur lisible (rempli par is_ready/send, affiché par l'UI).
+        # None quand tout va bien. Évite l'AttributeError historique côté appelant.
+        self.last_error: Optional[str] = None
 
     def nom(self, mode: str) -> Optional[str]:
         """Retourne le nom de la file CUPS pour ce mode, ou None."""
         return self._noms.get(mode)
 
+    def _echec(self, message: str) -> str:
+        """Mémorise le message d'erreur et le retourne (contrat is_ready inchangé)."""
+        self.last_error = message
+        return message
+
     def is_ready(self, mode: str):
+        """Retourne True si la file est prête, sinon une chaîne décrivant le problème.
+        Dans les deux cas, `self.last_error` reflète l'état (None si prêt)."""
         nom_file = self._noms.get(mode)
         if not nom_file:
-            return "MODE INCONNU"
+            return self._echec("MODE INCONNU")
 
         # --- 1. CHECK DES JOBS (Évite l'accumulation de photos) ---
         try:
             jobs_proc = subprocess.run(["lpstat", "-o", nom_file], capture_output=True, text=True, timeout=2)
             # On filtre les lignes vides pour compter les vrais jobs
             lines = [line for line in jobs_proc.stdout.strip().split('\n') if line]
-            if len(lines) >= 1: 
-                return "FILE D'ATTENTE PLEINE"
+            if len(lines) >= 1:
+                return self._echec("FILE D'ATTENTE PLEINE")
         except Exception:
             pass
 
@@ -41,20 +51,21 @@ class PrinterManager:
         try:
             result = subprocess.run(["lpstat", "-p", nom_file], capture_output=True, text=True, timeout=2)
             out = result.stdout.lower()
-            
+
             # ATTENTION : On ne met PAS 'paused' ici, car CUPS met en pause quand c'est éteint
             etats_ok = ("idle", "enabled", "activée", "printing", "inoccupée")
-            
+
             # Si on détecte "paused", c'est que l'imprimante est offline
             if "paused" in out or "en pause" in out:
-                return "IMPRIMANTE ÉTEINTE OU DÉBRANCHÉE"
+                return self._echec("IMPRIMANTE ÉTEINTE OU DÉBRANCHÉE")
 
             if not any(x in out for x in etats_ok):
-                return "IMPRIMANTE HORS LIGNE"
-                
-        except Exception:
-            return "ERREUR SYSTÈME CUPS"
+                return self._echec("IMPRIMANTE HORS LIGNE")
 
+        except Exception:
+            return self._echec("ERREUR SYSTÈME CUPS")
+
+        self.last_error = None
         return True
 
     def send(self, chemin: str, mode: str) -> bool:
@@ -74,11 +85,15 @@ class PrinterManager:
             # check=True lève une erreur si la commande échoue
             subprocess.run(["lp", "-d", nom_file, "-o", "fit-to-page", chemin], check=True, capture_output=True)
             log_info(f"🖨️ Impression lancée sur {nom_file}")
+            self.last_error = None
             return True
         except subprocess.CalledProcessError as e:
-            log_critical(f"Erreur commande lp : {e.stderr.decode()}")
+            detail = e.stderr.decode() if e.stderr else str(e)
+            self.last_error = f"Erreur commande lp : {detail}"
+            log_critical(f"Erreur commande lp : {detail}")
             return False
         except Exception as e:
+            self.last_error = f"Erreur système impression : {e}"
             log_critical(f"Erreur système impression : {e}")
             return False
 
