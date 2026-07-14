@@ -15,8 +15,8 @@ repos:
   - repo: local
     hooks:
       - id: pytest
-        name: pytest (test_montage.py)
-        entry: python3 -m pytest test_montage.py -q
+        name: pytest (tests/test_montage.py)
+        entry: python3 -m pytest tests/test_montage.py -q
         language: system
         pass_filenames: false
         always_run: true

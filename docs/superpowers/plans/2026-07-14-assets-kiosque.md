@@ -14,9 +14,9 @@
 
 ### Task 1 : Config — chemins + `resoudre_actif()` (+ docs/CONFIG.md)
 
-**Files:** Modify `config.py` (après POLICE_FICHIER, ~l.151) ; Create `test_config_assets.py` ; Modify `docs/CONFIG.md`.
+**Files:** Modify `config.py` (après POLICE_FICHIER, ~l.151) ; Create `tests/test_config_assets.py` ; Modify `docs/CONFIG.md`.
 
-- [ ] Test (`test_config_assets.py`) :
+- [ ] Test (`tests/test_config_assets.py`) :
 
 ```python
 """test_config_assets.py — résolution actif/défaut des assets kiosque (volet 2)."""
@@ -42,7 +42,7 @@ class TestConstantesVolet2:
             assert hasattr(config, nom), nom
 ```
 
-- [ ] Vérifier l'échec (`pytest test_config_assets.py -q` → AttributeError), puis implémenter dans `config.py` après `POLICE_FICHIER` :
+- [ ] Vérifier l'échec (`pytest tests/test_config_assets.py -q` → AttributeError), puis implémenter dans `config.py` après `POLICE_FICHIER` :
 
 ```python
 # --- Volet 2 : assets kiosque gérés par l'admin web (fond accueil, police, slides) ---
@@ -64,13 +64,13 @@ POLICE_EFFECTIVE    = resoudre_actif(POLICE_FICHIER_ACTIF, POLICE_FICHIER)
 ```
 
 - [ ] `docs/CONFIG.md` : documenter les 8 noms (section « Assets kiosque (admin web) »).
-- [ ] `pytest test_config_assets.py -q` PASS → commit `feat(config): chemins assets kiosque + resoudre_actif (volet 2)`.
+- [ ] `pytest tests/test_config_assets.py -q` PASS → commit `feat(config): chemins assets kiosque + resoudre_actif (volet 2)`.
 
 ### Task 2 : DB — table `asset_kiosque`
 
-**Files:** Modify `web/db.py` ; Create `test_web_kiosque.py`.
+**Files:** Modify `web/db.py` ; Create `tests/test_web_kiosque.py`.
 
-- [ ] Test initial (`test_web_kiosque.py`) :
+- [ ] Test initial (`tests/test_web_kiosque.py`) :
 
 ```python
 """test_web_kiosque.py — page Kiosque (fond accueil, police, slides)."""

@@ -14,7 +14,7 @@ ignore = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["."]
+testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
@@ -28,7 +28,7 @@ addopts = [
 # Photobooth_start.py demande pygame/gphoto2 — pas couvrable en CI sans runtime.
 source = ["core", "web", "stats", "status"]
 omit = [
-    "*/test_*.py",
+    "tests/*",
     "*/__pycache__/*",
 ]
 

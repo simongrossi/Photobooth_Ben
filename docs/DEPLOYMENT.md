@@ -106,6 +106,9 @@ python3 -m venv .venv --system-site-packages
 source .venv/bin/activate
 pip install --upgrade pip
 pip install Pillow pytest pytest-cov ruff
+
+# Vérifier la version déployée (Pytest découvre automatiquement tests/)
+python3 -m pytest
 ```
 
 > **Note** : `--system-site-packages` permet au venv de voir les paquets système

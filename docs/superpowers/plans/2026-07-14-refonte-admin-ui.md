@@ -99,7 +99,7 @@ ajouter `stats_du_jour, stats_par_jour` à la liste importée.
 
 - [ ] **Step 2 : Vérifier l'échec**
 
-Run: `pytest test_stats.py -v -k "StatsDuJour or StatsParJour"`
+Run: `pytest tests/test_stats.py -v -k "StatsDuJour or StatsParJour"`
 Expected: FAIL — `ImportError: cannot import name 'stats_du_jour'`.
 
 - [ ] **Step 3 : Implémenter dans `stats.py`** (après `filtrer_par_date`)
@@ -143,13 +143,13 @@ def stats_par_jour(sessions, limite=14):
 
 - [ ] **Step 4 : Vérifier le succès**
 
-Run: `pytest test_stats.py -v`
+Run: `pytest tests/test_stats.py -v`
 Expected: PASS (nouveaux + anciens).
 
 - [ ] **Step 5 : Commit**
 
 ```bash
-git add stats.py test_stats.py
+git add stats.py tests/test_stats.py
 git commit -m "feat(stats): stats_du_jour + stats_par_jour pour le dashboard v2"
 ```
 
@@ -202,7 +202,7 @@ autres tests) ; sinon reprendre :
 
 - [ ] **Step 2 : Vérifier l'échec**
 
-Run: `pytest test_web_app.py::TestDashboardV2 -v`
+Run: `pytest tests/test_web_app.py::TestDashboardV2 -v`
 Expected: FAIL — `AttributeError: module 'web.routes.dashboard' has no attribute 'printer_mgr'`.
 
 - [ ] **Step 3 : Remplacer `web/routes/dashboard.py`**
@@ -405,7 +405,7 @@ def index():
 
 - [ ] **Step 5 : Vérifier le succès**
 
-Run: `pytest test_web_app.py -v`
+Run: `pytest tests/test_web_app.py -v`
 Expected: PASS — y compris les anciens tests dashboard (`test_sans_sessions_affiche_zero`,
 `test_avec_sessions`) ; si l'un d'eux asserte un texte disparu (ex. « Répartition
 horaire »), adapter **le test** au nouveau gabarit en conservant son intention.
@@ -413,7 +413,7 @@ horaire »), adapter **le test** au nouveau gabarit en conservant son intention.
 - [ ] **Step 6 : Commit**
 
 ```bash
-git add web/routes/dashboard.py web/templates/dashboard.html test_web_app.py
+git add web/routes/dashboard.py web/templates/dashboard.html tests/test_web_app.py
 git commit -m "feat(admin): dashboard 4 étages (santé, aujourd'hui, totaux, historique)"
 ```
 

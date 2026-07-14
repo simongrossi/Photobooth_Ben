@@ -77,7 +77,8 @@ Photobooth_Ben/
 │   └── __init__.py       # re-exporte pour `from ui import X`
 ├── status.py             # diagnostic autonome pré-événement
 ├── stats.py              # rapport fin de soirée (sessions.jsonl)
-├── test_*.py             # suite pytest à la racine (147 tests)
+├── tests/                # suite pytest (254 tests)
+│   └── test_*.py
 ├── README.md
 ├── deploy/                 # infra Pi (systemd + kiosque)
 │   ├── photobooth.service  # unit systemd avec watchdog
@@ -148,7 +149,7 @@ Chaque fin de session écrit une ligne JSON dans `data/sessions.jsonl` :
 ## Tests
 
 ```bash
-python3 -m pytest test_montage.py -v
+python3 -m pytest tests/test_montage.py -v
 ```
 
 Couvre :

@@ -15,10 +15,10 @@ Voir aussi : [DEVELOPMENT.md](DEVELOPMENT.md) pour le setup local, pre-commit et
 pytest
 
 # Un fichier précis
-pytest test_montage.py -v
+pytest tests/test_montage.py -v
 
 # Un seul test
-pytest test_montage.py::test_nom_du_test -v
+pytest tests/test_montage.py::test_nom_du_test -v
 
 # Avec couverture (voir [pyproject.toml](../pyproject.toml))
 pytest --cov --cov-report=term
@@ -38,18 +38,18 @@ au-dessus de **87 %**.
 
 | Fichier | Tests | Couvre | Stratégie |
 |---|---|---|---|
-| [test_camera.py](../test_camera.py) | 9 | `core/camera.py` (imports optionnels, preview, capture, close) | mocks gphoto2/cv2/numpy/pygame + subprocess |
-| [test_montage.py](../test_montage.py) | 27 | `core/montage.py` (PIL, MontageGenerator10x15/Strip, watermark, grain) | monkeypatch des `PATH_*` + fixtures PIL synthétiques |
-| [test_arduino.py](../test_arduino.py) | 19 | `core/arduino.py` (ArduinoController, LEDs, tick, read loop) | FakeSerial + FakePygame mocks |
-| [test_printer.py](../test_printer.py) | 13 | `core/printer.py` (PrinterManager, lpstat/lp) | mock `subprocess.run`/`Popen` |
-| [test_logger.py](../test_logger.py) | 4 | `core/logger.py` (log_error wrapper legacy) | `caplog` pytest |
-| [test_session.py](../test_session.py) | 11 | `core/session.py` (Etat, SessionState, metadata JSONL) | monkeypatch `PATH_DATA` |
-| [test_evenements.py](../test_evenements.py) | 4 | partage actif + instantané de session | `tmp_path`, JSON synthétique |
-| [test_monitoring.py](../test_monitoring.py) | 21 | `core/monitoring.py` (DiskMonitor, TempMonitor, lister_images_slideshow) | fixtures `tmp_path` |
-| [test_status.py](../test_status.py) | 18 | `status.py` (diagnostic hardware/assets) | fixtures assets factices dans `tmp_path` |
-| [test_stats.py](../test_stats.py) | 17 | `stats.py` (parsing `sessions.jsonl`, histogramme horaire, CLI) | fixtures JSONL synthétiques |
-| [test_integration.py](../test_integration.py) | 8 | chaîne `CameraManager` → `MontageGenerator` → `PrinterManager`, import sans runtime | mocks gphoto2/CUPS/pygame, réels PIL |
-| [test_web_evenements.py](../test_web_evenements.py) | 6 | CRUD, activation, filtres et export ZIP | Flask test client + SQLite/filesystem isolés |
+| [test_camera.py](../tests/test_camera.py) | 9 | `core/camera.py` (imports optionnels, preview, capture, close) | mocks gphoto2/cv2/numpy/pygame + subprocess |
+| [test_montage.py](../tests/test_montage.py) | 27 | `core/montage.py` (PIL, MontageGenerator10x15/Strip, watermark, grain) | monkeypatch des `PATH_*` + fixtures PIL synthétiques |
+| [test_arduino.py](../tests/test_arduino.py) | 19 | `core/arduino.py` (ArduinoController, LEDs, tick, read loop) | FakeSerial + FakePygame mocks |
+| [test_printer.py](../tests/test_printer.py) | 13 | `core/printer.py` (PrinterManager, lpstat/lp) | mock `subprocess.run`/`Popen` |
+| [test_logger.py](../tests/test_logger.py) | 4 | `core/logger.py` (log_error wrapper legacy) | `caplog` pytest |
+| [test_session.py](../tests/test_session.py) | 11 | `core/session.py` (Etat, SessionState, metadata JSONL) | monkeypatch `PATH_DATA` |
+| [test_evenements.py](../tests/test_evenements.py) | 4 | partage actif + instantané de session | `tmp_path`, JSON synthétique |
+| [test_monitoring.py](../tests/test_monitoring.py) | 21 | `core/monitoring.py` (DiskMonitor, TempMonitor, lister_images_slideshow) | fixtures `tmp_path` |
+| [test_status.py](../tests/test_status.py) | 18 | `status.py` (diagnostic hardware/assets) | fixtures assets factices dans `tmp_path` |
+| [test_stats.py](../tests/test_stats.py) | 17 | `stats.py` (parsing `sessions.jsonl`, histogramme horaire, CLI) | fixtures JSONL synthétiques |
+| [test_integration.py](../tests/test_integration.py) | 8 | chaîne `CameraManager` → `MontageGenerator` → `PrinterManager`, import sans runtime | mocks gphoto2/CUPS/pygame, réels PIL |
+| [test_web_evenements.py](../tests/test_web_evenements.py) | 6 | CRUD, activation, filtres et export ZIP | Flask test client + SQLite/filesystem isolés |
 
 **Non couvert en CI** (nécessite pygame/gphoto2/caméra réelle) :
 - `Photobooth_start.py` — boucle principale, render functions, event handlers
@@ -87,8 +87,7 @@ sur Raspberry avant événement.
 
 ### Convention de nommage
 
-- Fichier : `test_<module>.py` à la racine (pas dans un dossier `tests/`,
-  convention historique du projet).
+- Fichier : `tests/test_<module>.py` dans le dossier `tests/`.
 - Fonction : `test_<ce_que_le_test_vérifie>()` — verbe à l'impératif OK.
 - Les fixtures partagées vont en **haut du fichier** (pas encore de `conftest.py`
   — à créer si fixture partagée entre fichiers).
@@ -104,12 +103,12 @@ def test_genere_montage(tmp_path, monkeypatch):
     # ...
 ```
 
-Voir [test_montage.py](../test_montage.py) pour les fixtures types (`photo_factice`,
+Voir [test_montage.py](../tests/test_montage.py) pour les fixtures types (`photo_factice`,
 `trois_photos`) et l'isolement disque propre.
 
 ### Mocker gphoto2 / CUPS / pyserial
 
-Pattern utilisé dans [test_integration.py](../test_integration.py) :
+Pattern utilisé dans [test_integration.py](../tests/test_integration.py) :
 
 ```python
 def test_pipeline_complete(monkeypatch):

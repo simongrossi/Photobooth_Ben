@@ -6,7 +6,7 @@
 
 **Architecture:** Généralisation du système existant : la table `template` gagne une colonne `couche` (migration idempotente), les routes résolvent la cible active par couple (couche, type) parmi les 4 fichiers fixes lus par le kiosque, et une nouvelle route `desactiver` supprime le fichier actif (le moteur de montage gère nativement l'absence : fond → blanc, overlay → sauté). Aucun changement côté kiosque.
 
-**Tech Stack:** Flask + Jinja2, SQLite (`data/admin.db`), PIL, pytest (tests à la racine du repo, convention projet).
+**Tech Stack:** Flask + Jinja2, SQLite (`data/admin.db`), PIL, pytest (tests dans `tests/`, convention projet).
 
 **Spec :** `docs/superpowers/specs/2026-07-14-sans-template-design.md`
 **Branche :** `templates-deux-couches`
@@ -20,10 +20,10 @@
 | `web/db.py` | Colonne `couche` dans `_SCHEMA` + fonction `_migrer()` + index (couche, type, actif) |
 | `web/routes/templates_route.py` | Constantes deux couches, résolution chemin par couche, upload/activer/desactiver/supprimer/thumb couche-aware |
 | `web/templates/templates.html` | Deux sections (Overlays / Fonds), formulaire avec choix de couche, boutons « Aucun » avec état |
-| `test_web_templates.py` | Fixture couche-aware + nouveaux tests (migration, fond, désactivation) |
+| `tests/test_web_templates.py` | Fixture couche-aware + nouveaux tests (migration, fond, désactivation) |
 | `docs/ADMIN.md` | Page Templates deux couches + tableau source de vérité |
 
-Rappels projet : tests **à la racine** (`testpaths = ["."]`), ruff propre obligatoire (CI), commits en français `<domaine>: <description>`, chaque commit doit passer les tests.
+Rappels projet : tests dans **`tests/`** (`testpaths = ["tests"]`), ruff propre obligatoire (CI), commits en français `<domaine>: <description>`, chaque commit doit passer les tests.
 
 ---
 
@@ -93,7 +93,7 @@ class TestMigrationCouche:
 
 - [ ] **Step 2 : Vérifier l'échec**
 
-Run: `pytest test_web_templates.py::TestMigrationCouche -v`
+Run: `pytest tests/test_web_templates.py::TestMigrationCouche -v`
 Expected: FAIL (`no such column: couche` sur le premier test ; le 3e échoue aussi).
 
 - [ ] **Step 3 : Implémenter dans `web/db.py`**
@@ -148,13 +148,13 @@ Mettre à jour le docstring de module (« Une seule table aujourd'hui ») pour m
 
 - [ ] **Step 4 : Vérifier le succès**
 
-Run: `pytest test_web_templates.py -v`
+Run: `pytest tests/test_web_templates.py -v`
 Expected: PASS (les 3 nouveaux + tous les anciens — la colonne a un DEFAULT, rien ne casse).
 
 - [ ] **Step 5 : Commit**
 
 ```bash
-git add web/db.py test_web_templates.py
+git add web/db.py tests/test_web_templates.py
 git commit -m "feat(admin): colonne couche sur la table template + migration idempotente"
 ```
 
@@ -215,7 +215,7 @@ existants `c, _ = client` → `c, _, _ = client` et `c, overlays = client` →
 
 - [ ] **Step 2 : Vérifier l'échec**
 
-Run: `pytest test_web_templates.py -v`
+Run: `pytest tests/test_web_templates.py -v`
 Expected: FAIL — `AttributeError` sur `tr._RACINE_PAR_COUCHE` (n'existe pas encore).
 
 - [ ] **Step 3 : Refactorer `web/routes/templates_route.py`**
@@ -394,7 +394,7 @@ Docstring de module : mentionner les deux couches et les 4 cibles.
 
 - [ ] **Step 4 : Vérifier le succès**
 
-Run: `pytest test_web_templates.py test_web_app.py -v`
+Run: `pytest tests/test_web_templates.py tests/test_web_app.py -v`
 Expected: PASS — les anciens tests passent (couche défaut `overlay`), la fixture triplet fonctionne.
 Note : le gabarit HTML référence encore l'ancienne variable ? Non — `path_overlays` est
 toujours passé ; la mise à jour du gabarit vient en Task 5. Si un test de rendu échoue sur
@@ -403,7 +403,7 @@ toujours passé ; la mise à jour du gabarit vient en Task 5. Si un test de rend
 - [ ] **Step 5 : Commit**
 
 ```bash
-git add web/routes/templates_route.py test_web_templates.py
+git add web/routes/templates_route.py tests/test_web_templates.py
 git commit -m "refactor(admin): résolution des templates par couple (couche, type), défaut overlay"
 ```
 
@@ -487,14 +487,14 @@ class TestUploadFond:
 
 - [ ] **Step 2 : Lancer les tests**
 
-Run: `pytest test_web_templates.py::TestUploadFond -v`
+Run: `pytest tests/test_web_templates.py::TestUploadFond -v`
 Expected: PASS directement (l'implémentation date de Task 2). Si un test échoue,
 corriger `upload()` — ne pas modifier le test.
 
 - [ ] **Step 3 : Commit**
 
 ```bash
-git add test_web_templates.py
+git add tests/test_web_templates.py
 git commit -m "tests(admin): upload de fonds (jpg/png), rejets extension et couche inconnue"
 ```
 
@@ -589,7 +589,7 @@ class TestDesactivation:
 
 - [ ] **Step 2 : Vérifier l'échec**
 
-Run: `pytest test_web_templates.py::TestDesactivation -v`
+Run: `pytest tests/test_web_templates.py::TestDesactivation -v`
 Expected: FAIL — 404 partout (la route n'existe pas) : les tests `couche_inconnue`
 passent « par accident », `test_desactiver_supprime...` échoue. C'est l'échec attendu.
 
@@ -624,13 +624,13 @@ def desactiver(couche: str, type_t: str):
 
 - [ ] **Step 4 : Vérifier le succès**
 
-Run: `pytest test_web_templates.py -v`
+Run: `pytest tests/test_web_templates.py -v`
 Expected: PASS (toutes classes).
 
 - [ ] **Step 5 : Commit**
 
 ```bash
-git add web/routes/templates_route.py test_web_templates.py
+git add web/routes/templates_route.py tests/test_web_templates.py
 git commit -m "feat(admin): désactivation « Aucun » par couche×format + tests activation fonds"
 ```
 
@@ -663,7 +663,7 @@ class TestPageDeuxCouches:
 
 - [ ] **Step 2 : Vérifier l'échec**
 
-Run: `pytest test_web_templates.py::TestPageDeuxCouches -v`
+Run: `pytest tests/test_web_templates.py::TestPageDeuxCouches -v`
 Expected: FAIL (« Fonds » absent du HTML actuel).
 
 - [ ] **Step 3 : Remplacer `web/templates/templates.html`**
@@ -783,7 +783,7 @@ supprime la cible même sans template actif en base.
 
 - [ ] **Step 4 : Vérifier le succès**
 
-Run: `pytest test_web_templates.py -v`
+Run: `pytest tests/test_web_templates.py -v`
 Expected: PASS.
 
 - [ ] **Step 5 : Ajouter le style minimal (si classes manquantes)**
@@ -799,7 +799,7 @@ form.inline { display: inline; margin: 0; }
 - [ ] **Step 6 : Commit**
 
 ```bash
-git add web/templates/templates.html web/static/admin.css test_web_templates.py
+git add web/templates/templates.html web/static/admin.css tests/test_web_templates.py
 git commit -m "feat(admin): page Templates deux sections (overlays/fonds) + boutons « Aucun »"
 ```
 

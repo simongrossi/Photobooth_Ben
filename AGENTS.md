@@ -9,10 +9,10 @@ Event photobooth app (Pygame + gphoto2 + PIL) targeting a Raspberry Pi with a Ca
 ## Common commands
 
 ```bash
-# Tests (48 tests, ~2 s) — pure-Python modules only
+# Tests (254 tests, ~30 s) — pure-Python modules only
 pytest                                   # full suite
-pytest test_montage.py -v                # single file
-pytest test_montage.py::test_name -v     # single test
+pytest tests/test_montage.py -v          # single file
+pytest tests/test_montage.py::test_name -v  # single test
 pytest --cov --cov-report=term-missing   # coverage (threshold: fail_under=75)
 
 # Lint / format (config in pyproject.toml)
@@ -20,7 +20,7 @@ ruff check .
 ruff check --fix .
 ruff format .                            # not in pre-commit
 
-# Pre-commit (runs ruff --fix + pytest test_montage.py)
+# Pre-commit (runs ruff --fix + pytest tests/test_montage.py)
 pre-commit install
 
 # Run the app (requires pygame + hardware, typically on the Pi)
@@ -91,8 +91,8 @@ The app degrades gracefully when `gphoto2`, `cups`, or `pyserial` is missing —
 
 ## Conventions
 
-- **Test file location**: `test_*.py` at the **repo root** (not under `tests/`). This is the project convention, enforced by `pyproject.toml` `testpaths = ["."]`.
-- **Test isolation**: use `tmp_path` + `monkeypatch.setattr("core.montage.PATH_TEMP", str(tmp_path))` to isolate filesystem writes; never write into the real `data/` tree from tests. See `test_montage.py` for `photo_factice` / `trois_photos` fixtures.
+- **Test file location**: `tests/test_*.py` in the **`tests/` directory**. This is the project convention, enforced by `pyproject.toml` `testpaths = ["tests"]`.
+- **Test isolation**: use `tmp_path` + `monkeypatch.setattr("core.montage.PATH_TEMP", str(tmp_path))` to isolate filesystem writes; never write into the real `data/` tree from tests. See `tests/test_montage.py` for `photo_factice` / `trois_photos` fixtures.
 - **Config-driven**: all tunables (resolutions, timings, CUPS queue names, montage geometry) live in `config.py` with assertion-based validation at import. When adding/changing a tunable, also update `docs/CONFIG.md`.
 - **Ruff**: defaults (E, F, W) only; `E501` is ignored, `line-length = 110`. Keep it clean — CI fails on any ruff issue.
 - **Coverage**: `fail_under = 75`; actual ~80 %. `core/camera.py` is 0 % by design (hardware), which drags the average — new pure code should stay above 87 %.

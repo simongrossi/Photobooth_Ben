@@ -74,31 +74,88 @@ et [CHANGELOG.md](CHANGELOG.md)._
 
 - [ ] **Auto-upload nightly** vers NAS / Dropbox / Nextcloud (cron job rsync)
 
+### Accès admin hors ligne — déploiement progressif
+
+Objectif : garder l'admin Flask accessible sur place même sans box, Internet
+ou réseau fourni par le lieu. Le réseau d'administration reste privé et ne se
+confond pas avec une éventuelle galerie publique pour les invités.
+
+#### Étape 1 — hotspot téléphone, sans matériel supplémentaire
+
+- [ ] Enregistrer avec NetworkManager un profil Wi-Fi prioritaire : SSID
+  `Photobooth`, mot de passe communiqué hors dépôt, reconnexion automatique.
+- [ ] Préconiser le partage en **2,4 GHz** pour la compatibilité ; documenter la
+  création/renommage du hotspot sur Android et iPhone.
+- [ ] Valider le scénario recommandé à deux appareils : téléphone A fournit le
+  hotspot, téléphone/tablette B ouvre l'admin.
+- [ ] Exposer l'admin via `http://photobooth.local:8080` (mDNS/Avahi), avec
+  l'adresse IPv4 courante en solution de secours.
+- [ ] Ajouter au diagnostic `status.py` : interface, SSID, IP, état de
+  `photobooth-admin.service` et URL complète.
+- [ ] Afficher un petit QR code « Admin » contenant l'URL locale, sans intégrer
+  le mot de passe Wi-Fi dans les logs ni dans le dépôt.
+- [ ] Tester démarrage sans Internet, extinction/réactivation du hotspot,
+  reconnexion automatique et reboot complet du Pi.
+- [ ] Écrire une fiche client d'une page avec procédure normale et retour
+  arrière (`nmcli connection down/up`).
+
+#### Étape 2 — point d'accès avec le Wi-Fi intégré
+
+- [ ] Créer un profil hotspot NetworkManager (`nmcli`) avec SSID privé
+  `Photobooth-Admin`, WPA2 et adresse stable (ex. `10.42.0.1`).
+- [ ] Utiliser le Wi-Fi intégré comme point d'accès permanent ; réserver
+  Ethernet à l'accès Internet éventuel.
+- [ ] Restreindre le réseau aux services nécessaires : admin `8080` et SSH de
+  maintenance ; ne pas exposer CUPS ou la galerie publique par défaut.
+- [ ] Prévoir activation/désactivation idempotente via un script `deploy/` et
+  documenter la récupération locale si la configuration réseau échoue.
+
+#### Étape 3 — clé USB Wi-Fi dédiée (cible robuste)
+
+- [ ] Wi-Fi intégré → réseau du lieu ; clé USB → point d'accès privé toujours
+  disponible, sans dépendance au Wi-Fi de la salle.
+- [ ] Privilégier un chipset avec pilote noyau Linux et mode AP vérifié par
+  `iw list`; éviter les références dont le chipset change selon la révision.
+- [ ] Candidats à tester sur le Pi réel : **ALFA AWUS036ACM / MT7612U** (choix
+  principal), **AWUS036ACHM / MT7610U** (alternative), **AWUS036AXM /
+  MT7921AUN** (à valider) ; BrosTrend/Realtek seulement en dernier recours à
+  cause des pilotes DKMS.
+- [ ] Tester alimentation USB et coexistence pendant plusieurs heures avec
+  caméra, Arduino et impression DNP actifs.
+- [ ] Ajouter un mode de secours : si le réseau amont disparaît, maintenir le
+  point d'accès admin sans interrompre le kiosque.
+
 ---
 
 ## Long terme — 3 h et plus
 
 ### Event Network (feature signature)
 
-> Combine point WiFi partagé + QR code partage + admin web. Transforme le
-> photobooth en attraction réseau intégrée. **À faire en dernier**, après
-> stabilisation complète.
+> Volet public distinct du réseau d'administration ci-dessus. Combine galerie
+> invités, QR code de téléchargement et portail local. À faire après validation
+> du point d'accès privé et de son isolation.
 
 **Architecture cible** :
-1. Raspberry en **mode Access Point** (`hostapd` + `dnsmasq`) : SSID public `Mariage-Wifi` sans mot de passe
-2. **Captive portal** (`nodogsplash`) : redirection auto vers la galerie web
-3. **Mini-serveur FastAPI** sur port 80 : galerie temps réel, téléchargement direct
-4. **QR code à l'écran** après impression → URL directe du montage
-5. ✅ **Admin dashboard web** : livré en v1 (voir [ADMIN.md](ADMIN.md)) — stats, galerie, templates, réglages. Reste à câbler : config live sans redémarrage, queue imprimante, QR de partage.
+1. Réseau admin privé `Photobooth-Admin`, protégé et réservé à l'exploitation.
+2. Réseau invités séparé ou règles firewall strictes, sans accès aux routes admin.
+3. Galerie Flask publique locale en lecture seule, téléchargement direct.
+4. QR code après impression → URL directe du montage de la session.
+5. Portail captif facultatif seulement après validation Android/iOS sur site.
+6. ✅ Admin dashboard Flask livré : événements, stats, galerie, templates,
+   kiosque et réglages.
 
 **Sous-tâches** :
 - ✅ Admin dashboard v1 (Flask + SQLite + Basic Auth) — dashboard, galerie, templates, réglages whitelistés
-- [ ] **v2 admin** — configuration WiFi depuis l'UI (edit `wpa_supplicant.conf` ou `nmcli` via sudoers ciblé), bouton "redémarrer service kiosque", export CSV stats, tail `logs/systemd.log` dans l'UI
-- [ ] Install / config `hostapd` + `dnsmasq` avec SSID + DHCP local
+- [ ] **v2 admin** — état réseau et configuration NetworkManager via `nmcli`
+  avec sudoers ciblé, bouton « redémarrer kiosque », queue imprimante et logs
+  systemd (export CSV événement déjà livré).
+- [ ] Évaluer NetworkManager en priorité ; n'introduire `hostapd` + `dnsmasq`
+  que si les besoins multi-interface/portail captif le justifient.
 - [ ] Extension galerie → mode **LAN public** : route publique sans auth pour téléchargement des montages du jour (à exposer uniquement via l'AP captif)
 - [ ] `qrcode` Python : affiche QR après impression (nouvel écran côté kiosque)
 - [ ] Captive portal `nodogsplash` ou redirection DNS catchall
-- [ ] Certificat self-signed HTTPS (éviter warnings iOS)
+- [ ] Choisir entre HTTP strictement local et certificat réellement approuvé ;
+  éviter un certificat auto-signé qui déclencherait des alertes navigateur.
 - [ ] Config live reload (file watcher sur `data/config_overrides.json`) — évite le `systemctl restart` après chaque réglage
 
 **Effort restant** : ~3-4 jours (l'admin v1 a défriché le plus gros : auth, serveur, galerie, SQLite).

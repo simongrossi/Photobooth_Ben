@@ -5,6 +5,15 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
 ---
 
+## `WIP` — Rangement de la suite de tests
+
+### Changed
+- Les fichiers `test_*.py` sont regroupés dans `tests/` ; Pytest, la couverture,
+  le pre-commit, les commandes ciblées et la documentation utilisent les
+  nouveaux chemins.
+- Le générateur manuel `tests/test_DNP_cut.py` conserve ses accès aux dossiers
+  racine `assets/` et `test/` après son déplacement.
+
 ## `WIP` — Gestion complète des événements
 
 ### Added
@@ -414,7 +423,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 - Compteur photo strip renforcé
 
 ### Tests
-- [test_montage.py](../test_montage.py) : 18 tests pytest, isolation via monkeypatch
+- [test_montage.py](../tests/test_montage.py) : 18 tests pytest, isolation via monkeypatch
 
 ### Documentation
 - [ROADMAP.md](ROADMAP.md) : items actionnables priorisés

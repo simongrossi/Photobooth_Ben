@@ -45,7 +45,7 @@ pre-commit install
 
 À partir de là, chaque `git commit` déclenche automatiquement :
 - `ruff --fix` (auto-fix des warnings)
-- `pytest test_montage.py -q` (tests les plus rapides)
+- `pytest tests/test_montage.py -q` (tests les plus rapides)
 
 Voir [`.pre-commit-config.yaml`](../.pre-commit-config.yaml).
 
@@ -76,7 +76,8 @@ Photobooth_Ben/
 ├── profile.py            # profiling CPU (cProfile)
 ├── profile_mem.py        # profiling mémoire (tracemalloc)
 ├── bench_spinner.py      # microbench LoaderAnimation
-├── test_*.py             # tests pytest
+├── tests/                # tests pytest
+│   └── test_*.py
 ├── arduino/              # firmware Nano (.ino)
 ├── deploy/               # infra Pi : systemd unit, kiosk.sh, installer
 └── docs/                 # toute la doc .md
@@ -186,7 +187,7 @@ avant chaque événement réel, pour rollback rapide.
 ## Workflow type : ajouter une feature
 
 1. Crée une branche : `git checkout -b feature/nom-court`
-2. Code + tests dans `test_<module>.py`
+2. Code + tests dans `tests/test_<module>.py`
 3. Lance `pytest` + `ruff check .` en local
 4. Commit (pre-commit relance ruff + pytest montage)
 5. Push + ouvre la PR

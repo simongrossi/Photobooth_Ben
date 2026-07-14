@@ -214,7 +214,7 @@ les render functions pour lisibilité.
 
 **Singletons module-level (`camera_mgr`, `printer_mgr`, `session`, `UIContext`)**
 plutôt que dependency injection. Convient à une app kiosque mono-processus.
-Pour tests unitaires, `monkeypatch` suffit (voir test_montage.py).
+Pour les tests unitaires, `monkeypatch` suffit (voir `tests/test_montage.py`).
 
 **Wrappers de compat conservés quand utile** : `get_canon_frame()` reste un
 wrapper vers `camera_mgr.get_preview_frame()` car lisible et massivement

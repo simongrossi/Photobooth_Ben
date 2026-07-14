@@ -2,7 +2,7 @@ import os
 from PIL import Image, ImageDraw, ImageFont
 
 # --- CONFIGURATION DES CHEMINS ---
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MIRE_CLEAN = os.path.join(BASE_DIR, "assets", "backgrounds", "mire_test_cut_DNP.jpg")
 TEST_DIR = os.path.join(BASE_DIR, "test")
 OUTPUT_PATH = os.path.join(TEST_DIR, "RESULTAT_TEST_CUT_DNP.jpg")
