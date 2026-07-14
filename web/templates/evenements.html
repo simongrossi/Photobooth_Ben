@@ -15,6 +15,10 @@
     <h2>{{ actif.nom }}</h2>
     <p class="muted">{{ actif.debut | replace('T', ' ') }} → {{ actif.fin | replace('T', ' ') }}</p>
     <div class="tags">{% for tag in actif.tags %}<span class="badge">{{ tag }}</span>{% endfor %}</div>
+    <div class="event-template-summary">
+      {% for nom in templates_par_evenement.get(actif.id, []) %}<span class="badge">{{ nom }}</span>{% endfor %}
+      {% if not templates_par_evenement.get(actif.id) %}<span class="muted">Aucun template associé</span>{% endif %}
+    </div>
   </div>
   <div class="actions-row">
     <a class="btn" href="{{ url_for('dashboard.index', evenement=actif.id, periode='toutes') }}">Statistiques</a>
@@ -47,6 +51,22 @@
       <label>Notes
         <textarea name="notes" rows="3" placeholder="Contact, lieu, consignes…"></textarea>
       </label>
+      <fieldset class="event-template-fieldset">
+        <legend>Templates appliqués à l'activation</legend>
+        <p class="muted">Chaque couche peut rester sans template.</p>
+        <div class="event-template-grid">
+          {% for emplacement in emplacements_templates %}
+          <label>{{ emplacement.libelle }}
+            <select name="{{ emplacement.champ }}">
+              <option value="">Aucun template</option>
+              {% for template in emplacement.templates %}
+              <option value="{{ template.id }}" {% if selection_creation[emplacement.champ] == template.id %}selected{% endif %}>{{ template.nom }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
       <button class="btn btn--primary" type="submit">Créer l'événement</button>
     </form>
   </section>
@@ -66,6 +86,10 @@
           </header>
           <p class="muted">{{ evenement.debut | replace('T', ' ') }} → {{ evenement.fin | replace('T', ' ') }}</p>
           <div class="tags">{% for tag in evenement.tags %}<span class="badge">{{ tag }}</span>{% endfor %}</div>
+          <div class="event-template-summary">
+            {% for nom in templates_par_evenement.get(evenement.id, []) %}<span class="badge">{{ nom }}</span>{% endfor %}
+            {% if not templates_par_evenement.get(evenement.id) %}<span class="muted">Aucun template associé</span>{% endif %}
+          </div>
           <div class="actions-row">
             {% if evenement.statut not in ('actif', 'archive') %}
             <form method="post" action="{{ url_for('evenements.activer', evenement_id=evenement.id) }}">

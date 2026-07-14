@@ -196,6 +196,7 @@ normalement, quelle que soit la durée d'inactivité.
 | `PATH_SKIPPED_DELETED/deleted_<id>.jpg` | si abandon | `shutil.move` |
 | `data/sessions.jsonl` (append, avec instantané événement) | fin de session | `ecrire_metadata_session()` |
 | `data/evenement_actif.json` (remplacement atomique) | activation/modification/fin d'événement | admin web |
+| `data/admin.db:evenement_template` | quatre choix fond/overlay 10×15/strip par événement | admin web |
 | `logs/photobooth.log` (rotation 2 Mo × 5) | continu | `core.logger` |
 
 ---
@@ -240,6 +241,19 @@ réglage actif dans `data/mise_en_page_10x15.json` ou
 `core/montage.py` les relit à chaque aperçu et impression, avec repli sur
 `config.py` si un fichier manque ou est invalide. Le kiosque ne dépend donc pas
 de Flask ni de SQLite.
+
+**Templates par événement** : `evenement_template` contient un emplacement
+explicite pour chaque couple couche×format, avec `NULL` pour « Aucun ». Activer
+un événement valide toutes les sources, copie ou retire les quatre cibles fixes,
+met à jour les flags `template.actif`, puis republie les géométries. Le kiosque
+continue ainsi à ne lire que les fichiers actifs, sans accès à SQLite.
+L'association peut être modifiée depuis la fiche événement ou directement
+depuis une carte de `/templates/` ; les deux chemins écrivent la même table.
+
+**Horloge serveur du dashboard** : le HTML reçoit l'heure locale, l'époque Unix
+et l'offset UTC du serveur. Le navigateur incrémente l'affichage chaque seconde
+et se resynchronise toutes les 60 secondes via `/dashboard/heure`, ce qui évite
+d'afficher par erreur l'heure ou le fuseau de l'appareil d'administration.
 
 **Entrée runtime explicite** : importer `Photobooth_start.py` ne crée plus de
 fenêtre pygame et ne démarre ni caméra ni Arduino. `main()` initialise les

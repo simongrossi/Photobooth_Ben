@@ -10,7 +10,8 @@ Tables principales :
 - `asset_kiosque` (id, nom, categorie, fichier, actif, uploaded_at, taille_octets)
   — catégories 'accueil' | 'police' | 'slide' ; un actif max par catégorie ;
   `actif` sans objet pour 'slide' (tous les slides présents tournent).
-- `evenement`, `tag`, `evenement_tag` pour le cycle de vie événementiel.
+- `evenement`, `tag`, `evenement_tag`, `evenement_template` pour le cycle de
+  vie événementiel et ses quatre choix de templates.
 
 Les types sont "10x15" ou "strip" ; les couches "overlay" (PNG par-dessus la
 photo) ou "fond" (image sous les photos). La colonne `actif` marque le template
@@ -90,6 +91,17 @@ CREATE TABLE IF NOT EXISTS evenement_tag (
 );
 
 CREATE INDEX IF NOT EXISTS idx_evenement_tag_tag ON evenement_tag (tag_id, evenement_id);
+
+CREATE TABLE IF NOT EXISTS evenement_template (
+    evenement_id TEXT NOT NULL REFERENCES evenement(id) ON DELETE CASCADE,
+    type TEXT NOT NULL CHECK (type IN ('10x15', 'strip')),
+    couche TEXT NOT NULL CHECK (couche IN ('overlay', 'fond')),
+    template_id INTEGER REFERENCES template(id) ON DELETE SET NULL,
+    PRIMARY KEY (evenement_id, type, couche)
+);
+
+CREATE INDEX IF NOT EXISTS idx_evenement_template_template
+    ON evenement_template (template_id);
 """
 
 
@@ -116,6 +128,20 @@ def _migrer(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE template ADD COLUMN {colonne} INTEGER")
     if "zones_strip" not in colonnes:
         conn.execute("ALTER TABLE template ADD COLUMN zones_strip TEXT")
+
+    # Chaque événement possède quatre emplacements explicites. Pour les bases
+    # existantes, on capture la sélection globale courante afin qu'une mise à
+    # jour ne change pas leur rendu au prochain passage en actif.
+    for type_t in ("10x15", "strip"):
+        for couche in ("overlay", "fond"):
+            conn.execute(
+                "INSERT OR IGNORE INTO evenement_template "
+                "(evenement_id, type, couche, template_id) "
+                "SELECT e.id, ?, ?, (SELECT id FROM template "
+                "WHERE type = ? AND couche = ? AND actif = 1 LIMIT 1) "
+                "FROM evenement e",
+                (type_t, couche, type_t, couche),
+            )
 
 
 def init_db(path: Optional[str] = None) -> None:

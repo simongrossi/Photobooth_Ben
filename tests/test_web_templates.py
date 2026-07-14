@@ -170,6 +170,60 @@ class TestActivation:
         assert actifs["n"] == 1
 
 
+class TestAssociationEvenement:
+    @staticmethod
+    def _creer_evenement(statut="brouillon"):
+        with connexion() as conn:
+            conn.execute(
+                "INSERT INTO evenement (id, nom, slug, debut, fin, statut) "
+                "VALUES ('evt-1', 'Mariage Été', 'mariage-ete', "
+                "'2026-07-18T15:00', '2026-07-19T03:00', ?)",
+                (statut,),
+            )
+
+    def test_carte_propose_les_evenements(self, client):
+        c, _, _ = client
+        self._creer_evenement()
+        c.post("/templates/upload", data={
+            "nom": "Cadre fleurs", "type": "10x15", "couche": "overlay",
+            "fichier": (io.BytesIO(_png_bytes()), "fleurs.png"),
+        }, headers=HEADERS, content_type="multipart/form-data")
+
+        html = c.get("/templates/", headers=HEADERS).get_data(as_text=True)
+        assert "Associer à un événement" in html
+        assert "Mariage Été" in html
+        assert "/templates/associer/" in html
+
+    def test_associer_a_evenement_actif_applique_le_template(self, client):
+        c, overlays, _ = client
+        self._creer_evenement(statut="actif")
+        c.post("/templates/upload", data={
+            "nom": "Cadre actif", "type": "10x15", "couche": "overlay",
+            "fichier": (io.BytesIO(_png_bytes()), "actif.png"),
+        }, headers=HEADERS, content_type="multipart/form-data")
+        with connexion() as conn:
+            template_id = conn.execute(
+                "SELECT id FROM template WHERE nom = 'Cadre actif'"
+            ).fetchone()["id"]
+
+        reponse = c.post(
+            f"/templates/associer/{template_id}",
+            data={"evenement_id": "evt-1"},
+            headers=HEADERS,
+            follow_redirects=True,
+        )
+
+        assert reponse.status_code == 200
+        assert "associé à « Mariage Été »" in reponse.get_data(as_text=True)
+        assert os.path.isfile(os.path.join(overlays, "10x15_overlay.png"))
+        with connexion() as conn:
+            association = conn.execute(
+                "SELECT template_id FROM evenement_template WHERE evenement_id = 'evt-1' "
+                "AND type = '10x15' AND couche = 'overlay'"
+            ).fetchone()
+        assert association["template_id"] == template_id
+
+
 class TestSuppression:
     def test_suppression_bloquee_si_actif(self, client):
         c, _, _ = client

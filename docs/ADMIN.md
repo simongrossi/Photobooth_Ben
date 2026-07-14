@@ -6,11 +6,11 @@ sur le même LAN, sans toucher au code.
 
 - **Dashboard** : santé matériel en un coup d'œil (imprimantes, disque, CPU),
   compteurs du jour avec activité par heure, totaux (taux d'impression, photos,
-  durées, modes) et historique par journée. Thème clair/sombre automatique
+  durées, modes), heure locale du serveur toujours visible et historique par journée. Thème clair/sombre automatique
   (suit le réglage du navigateur/téléphone).
-- **Événements** : création avec dates et tags, activation exclusive, fin et
-  archivage. L'événement actif est appliqué aux nouvelles sessions sans
-  redémarrer le kiosque. Accès direct aux statistiques, à la galerie et à
+- **Événements** : création avec dates, tags et quatre choix de templates,
+  activation exclusive, fin et archivage. L'événement actif et son habillage
+  sont appliqués aux nouvelles sessions sans redémarrer le kiosque. Accès direct aux statistiques, à la galerie et à
   l'export ZIP (avec ou sans photos brutes).
 - **Galerie** : parcours des montages produits (10×15 et strips) avec
   miniatures à la volée, filtrable par événement, tag et type. Bouton
@@ -47,7 +47,7 @@ sur le même LAN, sans toucher au code.
 | Donnée | Stockage | Écrit par | Lu par |
 |---|---|---|---|
 | Sessions | `data/sessions.jsonl` (append-only) | kiosque | kiosque + admin (dashboard) |
-| Événements et tags | `data/admin.db` (SQLite) | admin | admin |
+| Événements, tags et templates associés | `data/admin.db` (SQLite) | admin | admin |
 | Événement actif | `data/evenement_actif.json` (remplacement atomique) | admin | kiosque au début d'une session |
 | Overlays PNG (bibliothèque) | `assets/overlays/*.png` | admin | kiosque (montage) |
 | Fonds JPG/PNG (bibliothèque) | `assets/backgrounds/*` | admin | kiosque (montage) |
@@ -80,11 +80,13 @@ orientés comme ils le seront dans le fichier imprimé.
 
 ## Cycle de vie d'un événement
 
-1. Créer l'événement avec son nom, ses dates, ses tags et éventuellement des
-   notes internes.
+1. Créer l'événement avec son nom, ses dates, ses tags, ses notes et ses choix
+   de fond/overlay pour les formats 10×15 et strip. Chaque emplacement accepte
+   aussi « Aucun template ».
 2. Cliquer sur **Activer** avant les premières prises de vue. Une seule ligne
    SQLite peut avoir le statut `actif` ; activer un autre événement termine le
-   précédent.
+   précédent et publie automatiquement ses quatre choix de templates ainsi que
+   leurs mises en page.
 3. Le kiosque lit `evenement_actif.json` au début de la première capture et
    copie `event_id`, `event_name` et `event_tags` dans `sessions.jsonl`.
 4. Utiliser les filtres du dashboard et de la galerie. Les anciennes sessions
@@ -96,6 +98,12 @@ orientés comme ils le seront dans le fichier imprimé.
 Renommer un événement actif met immédiatement à jour l'instantané pour les
 sessions futures. Les sessions déjà terminées gardent leur nom et leurs tags
 d'origine, ce qui préserve l'historique.
+
+Un changement manuel depuis la page **Templates** met également à jour
+l'association de l'événement actif, afin que les deux écrans restent cohérents.
+Chaque carte de template contient aussi **Associer à un événement** : ce choix
+remplace la couche correspondante de l'événement sélectionné. Si celui-ci est
+actif, le nouveau template est publié immédiatement.
 
 ## Installation
 
@@ -110,7 +118,9 @@ Le script :
 2. Génère un mot de passe aléatoire et l'écrit dans
    `/etc/photobooth-admin.env`.
 3. Crée le service `photobooth-admin.service` dans `/etc/systemd/system/`.
-4. Active le démarrage au boot.
+4. Installe une règle sudoers limitée au seul redémarrage de
+   `photobooth.service`.
+5. Active le démarrage au boot.
 
 Récupère le mot de passe dans `/etc/photobooth-admin.env`, puis ouvre
 `http://<ip-du-pi>:8080` dans un navigateur.
@@ -148,11 +158,16 @@ casser les invariants du pipeline de rendu) :
 - Monitoring : `SEUIL_DISQUE_CRITIQUE_MB`, `SEUIL_TEMP_CRITIQUE_C`.
 - Divers : `NB_MAX_IMAGES_SLIDESHOW`.
 
-Les modifications s'appliquent **au prochain redémarrage du service
-kiosque** :
+Le bouton **Enregistrer et appliquer** écrit les réglages puis redémarre
+uniquement `photobooth.service`. Le Raspberry Pi et le service admin ne sont
+pas redémarrés. **Enregistrer seulement** permet de différer l'application au
+prochain démarrage du kiosque.
+
+Après une mise à jour ajoutant cette fonctionnalité, relancer une fois
+l'installateur pour créer la règle sudoers :
 
 ```bash
-sudo systemctl restart photobooth.service
+sudo ./deploy/install-admin.sh
 ```
 
 ## Sécurité
@@ -161,6 +176,8 @@ sudo systemctl restart photobooth.service
   exposer à Internet : reverse-proxy HTTPS + authentification plus robuste.
 - Le mot de passe est en clair dans `/etc/photobooth-admin.env` (chmod 640,
   propriétaire `root:<user>`). Comparable à tout fichier de config prod.
+- `/etc/sudoers.d/photobooth-admin` autorise seulement la commande exacte
+  `systemctl restart photobooth.service`, sans argument fourni par le navigateur.
 - Upload de templates : extension `.png` uniquement + validation PIL
   (`Image.verify()`) pour rejeter les fichiers mal formés.
 - Les chemins sont résolus et vérifiés contre path-traversal (`os.path.realpath`
@@ -172,6 +189,7 @@ sudo systemctl restart photobooth.service
 sudo systemctl disable --now photobooth-admin.service
 sudo rm /etc/systemd/system/photobooth-admin.service
 sudo rm /etc/photobooth-admin.env
+sudo rm /etc/sudoers.d/photobooth-admin
 sudo systemctl daemon-reload
 ```
 

@@ -27,15 +27,19 @@ from stats import calculer_stats, load_sessions
 from web.auth import require_auth
 from web.db import connexion
 from web.evenements import (
+    EMPLACEMENTS_TEMPLATES,
     ecrire_evenement_actif,
+    enregistrer_selection_templates,
     lister_evenements,
     parser_tags,
     remplacer_tags,
     retirer_evenement_actif,
+    selection_templates_evenement,
     slugifier,
     trouver_evenement,
 )
 from web.routes.gallery import _lister_tous
+from web.routes.templates_route import appliquer_selection_templates
 
 bp = Blueprint("evenements", __name__, url_prefix="/evenements")
 
@@ -45,6 +49,90 @@ STATUTS = {
     "termine": "Terminé",
     "archive": "Archivé",
 }
+
+EMPLACEMENTS_FORM = (
+    {"couche": "fond", "type": "10x15", "champ": "template_fond_10x15", "libelle": "Fond 10×15"},
+    {"couche": "overlay", "type": "10x15", "champ": "template_overlay_10x15", "libelle": "Overlay 10×15"},
+    {"couche": "fond", "type": "strip", "champ": "template_fond_strip", "libelle": "Fond strip"},
+    {"couche": "overlay", "type": "strip", "champ": "template_overlay_strip", "libelle": "Overlay strip"},
+)
+
+
+def _templates_disponibles() -> dict[tuple[str, str], list[dict]]:
+    with connexion() as conn:
+        rows = conn.execute(
+            "SELECT id, nom, type, couche FROM template ORDER BY type, couche, nom COLLATE NOCASE"
+        ).fetchall()
+    resultat = {emplacement: [] for emplacement in EMPLACEMENTS_TEMPLATES}
+    for row in rows:
+        resultat[(row["couche"], row["type"])].append(dict(row))
+    return resultat
+
+
+def _emplacements_avec_templates() -> list[dict]:
+    disponibles = _templates_disponibles()
+    return [
+        {**emplacement, "templates": disponibles[(emplacement["couche"], emplacement["type"])]}
+        for emplacement in EMPLACEMENTS_FORM
+    ]
+
+
+def _selection_par_champ(selection: dict[tuple[str, str], int | None]) -> dict[str, int | None]:
+    return {
+        emplacement["champ"]: selection[(emplacement["couche"], emplacement["type"])]
+        for emplacement in EMPLACEMENTS_FORM
+    }
+
+
+def _selection_active_courante() -> dict[tuple[str, str], int | None]:
+    with connexion() as conn:
+        rows = conn.execute("SELECT id, type, couche FROM template WHERE actif = 1").fetchall()
+    actifs = {(row["couche"], row["type"]): row["id"] for row in rows}
+    return {emplacement: actifs.get(emplacement) for emplacement in EMPLACEMENTS_TEMPLATES}
+
+
+def _lire_selection_formulaire(defaut: dict[tuple[str, str], int | None]) -> tuple[dict, list[str]]:
+    selection = {}
+    erreurs = []
+    with connexion() as conn:
+        for emplacement in EMPLACEMENTS_FORM:
+            cle = (emplacement["couche"], emplacement["type"])
+            brut = request.form.get(emplacement["champ"])
+            if brut is None:
+                selection[cle] = defaut.get(cle)
+                continue
+            if not brut:
+                selection[cle] = None
+                continue
+            try:
+                template_id = int(brut)
+            except ValueError:
+                erreurs.append(f"{emplacement['libelle']} invalide.")
+                continue
+            row = conn.execute(
+                "SELECT type, couche FROM template WHERE id = ?", (template_id,),
+            ).fetchone()
+            if row is None or (row["couche"], row["type"]) != cle:
+                erreurs.append(f"{emplacement['libelle']} incompatible.")
+                continue
+            selection[cle] = template_id
+    return selection, erreurs
+
+
+def _noms_templates_evenements() -> dict[str, list[str]]:
+    with connexion() as conn:
+        rows = conn.execute(
+            "SELECT et.evenement_id, et.type, et.couche, t.nom "
+            "FROM evenement_template et LEFT JOIN template t ON t.id = et.template_id "
+            "ORDER BY et.type, et.couche"
+        ).fetchall()
+    resultat: dict[str, list[str]] = {}
+    for row in rows:
+        if row["nom"]:
+            resultat.setdefault(row["evenement_id"], []).append(
+                f"{row['type']} {row['couche']} : {row['nom']}"
+            )
+    return resultat
 
 
 def _valider_formulaire() -> tuple[dict, list[str]]:
@@ -93,6 +181,9 @@ def index():
         evenements=evenements,
         actif=next((e for e in evenements if e.statut == "actif"), None),
         statuts=STATUTS,
+        emplacements_templates=_emplacements_avec_templates(),
+        selection_creation=_selection_par_champ(_selection_active_courante()),
+        templates_par_evenement=_noms_templates_evenements(),
     )
 
 
@@ -100,6 +191,8 @@ def index():
 @require_auth
 def creer():
     donnees, erreurs = _valider_formulaire()
+    selection, erreurs_templates = _lire_selection_formulaire(_selection_active_courante())
+    erreurs.extend(erreurs_templates)
     if erreurs:
         for erreur in erreurs:
             flash(erreur, "error")
@@ -116,6 +209,7 @@ def creer():
             (evenement_id, donnees["nom"], slug, donnees["debut"], donnees["fin"], donnees["notes"]),
         )
         remplacer_tags(conn, evenement_id, donnees["tags"])
+        enregistrer_selection_templates(conn, evenement_id, selection)
 
     chevauchements = _chevauchements(donnees["debut"], donnees["fin"], evenement_id)
     flash(f"Événement « {donnees['nom']} » créé.", "success")
@@ -131,9 +225,18 @@ def modifier(evenement_id: str):
     if evenement is None:
         abort(404)
     if request.method == "GET":
-        return render_template("evenement_modifier.html", evenement=evenement)
+        return render_template(
+            "evenement_modifier.html",
+            evenement=evenement,
+            emplacements_templates=_emplacements_avec_templates(),
+            selection_templates=_selection_par_champ(selection_templates_evenement(evenement_id)),
+        )
 
     donnees, erreurs = _valider_formulaire()
+    selection, erreurs_templates = _lire_selection_formulaire(
+        selection_templates_evenement(evenement_id)
+    )
+    erreurs.extend(erreurs_templates)
     if erreurs:
         for erreur in erreurs:
             flash(erreur, "error")
@@ -146,8 +249,14 @@ def modifier(evenement_id: str):
             (donnees["nom"], donnees["debut"], donnees["fin"], donnees["notes"], evenement_id),
         )
         remplacer_tags(conn, evenement_id, donnees["tags"])
+        enregistrer_selection_templates(conn, evenement_id, selection)
     evenement = trouver_evenement(evenement_id)
     if evenement.statut == "actif":
+        try:
+            appliquer_selection_templates(selection)
+        except (ValueError, FileNotFoundError, OSError) as e:
+            flash(f"Événement enregistré, mais templates non appliqués : {e}", "error")
+            return redirect(url_for("evenements.modifier", evenement_id=evenement_id))
         ecrire_evenement_actif(evenement)
     chevauchements = _chevauchements(donnees["debut"], donnees["fin"], evenement_id)
     flash("Événement mis à jour.", "success")
@@ -164,6 +273,11 @@ def activer(evenement_id: str):
         abort(404)
     if evenement.statut == "archive":
         flash("Un événement archivé ne peut pas être réactivé.", "error")
+        return redirect(url_for("evenements.index"))
+    try:
+        appliquer_selection_templates(selection_templates_evenement(evenement_id))
+    except (ValueError, FileNotFoundError, OSError) as e:
+        flash(f"Activation impossible : {e}", "error")
         return redirect(url_for("evenements.index"))
     with connexion() as conn:
         conn.execute(

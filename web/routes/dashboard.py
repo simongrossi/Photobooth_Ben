@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import os
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
-from flask import Blueprint, render_template, request
+from flask import Blueprint, jsonify, render_template, request
 
 import config
 
@@ -38,6 +38,28 @@ PERIODES = {
     "7jours": {"libelle": "7 derniers jours", "nb_jours": 7},
     "toutes": {"libelle": "Tout depuis le début", "nb_jours": None},
 }
+
+
+def _maintenant_serveur() -> datetime:
+    """Heure locale effective de la machine qui héberge l'admin."""
+    return datetime.now().astimezone()
+
+
+def _contexte_heure_serveur() -> dict:
+    maintenant = _maintenant_serveur()
+    decalage = maintenant.utcoffset()
+    return {
+        "serveur_epoch_ms": round(maintenant.timestamp() * 1000),
+        "serveur_offset_minutes": int(decalage.total_seconds() // 60) if decalage else 0,
+        "serveur_heure_texte": maintenant.strftime("%d/%m/%Y %H:%M:%S"),
+    }
+
+
+@bp.route("/heure")
+@require_auth
+def heure_serveur():
+    """Point de resynchronisation de l'horloge persistante du dashboard."""
+    return jsonify(_contexte_heure_serveur())
 
 
 def _filtrer_sessions_par_periode(
@@ -166,4 +188,5 @@ def index():
         tag_filtre=tag_filtre,
         evenements=lister_evenements(),
         tags=tags_disponibles,
+        **_contexte_heure_serveur(),
     )

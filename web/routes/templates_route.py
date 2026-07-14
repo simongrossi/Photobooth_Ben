@@ -57,6 +57,7 @@ from core.mise_en_page import (
 )
 from web.auth import require_auth
 from web.db import connexion
+from web.evenements import lister_evenements, selection_templates_evenement
 
 bp = Blueprint("templates", __name__, url_prefix="/templates")
 
@@ -253,6 +254,63 @@ def _synchroniser_mise_en_page_active() -> None:
             pass
 
 
+def appliquer_selection_templates(selection: dict[tuple[str, str], Optional[int]]) -> None:
+    """Applique en DB et sur disque les quatre choix d'un événement.
+
+    Les sources sont toutes validées avant de toucher aux cibles du kiosque.
+    Une valeur ``None`` représente explicitement « Aucun template ».
+    """
+    attendu = set(_CIBLE_ACTIVE)
+    if set(selection) != attendu:
+        raise ValueError("La sélection doit définir les quatre emplacements de templates.")
+
+    fichiers: dict[tuple[str, str], Optional[str]] = {}
+    with connexion() as conn:
+        for (couche, type_t), template_id in selection.items():
+            if template_id is None:
+                fichiers[(couche, type_t)] = None
+                continue
+            row = conn.execute(
+                "SELECT id, type, couche, fichier FROM template WHERE id = ?",
+                (template_id,),
+            ).fetchone()
+            if row is None or row["type"] != type_t or row["couche"] != couche:
+                raise ValueError(f"Template incompatible pour {couche} {type_t}.")
+            source = _chemin_fichier(row["fichier"], couche)
+            if not os.path.isfile(source):
+                raise FileNotFoundError(f"Fichier source introuvable pour {couche} {type_t}.")
+            fichiers[(couche, type_t)] = source
+
+        for emplacement, source in fichiers.items():
+            cible = _CIBLE_ACTIVE[emplacement]
+            if source is None:
+                try:
+                    os.remove(cible)
+                except FileNotFoundError:
+                    pass
+            else:
+                os.makedirs(os.path.dirname(cible), exist_ok=True)
+                shutil.copyfile(source, cible)
+
+        conn.execute("UPDATE template SET actif = 0")
+        ids = [template_id for template_id in selection.values() if template_id is not None]
+        conn.executemany("UPDATE template SET actif = 1 WHERE id = ?", ((id_,) for id_ in ids))
+    _synchroniser_mise_en_page_active()
+
+
+def _memoriser_pour_evenement_actif(conn, couche: str, type_t: str, template_id: Optional[int]) -> None:
+    """Garde l'événement actif cohérent avec un changement manuel de template."""
+    evenement = conn.execute("SELECT id FROM evenement WHERE statut = 'actif'").fetchone()
+    if evenement is None:
+        return
+    conn.execute(
+        "INSERT INTO evenement_template (evenement_id, type, couche, template_id) "
+        "VALUES (?, ?, ?, ?) "
+        "ON CONFLICT(evenement_id, type, couche) DO UPDATE SET template_id = excluded.template_id",
+        (evenement["id"], type_t, couche, template_id),
+    )
+
+
 def _lister() -> list[TemplateRow]:
     with connexion() as conn:
         rows = conn.execute(
@@ -274,6 +332,19 @@ def _lister() -> list[TemplateRow]:
     ]
 
 
+def _associations_evenements() -> dict[int, list[dict]]:
+    with connexion() as conn:
+        rows = conn.execute(
+            "SELECT et.template_id, e.id, e.nom, e.statut FROM evenement_template et "
+            "JOIN evenement e ON e.id = et.evenement_id "
+            "WHERE et.template_id IS NOT NULL ORDER BY e.nom COLLATE NOCASE"
+        ).fetchall()
+    resultat: dict[int, list[dict]] = {}
+    for row in rows:
+        resultat.setdefault(row["template_id"], []).append(dict(row))
+    return resultat
+
+
 @bp.route("/", methods=["GET"])
 @require_auth
 def index():
@@ -289,7 +360,47 @@ def index():
         types=TYPES_AUTORISES,
         path_overlays=PATH_OVERLAYS,
         path_fonds=PATH_FONDS,
+        evenements=[e for e in lister_evenements() if e.statut != "archive"],
+        associations_evenements=_associations_evenements(),
     )
+
+
+@bp.route("/associer/<int:template_id>", methods=["POST"])
+@require_auth
+def associer_evenement(template_id: int):
+    """Affecte un template existant à la couche correspondante d'un événement."""
+    evenement_id = (request.form.get("evenement_id") or "").strip()
+    with connexion() as conn:
+        template = conn.execute(
+            "SELECT id, nom, type, couche FROM template WHERE id = ?", (template_id,),
+        ).fetchone()
+        if template is None:
+            abort(404)
+        evenement = conn.execute(
+            "SELECT id, nom, statut FROM evenement WHERE id = ?", (evenement_id,),
+        ).fetchone()
+        if evenement is None or evenement["statut"] == "archive":
+            flash("Événement introuvable ou archivé.", "error")
+            return redirect(url_for("templates.index"))
+        conn.execute(
+            "INSERT INTO evenement_template (evenement_id, type, couche, template_id) "
+            "VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(evenement_id, type, couche) DO UPDATE SET template_id = excluded.template_id",
+            (evenement_id, template["type"], template["couche"], template_id),
+        )
+
+    if evenement["statut"] == "actif":
+        try:
+            appliquer_selection_templates(selection_templates_evenement(evenement_id))
+        except (ValueError, FileNotFoundError, OSError) as e:
+            flash(f"Association enregistrée, mais application impossible : {e}", "error")
+            return redirect(url_for("templates.index"))
+    flash(
+        f"Template « {template['nom']} » associé à « {evenement['nom']} » "
+        f"({template['couche']} {template['type']}).",
+        "success",
+    )
+    return redirect(url_for("templates.index"))
 
 
 @bp.route("/upload", methods=["POST"])
@@ -377,6 +488,7 @@ def activer(template_id: int):
             "UPDATE template SET actif = 0 WHERE couche = ? AND type = ?", (couche, type_t),
         )
         conn.execute("UPDATE template SET actif = 1 WHERE id = ?", (template_id,))
+        _memoriser_pour_evenement_actif(conn, couche, type_t, template_id)
     _synchroniser_mise_en_page_active()
     flash(f"Template « {row['nom']} » activé ({couche} {type_t}).", "success")
     return redirect(url_for("templates.index"))
@@ -402,6 +514,7 @@ def desactiver(couche: str, type_t: str):
             "UPDATE template SET actif = 0 WHERE couche = ? AND type = ?",
             (couche, type_t),
         )
+        _memoriser_pour_evenement_actif(conn, couche, type_t, None)
     _synchroniser_mise_en_page_active()
     flash(f"Aucun template {couche} pour le mode {type_t} (désactivé).", "success")
     return redirect(url_for("templates.index"))

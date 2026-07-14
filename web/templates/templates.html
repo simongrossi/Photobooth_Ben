@@ -81,6 +81,27 @@
               {% if t.mise_en_page_personnalisee %}<span class="badge">Position personnalisée</span>{% endif %}
               <span class="muted">{{ t.taille_ko }} Ko — {{ t.uploaded_at }}</span>
             </p>
+            {% if associations_evenements.get(t.id) %}
+            <div class="template-event-links">
+              {% for evenement in associations_evenements[t.id] %}
+              <span class="badge {% if evenement.statut == 'actif' %}badge--actif{% endif %}">
+                {{ evenement.nom }}{% if evenement.statut == 'actif' %} · actif{% endif %}
+              </span>
+              {% endfor %}
+            </div>
+            {% endif %}
+            <form class="template-event-assignment" method="post" action="{{ url_for('templates.associer_evenement', template_id=t.id) }}">
+              <label>Associer à un événement
+                <select name="evenement_id" required {% if not evenements %}disabled{% endif %}>
+                  <option value="">Choisir…</option>
+                  {% for evenement in evenements %}
+                  <option value="{{ evenement.id }}">{{ evenement.nom }}{% if evenement.statut == 'actif' %} — actif{% endif %}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <button class="btn" type="submit" {% if not evenements %}disabled{% endif %}>Associer</button>
+            </form>
+            {% if not evenements %}<p class="muted">Crée d'abord un événement dans l'onglet Événements.</p>{% endif %}
             <div class="actions">
               <a class="btn" href="{{ url_for('templates.editer', template_id=t.id) }}">Modifier la mise en page</a>
               {% if not t.actif %}

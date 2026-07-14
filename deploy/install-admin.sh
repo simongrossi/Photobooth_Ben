@@ -12,11 +12,13 @@
 # 1. Installe python3-flask (ou pip install flask si apt absent)
 # 2. Crée /etc/photobooth-admin.env avec un mot de passe aléatoire (une fois)
 # 3. Substitue @USER@/@HOME@ dans photobooth-admin.service → /etc/systemd/system/
-# 4. Enable + affiche les commandes utiles
+# 4. Autorise uniquement le redémarrage de photobooth.service via sudoers
+# 5. Enable + affiche les commandes utiles
 #
 # Pour désinstaller : sudo systemctl disable --now photobooth-admin.service
 #                     sudo rm /etc/systemd/system/photobooth-admin.service
 #                     sudo rm /etc/photobooth-admin.env
+#                     sudo rm /etc/sudoers.d/photobooth-admin
 
 set -euo pipefail
 
@@ -79,11 +81,23 @@ sed \
     -e "s|@PROJET_DIR@|${PROJET_DIR}|g" \
     "${SERVICE_SRC}" > "${SERVICE_DEST}"
 
-# --- 4. Dossier logs ---
+# --- 4. Autorisation minimale de redémarrage du kiosque ---
+SYSTEMCTL_BIN="$(command -v systemctl)"
+SUDOERS_FILE="/etc/sudoers.d/photobooth-admin"
+SUDOERS_TMP="$(mktemp)"
+trap 'rm -f "${SUDOERS_TMP}"' EXIT
+printf '%s ALL=(root) NOPASSWD: %s restart photobooth.service\n' \
+    "${TARGET_USER}" "${SYSTEMCTL_BIN}" > "${SUDOERS_TMP}"
+chmod 440 "${SUDOERS_TMP}"
+visudo -cf "${SUDOERS_TMP}" >/dev/null
+install -o root -g root -m 440 "${SUDOERS_TMP}" "${SUDOERS_FILE}"
+echo "✓ Autorisation limitée installée dans ${SUDOERS_FILE}"
+
+# --- 5. Dossier logs ---
 mkdir -p "${PROJET_DIR}/logs"
 chown -R "${TARGET_USER}:${TARGET_USER}" "${PROJET_DIR}/logs"
 
-# --- 5. Activation ---
+# --- 6. Activation ---
 systemctl daemon-reload
 systemctl enable photobooth-admin.service
 

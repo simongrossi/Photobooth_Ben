@@ -20,13 +20,18 @@ def contexte(tmp_path, monkeypatch):
     d10 = data / "print" / "print_10x15"
     dstrip = data / "print" / "print_strip"
     raw = data / "raw"
+    overlays = tmp_path / "overlays"
+    fonds = tmp_path / "fonds"
     for dossier in (d10, dstrip, raw):
         dossier.mkdir(parents=True, exist_ok=True)
+    overlays.mkdir()
+    fonds.mkdir()
 
     monkeypatch.setenv("PHOTOBOOTH_ADMIN_PASS", "test")
     import config
     import web.db
     import web.routes.gallery as gallery
+    import web.routes.templates_route as templates_route
 
     monkeypatch.setattr(config, "PATH_DATA", str(data))
     monkeypatch.setattr(web.db, "DB_PATH", str(data / "admin.db"))
@@ -36,19 +41,37 @@ def contexte(tmp_path, monkeypatch):
         "strip": str(dstrip),
         "raw": str(raw),
     })
+    monkeypatch.setattr(templates_route, "_CIBLE_ACTIVE", {
+        ("overlay", "10x15"): str(overlays / "10x15_overlay.png"),
+        ("overlay", "strip"): str(overlays / "strips_overlay.png"),
+        ("fond", "10x15"): str(fonds / "10x15_background.jpg"),
+        ("fond", "strip"): str(fonds / "strips_background.jpg"),
+    })
+    monkeypatch.setattr(templates_route, "_RACINE_PAR_COUCHE", {
+        "overlay": str(overlays),
+        "fond": str(fonds),
+    })
+    monkeypatch.setattr(
+        templates_route, "PATH_MISE_EN_PAGE_10X15", str(data / "mise_en_page_10x15.json")
+    )
+    monkeypatch.setattr(
+        templates_route, "PATH_MISE_EN_PAGE_STRIP", str(data / "mise_en_page_strip.json")
+    )
     app = create_app()
     app.config["TESTING"] = True
     return app.test_client(), data, d10, raw
 
 
-def _creer(client, nom="Mariage Alice & Ben", tags="mariage, Lyon"):
-    return client.post("/evenements/creer", headers=HEADERS, data={
+def _creer(client, nom="Mariage Alice & Ben", tags="mariage, Lyon", **templates):
+    donnees = {
         "nom": nom,
         "debut": "2026-07-18T15:00",
         "fin": "2026-07-19T03:00",
         "tags": tags,
         "notes": "Salle des fêtes",
-    }, follow_redirects=True)
+    }
+    donnees.update(templates)
+    return client.post("/evenements/creer", headers=HEADERS, data=donnees, follow_redirects=True)
 
 
 def _id_evenement():
@@ -66,6 +89,58 @@ def test_creation_et_tags(contexte):
     evenement = lister_evenements()[0]
     assert evenement.statut == "brouillon"
     assert evenement.tags == ["Lyon", "mariage"]
+
+
+def test_creation_propose_les_quatre_templates(contexte):
+    client, _, _, _ = contexte
+    page = client.get("/evenements/", headers=HEADERS).get_data(as_text=True)
+    assert 'name="template_fond_10x15"' in page
+    assert 'name="template_overlay_10x15"' in page
+    assert 'name="template_fond_strip"' in page
+    assert 'name="template_overlay_strip"' in page
+    assert "Événement actif" not in page
+
+
+def test_activation_applique_les_templates_associes(contexte):
+    client, data, _, _ = contexte
+    overlays = data.parent / "overlays"
+    fonds = data.parent / "fonds"
+    (overlays / "cadre.png").write_bytes(b"overlay-evenement")
+    (fonds / "strip.jpg").write_bytes(b"fond-strip-evenement")
+    from web.db import connexion
+    with connexion() as conn:
+        overlay_id = conn.execute(
+            "INSERT INTO template (nom, type, couche, fichier) VALUES (?, ?, ?, ?)",
+            ("Cadre mariage", "10x15", "overlay", "cadre.png"),
+        ).lastrowid
+        fond_strip_id = conn.execute(
+            "INSERT INTO template (nom, type, couche, fichier) VALUES (?, ?, ?, ?)",
+            ("Fond bandelettes", "strip", "fond", "strip.jpg"),
+        ).lastrowid
+
+    _creer(
+        client,
+        template_overlay_10x15=str(overlay_id),
+        template_fond_strip=str(fond_strip_id),
+    )
+    evenement_id = _id_evenement()
+    client.post(f"/evenements/{evenement_id}/activer", headers=HEADERS)
+
+    assert (overlays / "10x15_overlay.png").read_bytes() == b"overlay-evenement"
+    assert (fonds / "strips_background.jpg").read_bytes() == b"fond-strip-evenement"
+    with connexion() as conn:
+        associations = conn.execute(
+            "SELECT type, couche, template_id FROM evenement_template WHERE evenement_id = ?",
+            (evenement_id,),
+        ).fetchall()
+        actifs = conn.execute("SELECT id FROM template WHERE actif = 1 ORDER BY id").fetchall()
+    assert len(associations) == 4
+    assert [row["id"] for row in actifs] == sorted([overlay_id, fond_strip_id])
+
+    page = client.get("/evenements/", headers=HEADERS).get_data(as_text=True)
+    assert "Événement actif" in page
+    assert "Cadre mariage" in page
+    assert "Fond bandelettes" in page
 
 
 def test_activation_exclusive_et_fichier_partage(contexte):

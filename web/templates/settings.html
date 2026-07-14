@@ -15,8 +15,8 @@
 <aside class="settings-notice">
   <span class="settings-notice__mark" aria-hidden="true">↻</span>
   <div>
-    <strong>Redémarrage requis</strong>
-    <p>Les changements seront appliqués au prochain redémarrage du service kiosque.</p>
+    <strong>Application immédiate disponible</strong>
+    <p>« Enregistrer et appliquer » redémarre uniquement le service kiosque, jamais le Raspberry Pi.</p>
   </div>
 </aside>
 
@@ -75,7 +75,8 @@
       <strong>Prêt à appliquer vos changements ?</strong>
       <span>Ils seront conservés après les mises à jour.</span>
     </div>
-    <button type="submit" class="btn btn--primary">Enregistrer les réglages</button>
+    <button type="submit" name="action" value="save" class="btn">Enregistrer seulement</button>
+    <button type="submit" name="action" value="apply" class="btn btn--primary">Enregistrer et appliquer</button>
     <button type="submit" form="settings-reset" class="btn btn--danger">Revenir aux valeurs par défaut</button>
   </div>
 </form>

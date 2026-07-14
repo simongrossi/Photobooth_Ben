@@ -28,7 +28,7 @@ Dernière mise à jour : 2026-07-14 (options de veille et d'impressions multiple
 
 **Déploiement** : guide Raspberry Pi complet (`docs/DEPLOYMENT.md`), doc architecture (`docs/ARCHITECTURE.md`), doc Arduino (`docs/ARDUINO.md`), changelog (`docs/CHANGELOG.md`).
 
-**Admin web optionnelle** (v1) : service systemd séparé (`photobooth-admin.service`), Flask + SQLite, Basic Auth. Dashboard stats, galerie `data/print/`, upload/activation de templates overlays, éditeur d'un sous-ensemble whitelisté de `config.py` (20 clés via `data/config_overrides.json`). Isolation stricte — `web/*` n'importe jamais `Photobooth_start` ni `ui/*`. Voir [ADMIN.md](ADMIN.md).
+**Admin web optionnelle** (v1) : service systemd séparé (`photobooth-admin.service`), Flask + SQLite, Basic Auth. Dashboard stats avec horloge serveur persistante, galerie `data/print/`, upload/activation/association événementielle des templates, éditeur d'un sous-ensemble whitelisté de `config.py` (20 clés via `data/config_overrides.json`). Isolation stricte — `web/*` n'importe jamais `Photobooth_start` ni `ui/*`. Voir [ADMIN.md](ADMIN.md).
 
 **Éditeur templates 10×15 et strip** : composition visuelle fond → photo(s) →
 overlay, déplacement/redimensionnement par template et aperçu kiosque identique
@@ -36,7 +36,8 @@ au rendu final. Les trois zones strip sont réglables indépendamment.
 
 **Gestion événementielle** : événements nommés avec dates et tags, activation
 exclusive partagée à chaud avec le kiosque, instantané dans chaque session,
-filtres dashboard/galerie, compatibilité « Sans événement » et export ZIP/CSV.
+quatre templates facultatifs appliqués automatiquement, filtres
+dashboard/galerie, compatibilité « Sans événement » et export ZIP/CSV.
 
 ---
 
@@ -151,8 +152,8 @@ confond pas avec une éventuelle galerie publique pour les invités.
 **Sous-tâches** :
 - ✅ Admin dashboard v1 (Flask + SQLite + Basic Auth) — dashboard, galerie, templates, réglages whitelistés
 - [ ] **v2 admin** — état réseau et configuration NetworkManager via `nmcli`
-  avec sudoers ciblé, bouton « redémarrer kiosque », queue imprimante et logs
-  systemd (export CSV événement déjà livré).
+  avec sudoers ciblé, queue imprimante et logs systemd (bouton « redémarrer
+  kiosque » et export CSV événement déjà livrés).
 - [ ] Évaluer NetworkManager en priorité ; n'introduire `hostapd` + `dnsmasq`
   que si les besoins multi-interface/portail captif le justifient.
 - [ ] Extension galerie → mode **LAN public** : route publique sans auth pour téléchargement des montages du jour (à exposer uniquement via l'AP captif)
@@ -169,8 +170,9 @@ confond pas avec une éventuelle galerie publique pour les invités.
 
 - [ ] **Email / SMS delivery** — après impression, écran "Entrez votre email/numéro" (clavier virtuel tactile) → photo envoyée en PJ. SMTP + formulaire. Peut s'implémenter soit côté kiosque (tactile sur place) soit côté admin v2 (envoi différé depuis la galerie).
 - [ ] **Multi-langue** (EN/FR/ES) — toutes les strings extraites dans `i18n/*.json`, toggle sur l'accueil
-- [ ] **Branding par événement** — rattacher automatiquement les templates,
-  fonds et textes au registre d'événements désormais livré.
+- [ ] **Branding par événement — suite** : templates et fonds sont désormais
+  rattachés automatiquement ; ajouter les textes/filigranes propres à chaque
+  événement.
 
 ---
 

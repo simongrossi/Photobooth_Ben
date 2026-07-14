@@ -104,6 +104,22 @@ class TestDashboard:
         assert r.status_code == 200
         assert b"Sessions" in r.data
 
+    def test_horloge_utilise_et_resynchronise_heure_serveur(self, client, monkeypatch):
+        from datetime import datetime, timedelta, timezone
+        import web.routes.dashboard as dash
+        fixe = datetime(2026, 7, 14, 21, 42, 5, tzinfo=timezone(timedelta(hours=2)))
+        monkeypatch.setattr(dash, "_maintenant_serveur", lambda: fixe)
+
+        page = client.get("/dashboard/", headers=HEADERS_OK).get_data(as_text=True)
+        assert 'id="server-clock"' in page
+        assert "14/07/2026 21:42:05" in page
+        assert "/dashboard/heure" in page
+
+        heure = client.get("/dashboard/heure", headers=HEADERS_OK)
+        assert heure.status_code == 200
+        assert heure.json["serveur_offset_minutes"] == 120
+        assert heure.json["serveur_heure_texte"] == "14/07/2026 21:42:05"
+
     def test_avec_sessions(self, client, app, tmp_path):
         import config
         jsonl = tmp_path / "data" / "sessions.jsonl"

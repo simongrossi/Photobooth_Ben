@@ -12,6 +12,13 @@ import config
 
 from web.db import connexion
 
+EMPLACEMENTS_TEMPLATES = (
+    ("fond", "10x15"),
+    ("overlay", "10x15"),
+    ("fond", "strip"),
+    ("overlay", "strip"),
+)
+
 
 @dataclass
 class Evenement:
@@ -97,6 +104,28 @@ def remplacer_tags(conn, evenement_id: str, tags: list[str]) -> None:
             (evenement_id, row["id"]),
         )
     conn.execute("DELETE FROM tag WHERE id NOT IN (SELECT tag_id FROM evenement_tag)")
+
+
+def selection_templates_evenement(evenement_id: str) -> dict[tuple[str, str], int | None]:
+    """Retourne les quatre choix enregistrés, y compris les choix « Aucun »."""
+    with connexion() as conn:
+        rows = conn.execute(
+            "SELECT couche, type, template_id FROM evenement_template WHERE evenement_id = ?",
+            (evenement_id,),
+        ).fetchall()
+    selection = {(row["couche"], row["type"]): row["template_id"] for row in rows}
+    return {emplacement: selection.get(emplacement) for emplacement in EMPLACEMENTS_TEMPLATES}
+
+
+def enregistrer_selection_templates(conn, evenement_id: str, selection: dict) -> None:
+    """Mémorise les quatre emplacements de templates d'un événement."""
+    for (couche, type_t), template_id in selection.items():
+        conn.execute(
+            "INSERT INTO evenement_template (evenement_id, type, couche, template_id) "
+            "VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(evenement_id, type, couche) DO UPDATE SET template_id = excluded.template_id",
+            (evenement_id, type_t, couche, template_id),
+        )
 
 
 def ecrire_evenement_actif(evenement: Evenement) -> None:

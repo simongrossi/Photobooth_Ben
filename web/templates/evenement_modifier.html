@@ -20,6 +20,22 @@
     <label>Notes
       <textarea name="notes" rows="5">{{ evenement.notes }}</textarea>
     </label>
+    <fieldset class="event-template-fieldset">
+      <legend>Templates de l'événement</legend>
+      <p class="muted">Ils seront appliqués automatiquement quand cet événement devient actif.</p>
+      <div class="event-template-grid">
+        {% for emplacement in emplacements_templates %}
+        <label>{{ emplacement.libelle }}
+          <select name="{{ emplacement.champ }}">
+            <option value="">Aucun template</option>
+            {% for template in emplacement.templates %}
+            <option value="{{ template.id }}" {% if selection_templates[emplacement.champ] == template.id %}selected{% endif %}>{{ template.nom }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
     <div class="actions-row">
       <button class="btn btn--primary" type="submit">Enregistrer</button>
       <a class="btn" href="{{ url_for('evenements.index') }}">Annuler</a>

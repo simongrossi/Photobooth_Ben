@@ -1,5 +1,12 @@
 {% extends "base.html" %}
 {% block titre %}Dashboard · Photobooth{% endblock %}
+{% block topbar_extra %}
+<time id="server-clock" class="server-clock"
+      data-epoch-ms="{{ serveur_epoch_ms }}"
+      data-offset-minutes="{{ serveur_offset_minutes }}"
+      data-sync-url="{{ url_for('dashboard.heure_serveur') }}"
+      aria-label="Heure actuelle du serveur">{{ serveur_heure_texte }}</time>
+{% endblock %}
 {% block contenu %}
 <div class="dashboard-header">
   <h1>Dashboard</h1>
@@ -127,4 +134,40 @@
     Journal : <code>{{ sessions_path }}</code> · Impressions : <code>{{ print_path }}</code>
   </p>
 </section>
+{% endblock %}
+{% block scripts %}
+<script>
+(() => {
+  const horloge = document.getElementById('server-clock');
+  if (!horloge) return;
+  let epochMs = Number(horloge.dataset.epochMs);
+  let offsetMinutes = Number(horloge.dataset.offsetMinutes);
+  let synchroniseA = Date.now();
+  const deux = valeur => String(valeur).padStart(2, '0');
+
+  const afficher = () => {
+    const ecoule = Date.now() - synchroniseA;
+    const localeServeur = new Date(epochMs + ecoule + offsetMinutes * 60000);
+    horloge.textContent = `${deux(localeServeur.getUTCDate())}/${deux(localeServeur.getUTCMonth() + 1)}/${localeServeur.getUTCFullYear()} · ${deux(localeServeur.getUTCHours())}:${deux(localeServeur.getUTCMinutes())}:${deux(localeServeur.getUTCSeconds())}`;
+  };
+
+  const resynchroniser = async () => {
+    try {
+      const reponse = await fetch(horloge.dataset.syncUrl, {cache: 'no-store'});
+      if (!reponse.ok) return;
+      const serveur = await reponse.json();
+      epochMs = Number(serveur.serveur_epoch_ms);
+      offsetMinutes = Number(serveur.serveur_offset_minutes);
+      synchroniseA = Date.now();
+      afficher();
+    } catch (_) {
+      // L'horloge locale continue depuis la dernière synchronisation valide.
+    }
+  };
+
+  afficher();
+  window.setInterval(afficher, 1000);
+  window.setInterval(resynchroniser, 60000);
+})();
+</script>
 {% endblock %}

@@ -8,9 +8,20 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 ## `WIP` — Éditeur visuel de mise en page 10×15 et strip
 
 ### Added
+- Association de quatre templates par événement (fond/overlay 10×15 et strip,
+  chacun facultatif). L'activation d'un événement publie automatiquement son
+  habillage et sa mise en page ; l'événement actif est signalé avec un résumé
+  de ses templates dans l'admin.
+- Affectation directe d'un template déjà uploadé à un événement depuis chaque
+  carte de `/templates/`, avec application immédiate si l'événement est actif.
+- Horloge locale du serveur dans la barre supérieure du dashboard, actualisée
+  chaque seconde et resynchronisée avec le serveur toutes les 60 secondes.
 - Deux interrupteurs admin : désactivation du diaporama de veille et des
   impressions multiples. Sans copies multiples, le kiosque imprime directement
   une seule feuille, y compris la feuille contenant deux bandelettes.
+- Bouton « Enregistrer et appliquer » : redémarrage du seul service kiosque
+  depuis l'admin, protégé par une règle sudoers limitée installée et validée
+  automatiquement.
 - Éditeur admin par template avec aperçu fond → photo → overlay, déplacement,
   redimensionnement, coordonnées précises, verrouillage 3:2 et préréglages.
 - Géométrie mémorisée dans SQLite et publiée atomiquement dans

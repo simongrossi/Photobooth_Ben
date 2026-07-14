@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import json
+import subprocess
 
 import pytest
 
@@ -41,7 +42,8 @@ class TestLecture:
         assert b"Exp\xc3\xa9rience" in r.data
         assert b"Impression" in r.data
         assert b"Style photo" in r.data
-        assert b"Red\xc3\xa9marrage requis" in r.data
+        assert b"Application imm\xc3\xa9diate disponible" in r.data
+        assert b"Enregistrer et appliquer" in r.data
 
     def test_affiche_le_nombre_de_reglages_personnalises(self, ctx):
         c, overrides_path = ctx
@@ -116,6 +118,54 @@ class TestEnregistrement:
         assert r.status_code == 200
         import os
         assert not os.path.exists(overrides_path)
+
+    def test_enregistrer_seulement_ne_redemarre_pas(self, ctx, monkeypatch):
+        c, _ = ctx
+        import web.routes.settings_route as sr
+        monkeypatch.setattr(sr, "_redemarrer_kiosque", lambda: pytest.fail("redémarrage inattendu"))
+
+        r = c.post("/settings/", data={"action": "save"}, headers=HEADERS)
+        assert r.status_code == 302
+
+    def test_enregistrer_et_appliquer_redemarre_le_kiosque(self, ctx, monkeypatch):
+        c, _ = ctx
+        import web.routes.settings_route as sr
+        appels = []
+
+        def fake_run(commande, **options):
+            appels.append((commande, options))
+            return subprocess.CompletedProcess(commande, 0, stdout="", stderr="")
+
+        monkeypatch.setattr(sr.subprocess, "run", fake_run)
+        r = c.post(
+            "/settings/",
+            data={"action": "apply"},
+            headers=HEADERS,
+            follow_redirects=True,
+        )
+
+        assert r.status_code == 200
+        assert b"service kiosque a \xc3\xa9t\xc3\xa9 red\xc3\xa9marr\xc3\xa9" in r.data
+        assert appels[0][0] == [sr.SUDO_PATH, "-n", sr.SYSTEMCTL_PATH, "restart", "photobooth.service"]
+        assert appels[0][1]["timeout"] == 20
+        assert appels[0][1]["check"] is False
+
+    def test_echec_application_est_affiche(self, ctx, monkeypatch):
+        c, _ = ctx
+        import web.routes.settings_route as sr
+        monkeypatch.setattr(
+            sr.subprocess,
+            "run",
+            lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 1, stderr="sudo refusé"),
+        )
+
+        r = c.post(
+            "/settings/",
+            data={"action": "apply"},
+            headers=HEADERS,
+            follow_redirects=True,
+        )
+        assert b"n&#39;a pas pu \xc3\xaatre red\xc3\xa9marr\xc3\xa9" in r.data
 
 
 class TestWhitelist:

@@ -65,6 +65,17 @@ code {
   padding: .7rem 1.2rem; position: sticky; top: 0; z-index: 10;
 }
 .logo { font-weight: 700; color: var(--texte); }
+.server-clock {
+  color: var(--accent);
+  font-size: .88rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  padding: .28rem .65rem;
+  background: var(--bg);
+  border: 1px solid var(--bord);
+  border-radius: 999px;
+}
 .nav { display: flex; gap: .2rem; flex-wrap: wrap; }
 .nav a { color: var(--texte2); padding: .35rem .7rem; border-radius: 8px; font-weight: 500; }
 .nav a:hover { color: var(--texte); background: var(--bg); text-decoration: none; }
@@ -216,6 +227,62 @@ form.inline { display: inline; margin: 0; }
 .evenement-actif {
   display: flex; align-items: center; justify-content: space-between; gap: 1rem;
   border-color: var(--ok); background: color-mix(in srgb, var(--ok-bg) 35%, var(--carte));
+}
+
+.event-template-fieldset {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 1rem;
+}
+
+.event-template-fieldset legend {
+  font-weight: 700;
+  padding: 0 .35rem;
+}
+
+.event-template-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .8rem;
+}
+
+.event-template-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+  margin-top: .75rem;
+}
+
+.template-event-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+  margin: .45rem 0;
+}
+
+.template-event-assignment {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  align-items: end;
+  gap: .6rem;
+  margin: .65rem 0;
+  padding: .65rem;
+  border: 1px solid var(--bord);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.template-event-assignment label {
+  font-size: .78rem;
+  font-weight: 600;
+}
+
+@media (max-width: 560px) {
+  .template-event-assignment { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 680px) {
+  .event-template-grid { grid-template-columns: 1fr; }
 }
 .evenement-actif h2, .evenement-card h3 { margin: .35rem 0 .1rem; }
 .evenements-layout { align-items: start; }

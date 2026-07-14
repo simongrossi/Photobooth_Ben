@@ -9,6 +9,7 @@ projet* — plus besoin de copier-coller du heredoc depuis DEPLOYMENT.md.
 | [photobooth.service](photobooth.service) | Unit systemd (template avec placeholders `@USER@` / `@HOME@`) |
 | [kiosk.sh](kiosk.sh) | Wrapper de démarrage : désactive screensaver, cache curseur, lance Python |
 | [install.sh](install.sh) | Installe `unclutter`, substitue les placeholders, active le service |
+| [install-admin.sh](install-admin.sh) | Installe l'admin et son autorisation limitée de redémarrage du kiosque |
 | [uninstall.sh](uninstall.sh) | Retire proprement le service systemd |
 
 ---

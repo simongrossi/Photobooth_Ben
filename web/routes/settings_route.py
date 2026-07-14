@@ -1,12 +1,14 @@
 """settings_route.py — éditeur de config_overrides.json (whitelist stricte).
 
-Lit/écrit uniquement `data/config_overrides.json`. Les changements prennent
-effet au prochain démarrage du kiosque (affiché dans l'UI).
+Lit/écrit `data/config_overrides.json` et peut redémarrer uniquement le service
+du kiosque pour appliquer immédiatement les changements.
 """
 from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
 from dataclasses import dataclass
 from typing import Any
 
@@ -24,6 +26,10 @@ from config import CONFIG_OVERRIDES_PATH, _CONFIG_OVERRIDES_WHITELIST
 from web.auth import require_auth
 
 bp = Blueprint("settings", __name__, url_prefix="/settings")
+
+KIOSQUE_SERVICE = "photobooth.service"
+SUDO_PATH = shutil.which("sudo") or "/usr/bin/sudo"
+SYSTEMCTL_PATH = shutil.which("systemctl") or "/usr/bin/systemctl"
 
 
 @dataclass
@@ -103,6 +109,28 @@ def _ecrire_overrides(overrides: dict) -> None:
     os.replace(tmp, CONFIG_OVERRIDES_PATH)
 
 
+def _redemarrer_kiosque() -> tuple[bool, str]:
+    """Redémarre seulement le kiosque via la règle sudoers installée."""
+    commande = [SUDO_PATH, "-n", SYSTEMCTL_PATH, "restart", KIOSQUE_SERVICE]
+    try:
+        resultat = subprocess.run(
+            commande,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return False, "Le redémarrage du kiosque a dépassé 20 secondes."
+    except OSError as e:
+        return False, f"Commande de redémarrage indisponible : {e}"
+    if resultat.returncode == 0:
+        return True, "Réglages appliqués : le service kiosque a été redémarré."
+    detail = (resultat.stderr or resultat.stdout).strip()
+    suffixe = f" ({detail[:200]})" if detail else ""
+    return False, f"Le service kiosque n'a pas pu être redémarré{suffixe}. Relancez l'installation admin."
+
+
 def _lister_reglages() -> list[Reglage]:
     overrides = _charger_overrides()
     reglages: list[Reglage] = []
@@ -164,6 +192,7 @@ def index():
 @require_auth
 def save():
     overrides = _charger_overrides()
+    action = request.form.get("action", "save")
     n_modifs = 0
     erreurs: list[str] = []
 
@@ -199,11 +228,15 @@ def save():
             flash(e, "error")
     if n_modifs:
         _ecrire_overrides(overrides)
-        flash(
-            f"{n_modifs} réglage(s) enregistré(s). Redémarrez le kiosque pour appliquer.",
-            "success",
-        )
-    elif not erreurs:
+    if erreurs:
+        if n_modifs:
+            flash(f"{n_modifs} réglage(s) valide(s) enregistré(s), sans redémarrage.", "info")
+    elif action == "apply":
+        succes, message = _redemarrer_kiosque()
+        flash(message, "success" if succes else "error")
+    elif n_modifs:
+        flash(f"{n_modifs} réglage(s) enregistré(s).", "success")
+    else:
         flash("Aucun changement.", "info")
 
     return redirect(url_for("settings.index"))
