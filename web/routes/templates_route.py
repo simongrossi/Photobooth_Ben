@@ -94,6 +94,55 @@ def _chemin_fichier(fichier: str, couche: str) -> str:
     return chemin
 
 
+def _synchroniser_disque_et_db() -> None:
+    """Importe automatiquement dans la base de données les fichiers physiques
+    présents sur le disque (issus d'anciennes installations ou de modifs manuelles)
+    si aucun template n'est actuellement actif pour ce couple (couche, type).
+    """
+    for (couche, type_t), cible_active in _CIBLE_ACTIVE.items():
+        if not os.path.isfile(cible_active):
+            continue
+
+        # Vérifier si on a un template actif dans la DB pour ce (couche, type_t)
+        with connexion() as conn:
+            active_row = conn.execute(
+                "SELECT id FROM template WHERE couche = ? AND type = ? AND actif = 1",
+                (couche, type_t),
+            ).fetchone()
+
+        if active_row is None:
+            # Il y a un fichier sur le disque mais aucun template actif enregistré !
+            racine = _RACINE_PAR_COUCHE[couche]
+            os.makedirs(racine, exist_ok=True)
+
+            base_nom = os.path.basename(cible_active)
+            nom_fichier = f"{couche}__{type_t}__origine_{base_nom}"
+            destination = os.path.join(racine, nom_fichier)
+
+            try:
+                # Copier le fichier actif vers le nom de la bibliothèque (si pas déjà présent)
+                if not os.path.exists(destination):
+                    shutil.copyfile(cible_active, destination)
+
+                taille = os.path.getsize(destination)
+                nom_affiche = f"Gabarit d'origine ({type_t})"
+
+                with connexion() as conn:
+                    # Désactiver d'autres templates éventuels (par sécurité)
+                    conn.execute(
+                        "UPDATE template SET actif = 0 WHERE couche = ? AND type = ?",
+                        (couche, type_t),
+                    )
+                    # Insérer ou remplacer le template d'origine comme actif
+                    conn.execute(
+                        "INSERT OR REPLACE INTO template (nom, type, couche, fichier, actif, taille_octets) "
+                        "VALUES (?, ?, ?, ?, 1, ?)",
+                        (nom_affiche, type_t, couche, nom_fichier, taille),
+                    )
+            except Exception as e:
+                print(f"Erreur d'importation automatique du template d'origine ({couche}, {type_t}) : {e}")
+
+
 def _lister() -> list[TemplateRow]:
     with connexion() as conn:
         rows = conn.execute(
@@ -114,6 +163,7 @@ def _lister() -> list[TemplateRow]:
 @bp.route("/", methods=["GET"])
 @require_auth
 def index():
+    _synchroniser_disque_et_db()
     templates = _lister()
     actifs = {(t.couche, t.type): t.nom for t in templates if t.actif}
     return render_template(

@@ -378,3 +378,31 @@ class TestPageDeuxCouches:
         c, _, _ = client
         r = c.get("/templates/", headers=HEADERS)
         assert "Aucun" in r.get_data(as_text=True)
+
+
+class TestAutoImport:
+    def test_auto_import_decouvre_fichier_sur_disque(self, client):
+        c, overlays, _ = client
+        # Simuler un fichier d'overlay d'origine présent sur le disque
+        cible = os.path.join(overlays, "10x15_overlay.png")
+        with open(cible, "wb") as f:
+            f.write(_png_bytes())
+
+        # Charger la page des templates (ce qui déclenche la synchronisation)
+        r = c.get("/templates/", headers=HEADERS)
+        assert r.status_code == 200
+        html = r.get_data(as_text=True)
+
+        # Le template d'origine doit avoir été importé et affiché comme actif
+        assert "Gabarit" in html
+        assert "Actif : Gabarit" in html
+
+        # Vérifier en DB
+        from web.db import connexion
+        with connexion() as conn:
+            row = conn.execute(
+                "SELECT nom, actif, fichier FROM template WHERE couche = 'overlay' AND type = '10x15'"
+            ).fetchone()
+        assert row["nom"] == "Gabarit d'origine (10x15)"
+        assert row["actif"] == 1
+        assert "origine" in row["fichier"]
