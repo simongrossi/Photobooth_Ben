@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from datetime import date
 
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, request
 
 from config import (
     INTERVALLE_CHECK_DISQUE_S,
@@ -62,9 +62,19 @@ def _construire_sante(disk: DiskMonitor, temp: TempMonitor) -> list[dict]:
 @bp.route("/")
 @require_auth
 def index():
+    periode = request.args.get("periode", "recent")
     sessions_path = os.path.join(PATH_DATA, "sessions.jsonl")
     sessions = load_sessions(sessions_path) or []
-    stats = calculer_stats(sessions)
+
+    if periode == "toutes":
+        sessions_a_calculer = sessions
+    else:
+        # Par défaut : les 7 derniers jours (depuis aujourd'hui)
+        from datetime import timedelta
+        date_seuil = (date.today() - timedelta(days=7)).strftime("%Y-%m-%d")
+        sessions_a_calculer = [s for s in sessions if s.get("ts", "") >= date_seuil]
+
+    stats = calculer_stats(sessions_a_calculer)
 
     disk = DiskMonitor(
         path=PATH_DATA,
@@ -83,7 +93,8 @@ def index():
     temp.tick()
 
     jour = stats_du_jour(sessions, date.today().strftime("%Y-%m-%d"))
-    historique = stats_par_jour(sessions, limite=14)
+    limite_hist = 100 if periode == "toutes" else 7
+    historique = stats_par_jour(sessions_a_calculer, limite=limite_hist)
     max_total = max((j["total"] for j in historique), default=0)
     for j in historique:
         j["pct_barre"] = round(j["total"] * 100 / max_total) if max_total else 0
@@ -112,4 +123,5 @@ def index():
         heures_total=heures_total,
         sessions_path=sessions_path,
         print_path=PATH_PRINT,
+        periode=periode,
     )

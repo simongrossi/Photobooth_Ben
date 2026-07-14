@@ -107,9 +107,10 @@ class TestDashboard:
     def test_avec_sessions(self, client, app, tmp_path):
         import config
         jsonl = tmp_path / "data" / "sessions.jsonl"
+        from datetime import date
         jsonl.write_text(json.dumps({
             "session_id": "s1", "mode": "10x15", "issue": "printed",
-            "nb_photos": 1, "duree_s": 30.0, "ts": "2026-04-20 14:00:00",
+            "nb_photos": 1, "duree_s": 30.0, "ts": f"{date.today().strftime('%Y-%m-%d')} 14:00:00",
         }) + "\n", encoding="utf-8")
         assert config.PATH_DATA == str(tmp_path / "data")
         r = client.get("/dashboard/", headers=HEADERS_OK)
@@ -144,3 +145,37 @@ class TestDashboardV2:
         monkeypatch.setattr(dash.printer_mgr, "is_ready", lambda mode: True)
         r = client.get("/dashboard/", headers=HEADERS_OK)
         assert r.status_code == 200
+
+    def test_dashboard_filtre_periode(self, client, app, tmp_path):
+        import config
+        from datetime import date, timedelta
+        import json
+        jsonl = tmp_path / "data" / "sessions.jsonl"
+        
+        # Une session récente (aujourd'hui)
+        s_recent = {
+            "session_id": "recent", "mode": "10x15", "issue": "printed",
+            "nb_photos": 1, "duree_s": 30.0, "ts": f"{date.today().strftime('%Y-%m-%d')} 14:00:00",
+        }
+        # Une session ancienne (15 jours)
+        s_ancienne = {
+            "session_id": "ancienne", "mode": "strips", "issue": "printed",
+            "nb_photos": 3, "duree_s": 45.0, "ts": f"{(date.today() - timedelta(days=15)).strftime('%Y-%m-%d')} 15:00:00",
+        }
+        
+        jsonl.write_text(json.dumps(s_recent) + "\n" + json.dumps(s_ancienne) + "\n", encoding="utf-8")
+        assert config.PATH_DATA == str(tmp_path / "data")
+        
+        # Par défaut (récent) : seulement la session récente
+        r1 = client.get("/dashboard/", headers=HEADERS_OK)
+        html1 = r1.get_data(as_text=True)
+        # La card "Sessions (total)" doit valoir 1
+        assert "Sessions (total)</div>" in html1
+        assert "1" in html1
+        
+        # Avec filtre toutes : les deux sessions
+        r2 = client.get("/dashboard/?periode=toutes", headers=HEADERS_OK)
+        html2 = r2.get_data(as_text=True)
+        # La card "Sessions (total)" doit valoir 2
+        assert "Sessions (total)</div>" in html2
+        assert "2" in html2

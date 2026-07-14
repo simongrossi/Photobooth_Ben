@@ -249,3 +249,44 @@ form.inline { display: inline; margin: 0; }
   background: var(--bg); color: var(--texte);
   border: 1px solid var(--bord); border-radius: 8px; padding: .35rem .5rem;
 }
+
+/* --- Filtres du Dashboard --- */
+.dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.dashboard-header h1 {
+  margin: 0;
+}
+.filter-group {
+  display: inline-flex;
+  background: var(--carte);
+  border: 1px solid var(--bord);
+  border-radius: 9px;
+  padding: 3px;
+  box-shadow: var(--ombre);
+}
+.btn-filter {
+  background: transparent;
+  color: var(--texte);
+  border: none;
+  border-radius: 6px;
+  padding: .4rem .9rem;
+  font-size: .85rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.btn-filter:hover {
+  background: var(--na-bg);
+  text-decoration: none;
+}
+.btn-filter.active {
+  background: var(--accent);
+  color: var(--accent-tx);
+}

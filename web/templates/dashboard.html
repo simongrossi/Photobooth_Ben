@@ -1,7 +1,13 @@
 {% extends "base.html" %}
 {% block titre %}Dashboard · Photobooth{% endblock %}
 {% block contenu %}
-<h1>Dashboard</h1>
+<div class="dashboard-header">
+  <h1>Dashboard</h1>
+  <div class="filter-group">
+    <a href="?periode=recent" class="btn-filter {% if periode == 'recent' %}active{% endif %}">Derniers jours</a>
+    <a href="?periode=toutes" class="btn-filter {% if periode == 'toutes' %}active{% endif %}">Tout depuis le début</a>
+  </div>
+</div>
 
 <!-- Étage 1 : santé matériel -->
 <section class="pastilles">
