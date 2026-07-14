@@ -10,14 +10,14 @@ from config import (
     COULEUR_FLASH, COULEUR_SOURIEZ, COULEUR_TEXTE_OFF, COULEUR_TEXTE_ON, COULEUR_TEXTE_REPOS,
     DELAI_SECURITE,
     DUREE_CONFIRM_ABANDON, DUREE_FLASH_BLANC, DUREE_IDLE_SLIDESHOW, DUREE_PAR_IMAGE_SLIDESHOW,
-    FILE_BG_ACCUEIL, FORMAT_TIMESTAMP, HEIGHT,
+    BG_ACCUEIL_EFFECTIF, FORMAT_TIMESTAMP, HEIGHT,
     INTERVALLE_CHECK_DISQUE_S, INTERVALLE_CHECK_TEMP_S, LARGEUR_ICONE_10X15, LARGEUR_ICONE_STRIP, MARGE_ACCUEIL,
     MODE_10x15, MODE_STRIP, NB_MAX_IMAGES_SLIDESHOW,
     NOM_IMPRIMANTE_10X15, NOM_IMPRIMANTE_STRIP, OFFSET_DROITE_10X15, OFFSET_DROITE_STRIP,
     PATH_DATA, PATH_IMG_10X15, PATH_IMG_STRIP, PATH_PRINT,
     PATH_PRINT_10X15, PATH_PRINT_STRIP, PATH_RAW, PATH_SKIPPED,
     PATH_SKIPPED_DELETED, PATH_SKIPPED_RETAKE, PATH_SOUNDS, PATH_TEMP,
-    POLICE_FICHIER, PREFIXE_DELETED, PREFIXE_PRINT_10X15, PREFIXE_PRINT_STRIP,
+    PATH_SLIDESHOW_PERSO, POLICE_EFFECTIVE, PREFIXE_DELETED, PREFIXE_PRINT_10X15, PREFIXE_PRINT_STRIP,
     PREFIXE_RAW, PREFIXE_RETAKE, PULSE_LENT_MAX, PULSE_LENT_MIN, PULSE_LENT_VITESSE, PULSE_MAX,
     PULSE_MIN, PULSE_VITESSE,
     SEUIL_DISQUE_CRITIQUE_MB, SEUIL_TEMP_CRITIQUE_C,
@@ -345,14 +345,14 @@ icon_strip_select = None
 def _charger_polices():
     """Charge les polices pygame ou bascule sur Arial si l'asset manque."""
     try:
-        if os.path.exists(POLICE_FICHIER):
+        if os.path.exists(POLICE_EFFECTIVE):
             return (
-                pygame.font.Font(POLICE_FICHIER, TAILLE_TITRE_ACCUEIL),
-                pygame.font.Font(POLICE_FICHIER, TAILLE_TEXTE_BOUTON),
-                pygame.font.Font(POLICE_FICHIER, TAILLE_TEXTE_BANDEAU),
-                pygame.font.Font(POLICE_FICHIER, TAILLE_DECOMPTE),
-                pygame.font.Font(POLICE_FICHIER, config.STRIP_FILIGRANE_TAILLE),
-                pygame.font.Font(POLICE_FICHIER, config.TAILLE_TEXTE_ALERTE),
+                pygame.font.Font(POLICE_EFFECTIVE, TAILLE_TITRE_ACCUEIL),
+                pygame.font.Font(POLICE_EFFECTIVE, TAILLE_TEXTE_BOUTON),
+                pygame.font.Font(POLICE_EFFECTIVE, TAILLE_TEXTE_BANDEAU),
+                pygame.font.Font(POLICE_EFFECTIVE, TAILLE_DECOMPTE),
+                pygame.font.Font(POLICE_EFFECTIVE, config.STRIP_FILIGRANE_TAILLE),
+                pygame.font.Font(POLICE_EFFECTIVE, config.TAILLE_TEXTE_ALERTE),
             )
         raise FileNotFoundError
     except Exception:
@@ -457,7 +457,7 @@ def _initialiser_runtime() -> None:
     slideshow_cached_for_idx = -1
 
     accueil_assets = AccueilAssets.charger(
-        bg_path=FILE_BG_ACCUEIL,
+        bg_path=BG_ACCUEIL_EFFECTIF,
         img_10x15_path=PATH_IMG_10X15,
         img_strip_path=PATH_IMG_STRIP,
         largeur_10x15=LARGEUR_ICONE_10X15,
@@ -574,7 +574,7 @@ def _render_accueil_slideshow(session: SessionState, idle_seconds: float) -> Non
     # Rafraîchit la liste tous les 30 s pour inclure les nouvelles impressions
     if time.time() - slideshow_last_refresh > 30.0 or not slideshow_images:
         slideshow_images = lister_images_slideshow(
-            [PATH_PRINT_10X15, PATH_PRINT_STRIP], NB_MAX_IMAGES_SLIDESHOW,
+            [PATH_PRINT_10X15, PATH_PRINT_STRIP, PATH_SLIDESHOW_PERSO], NB_MAX_IMAGES_SLIDESHOW,
         )
         slideshow_last_refresh = time.time()
         slideshow_cached_for_idx = -1

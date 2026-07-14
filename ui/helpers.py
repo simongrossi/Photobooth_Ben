@@ -68,8 +68,8 @@ class UIContext:
         # --- Chargement des polices d'impression ---
         import config
         try:
-            cls.font_imp_texte = pygame.font.Font(config.POLICE_FICHIER, config.TAILLE_TEXTE_IMP_COURANT)
-            cls.font_imp_compteur = pygame.font.Font(config.POLICE_FICHIER, config.TAILLE_COMPTEUR_IMP)
+            cls.font_imp_texte = pygame.font.Font(config.POLICE_EFFECTIVE, config.TAILLE_TEXTE_IMP_COURANT)
+            cls.font_imp_compteur = pygame.font.Font(config.POLICE_EFFECTIVE, config.TAILLE_COMPTEUR_IMP)
         except Exception as e:
             log_warning(f"Erreur chargement polices impression : {e}")
             # Fallback sur les polices existantes si ça rate
