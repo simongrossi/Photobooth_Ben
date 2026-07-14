@@ -19,6 +19,12 @@ def _png_bytes(taille=(100, 100), couleur=(255, 0, 0, 128)) -> bytes:
     return buf.getvalue()
 
 
+def _jpg_bytes(taille=(100, 100), couleur=(0, 128, 255)) -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", taille, couleur).save(buf, format="JPEG")
+    return buf.getvalue()
+
+
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     data = tmp_path / "data"
@@ -224,3 +230,59 @@ class TestMigrationCouche:
         colonnes = {r[1] for r in conn.execute("PRAGMA table_info(template)")}
         conn.close()
         assert "couche" in colonnes
+
+
+class TestUploadFond:
+    def test_upload_fond_jpg_dans_dossier_fonds(self, client):
+        c, _, fonds = client
+        data = {
+            "nom": "Fond mariage",
+            "type": "10x15",
+            "couche": "fond",
+            "fichier": (io.BytesIO(_jpg_bytes()), "fond.jpg"),
+        }
+        r = c.post("/templates/upload", data=data,
+                   headers=HEADERS, content_type="multipart/form-data",
+                   follow_redirects=True)
+        assert r.status_code == 200
+        assert os.path.isfile(os.path.join(fonds, "fond__10x15__fond.jpg"))
+
+    def test_upload_fond_png_accepte(self, client):
+        c, _, fonds = client
+        data = {
+            "nom": "Fond png",
+            "type": "strip",
+            "couche": "fond",
+            "fichier": (io.BytesIO(_png_bytes()), "fond.png"),
+        }
+        r = c.post("/templates/upload", data=data,
+                   headers=HEADERS, content_type="multipart/form-data",
+                   follow_redirects=True)
+        assert r.status_code == 200
+        assert os.path.isfile(os.path.join(fonds, "fond__strip__fond.png"))
+
+    def test_upload_overlay_jpg_refuse(self, client):
+        c, overlays, _ = client
+        data = {
+            "nom": "Mauvais overlay",
+            "type": "10x15",
+            "couche": "overlay",
+            "fichier": (io.BytesIO(_jpg_bytes()), "cadre.jpg"),
+        }
+        c.post("/templates/upload", data=data,
+               headers=HEADERS, content_type="multipart/form-data",
+               follow_redirects=True)
+        assert not os.path.isfile(os.path.join(overlays, "overlay__10x15__cadre.jpg"))
+
+    def test_upload_couche_inconnue_refuse(self, client):
+        c, overlays, fonds = client
+        data = {
+            "nom": "X",
+            "type": "10x15",
+            "couche": "cadre",
+            "fichier": (io.BytesIO(_png_bytes()), "x.png"),
+        }
+        c.post("/templates/upload", data=data,
+               headers=HEADERS, content_type="multipart/form-data",
+               follow_redirects=True)
+        assert os.listdir(overlays) == [] and os.listdir(fonds) == []
