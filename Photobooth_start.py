@@ -606,7 +606,6 @@ def demander_nombre_copies(session: SessionState) -> int:
     log_info(f"🔢 Choix validé : {compteur} | Temps configuré : {config.TEMPS_ATTENTE_IMP}s")
     return compteur
 
-import threading # Assure-toi que cet import est présent au tout début de ton script global
 
 def traiter_impression_session(session) -> str:
     """Genere, archive et imprime le montage final avec diagnostic precis."""
@@ -668,8 +667,10 @@ def traiter_impression_session(session) -> str:
                 
                 # Nettoyage
                 if os.path.exists(chemin_unique_copie) and chemin_unique_copie != destination:
-                    try: os.remove(chemin_unique_copie)
-                    except Exception: pass
+                    try:
+                        os.remove(chemin_unique_copie)
+                    except Exception:
+                        pass
 
                 # Attente entre deux impressions pour ne pas saturer CUPS
                 if nb_impressions_reelles > 1 and i < (nb_impressions_reelles - 1):
