@@ -212,6 +212,12 @@ class TestTick:
         ctrl.tick("VALIDATION", mode_actuel="strips")
         assert ctrl._last_led_state[POS_MILIEU] == LED_PULSE
 
+    def test_validation_abandon_armed_seul_rouge_clignote(self, ctrl):
+        ctrl.tick("VALIDATION", mode_actuel="10x15", abandon_armed=True)
+        assert ctrl._last_led_state[POS_DROITE] == LED_PULSE_FAST
+        assert ctrl._last_led_state[POS_GAUCHE] == LED_OFF
+        assert ctrl._last_led_state[POS_MILIEU] == LED_OFF
+
     def test_fin_abandon_armed_seul_rouge_clignote(self, ctrl):
         ctrl.tick("FIN", mode_actuel="10x15", abandon_armed=True)
         assert ctrl._last_led_state[POS_DROITE] == LED_PULSE_FAST

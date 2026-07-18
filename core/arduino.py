@@ -258,10 +258,16 @@ class ArduinoController:
             self.set_led(POS_MILIEU, LED_OFF)
             self.set_led(POS_DROITE, LED_OFF)
         elif etat_name == "VALIDATION":
-            # Les 3 boutons sont actifs → on les allume, le vert pulse (action principale).
-            self.set_led(POS_GAUCHE, LED_ON)
-            self.set_led(POS_MILIEU, LED_PULSE)
-            self.set_led(POS_DROITE, LED_ON)
+            if abandon_armed:
+                # Fenêtre de confirmation d'abandon : seul le rouge clignote vite pour réclamer le 2e appui.
+                self.set_led(POS_GAUCHE, LED_OFF)
+                self.set_led(POS_MILIEU, LED_OFF)
+                self.set_led(POS_DROITE, LED_PULSE_FAST)
+            else:
+                # Les 3 boutons sont actifs → on les allume, le vert pulse (action principale).
+                self.set_led(POS_GAUCHE, LED_ON)
+                self.set_led(POS_MILIEU, LED_PULSE)
+                self.set_led(POS_DROITE, LED_ON)
         elif etat_name == "FIN":
             if abandon_armed:
                 # Fenêtre de confirmation : seul le rouge clignote vite pour réclamer le 2e appui.

@@ -510,6 +510,129 @@ _CONFIG_OVERRIDES_WHITELIST = {
 CONFIG_OVERRIDES_PATH = os.path.join(PATH_DATA, "config_overrides.json")
 
 
+# ==========================================
+# 9 bis. ÉDITEUR D'ÉCRANS (data/ecrans_overrides.json)
+# ==========================================
+# Clés éditables depuis la page « Écrans » de l'admin : textes affichés,
+# durées, tailles de police et décalages de position.
+#
+# Fichier SÉPARÉ de config_overrides.json : la page Réglages réécrit ce dernier
+# intégralement à chaque sauvegarde et écraserait les clés d'écran.
+#
+# Format : {clé: (type, mini, maxi)}. Pour les `str`, mini/maxi bornent la
+# LONGUEUR — un texte trop long ne fait pas planter le kiosque mais déborde de
+# l'écran, ce qui est exactement le genre de surprise que l'éditeur doit éviter.
+#
+# Les bornes sont volontairement PLUS STRICTES que les assertions de
+# `_valider_config()` : une valeur écrite ici ne peut donc jamais rendre le
+# kiosque non bootable. Un test verrouille cette relation.
+#
+# Aucune clé de `_CONFIG_OVERRIDES_WHITELIST` ne doit apparaître ici : une clé,
+# un fichier, un propriétaire (test d'intersection vide).
+_LONG_TEXTE_MAX = 64
+
+_ECRANS_OVERRIDES_WHITELIST = {
+    # --- Textes : bandeaux de l'accueil ---
+    "BANDEAU_ACCUEIL": (str, 1, _LONG_TEXTE_MAX),
+    "BANDEAU_10X15": (str, 1, _LONG_TEXTE_MAX),
+    "BANDEAU_STRIP": (str, 1, _LONG_TEXTE_MAX),
+    "MODE_10x15": (str, 1, 24),
+    "MODE_STRIP": (str, 1, 24),
+    # --- Textes : écran de validation ---
+    "TXT_VALID_REPRENDRE_10X15": (str, 1, 24),
+    "TXT_VALID_VALIDER_10X15": (str, 1, 24),
+    "TXT_VALID_ACCUEIL_10X15": (str, 1, 24),
+    "TXT_VALID_REPRENDRE_STRIP": (str, 1, 24),
+    "TXT_VALID_VALIDER_STRIP": (str, 1, 24),
+    "TXT_VALID_ACCUEIL_STRIP": (str, 1, 24),
+    "TEXTE_PHOTO_COUNT": (str, 1, 16),
+    # --- Textes : écran de fin ---
+    "TXT_BOUTON_REPRENDRE": (str, 1, 24),
+    "TXT_BOUTON_IMPRIMER": (str, 1, 24),
+    "TXT_BOUTON_SUPPRIMER": (str, 1, 24),
+    # --- Textes : splash, erreurs, abandon ---
+    "TXT_SPLASH_CAMERA": (str, 1, _LONG_TEXTE_MAX),
+    "TXT_SPLASH_CAMERA_OK": (str, 1, _LONG_TEXTE_MAX),
+    "TXT_SPLASH_CAMERA_FAIL": (str, 1, _LONG_TEXTE_MAX),
+    "TXT_PREPARATION_IMP": (str, 1, _LONG_TEXTE_MAX),
+    "TXT_ERREUR_CAPTURE": (str, 1, _LONG_TEXTE_MAX),
+    "TXT_ERREUR_IMPRIMANTE": (str, 1, _LONG_TEXTE_MAX),
+    "TXT_CONFIRM_ABANDON_1": (str, 1, _LONG_TEXTE_MAX),
+    "TXT_CONFIRM_ABANDON_2": (str, 1, _LONG_TEXTE_MAX),
+    "TXT_BURST_COUNTDOWN": (str, 1, _LONG_TEXTE_MAX),
+    # --- Durées (secondes) ---
+    "DUREE_FLASH_BLANC": (float, 0.0, 1.0),
+    "DUREE_ECRAN_ERREUR": (float, 1.0, 30.0),
+    "DUREE_CONFIRM_ABANDON": (float, 1.0, 15.0),
+    "TIMEOUT_SPLASH_CAMERA": (float, 2.0, 60.0),
+    # --- Tailles de police (pixels) ---
+    "TAILLE_DECOMPTE": (int, 40, 600),
+    "TAILLE_TITRE_ACCUEIL": (int, 40, 400),
+    "TAILLE_TEXTE_BOUTON": (int, 20, 160),
+    "TAILLE_TEXTE_BANDEAU": (int, 14, 120),
+    "TAILLE_TEXTE_ALERTE": (int, 20, 200),
+    "TAILLE_TEXTE_IMP_COURANT": (int, 20, 200),
+    "TAILLE_COMPTEUR_IMP": (int, 20, 300),
+    # --- Bandeau bas de l'accueil ---
+    "BANDEAU_HAUTEUR": (int, 0, HEIGHT // 2),
+    "BANDEAU_ALPHA": (int, 0, 255),
+    # --- Positions : décalages en pixels, relatifs au centrage automatique ---
+    "DECALAGE_Y_PREVISU_10X15": (int, -HEIGHT // 2, HEIGHT // 2),
+    "DECALAGE_Y_PREVISU_STRIPS": (int, -HEIGHT // 2, HEIGHT // 2),
+    "DECALAGE_Y_MONTAGE_FINAL_STRIP": (int, -HEIGHT // 2, HEIGHT // 2),
+    "OFFSET_DROITE_10X15": (int, -WIDTH // 2, WIDTH // 2),
+    "OFFSET_DROITE_STRIP": (int, -WIDTH // 2, WIDTH // 2),
+    "MARGE_ACCUEIL": (int, 0, WIDTH // 2),
+    # --- Tailles des icônes de l'accueil ---
+    "LARGEUR_ICONE_10X15": (int, 80, WIDTH),
+    "LARGEUR_ICONE_STRIP": (int, 40, WIDTH),
+    "ZOOM_FACTOR": (float, 1.0, 2.0),
+    # --- Filigrane du décompte en mode bandelettes ---
+    "STRIP_FILIGRANE_ENABLED": (bool, None, None),
+    "STRIP_FILIGRANE_ALPHA": (int, 0, 255),
+    "STRIP_FILIGRANE_TAILLE": (int, 50, 1200),
+}
+
+ECRANS_OVERRIDES_PATH = os.path.join(PATH_DATA, "ecrans_overrides.json")
+
+
+def _convertir(valeur, type_attendu):
+    """Retourne la valeur convertie au type attendu, ou None si incompatible.
+
+    None signifie « rejeter » : aucun override légitime ne vaut None.
+    """
+    # bool est un sous-type de int en Python : à tester en premier.
+    if type_attendu is bool:
+        return valeur if isinstance(valeur, bool) else None
+    if type_attendu is float:
+        # tolérer int pour float
+        if not isinstance(valeur, (int, float)) or isinstance(valeur, bool):
+            return None
+        return float(valeur)
+    if type_attendu is int:
+        if not isinstance(valeur, int) or isinstance(valeur, bool):
+            return None
+        return valeur
+    if type_attendu is str:
+        if not isinstance(valeur, str) or not valeur:
+            return None
+        return valeur
+    return None
+
+
+def _lire_json_dict(chemin):
+    """Charge un dict JSON. {} si absent, illisible ou mal formé."""
+    import json as _json
+    if not os.path.exists(chemin):
+        return {}
+    try:
+        with open(chemin, encoding="utf-8") as f:
+            donnees = _json.load(f)
+    except (OSError, _json.JSONDecodeError):
+        return {}
+    return donnees if isinstance(donnees, dict) else {}
+
+
 def _appliquer_overrides():
     """Lit CONFIG_OVERRIDES_PATH et surcharge les globals autorisés.
 
@@ -517,40 +640,59 @@ def _appliquer_overrides():
     Une clé non whitelistée ou un type incompatible est ignoré sans faire
     planter l'import.
     """
-    import json as _json
-    if not os.path.exists(CONFIG_OVERRIDES_PATH):
-        return
-    try:
-        with open(CONFIG_OVERRIDES_PATH, encoding="utf-8") as f:
-            overrides = _json.load(f)
-    except (OSError, _json.JSONDecodeError):
-        return
-    if not isinstance(overrides, dict):
-        return
     g = globals()
-    for cle, valeur in overrides.items():
+    for cle, valeur in _lire_json_dict(CONFIG_OVERRIDES_PATH).items():
         type_attendu = _CONFIG_OVERRIDES_WHITELIST.get(cle)
         if type_attendu is None:
             continue
-        # bool est un sous-type de int en Python : à tester en premier.
-        if type_attendu is bool:
-            if not isinstance(valeur, bool):
-                continue
-        elif type_attendu is float:
-            # tolérer int pour float
-            if not isinstance(valeur, (int, float)) or isinstance(valeur, bool):
-                continue
-            valeur = float(valeur)
-        elif type_attendu is int:
-            if not isinstance(valeur, int) or isinstance(valeur, bool):
-                continue
-        elif type_attendu is str:
-            if not isinstance(valeur, str) or not valeur:
-                continue
-        g[cle] = valeur
+        convertie = _convertir(valeur, type_attendu)
+        if convertie is None:
+            continue
+        g[cle] = convertie
+
+
+def valeur_ecran_valide(cle, valeur):
+    """Valide une valeur candidate pour une clé d'écran.
+
+    Retourne la valeur convertie, ou None si la clé est inconnue, le type
+    incompatible ou la valeur hors bornes. Partagée avec l'admin web, qui
+    l'utilise pour refuser une saisie AVANT écriture — le kiosque, lui,
+    s'appuie dessus pour ignorer un fichier bidouillé à la main.
+    """
+    borne = _ECRANS_OVERRIDES_WHITELIST.get(cle)
+    if borne is None:
+        return None
+    type_attendu, mini, maxi = borne
+    convertie = _convertir(valeur, type_attendu)
+    if convertie is None:
+        return None
+    # Pour les chaînes, les bornes portent sur la longueur.
+    mesure = len(convertie) if type_attendu is str else convertie
+    if type_attendu is not bool:
+        if mini is not None and mesure < mini:
+            return None
+        if maxi is not None and mesure > maxi:
+            return None
+    return convertie
+
+
+def _appliquer_overrides_ecrans():
+    """Lit ECRANS_OVERRIDES_PATH et surcharge les globals autorisés.
+
+    Toute valeur invalide est ignorée silencieusement : un fichier corrompu ou
+    édité à la main ne doit jamais empêcher le kiosque de démarrer en plein
+    événement. `_valider_config()` reste un filet indépendant derrière.
+    """
+    g = globals()
+    for cle, valeur in _lire_json_dict(ECRANS_OVERRIDES_PATH).items():
+        convertie = valeur_ecran_valide(cle, valeur)
+        if convertie is None:
+            continue
+        g[cle] = convertie
 
 
 _appliquer_overrides()
+_appliquer_overrides_ecrans()
 
 
 # ==========================================
