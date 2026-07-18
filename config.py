@@ -179,15 +179,23 @@ def resoudre_actif(chemin_actif, chemin_defaut):
     return chemin_actif if os.path.exists(chemin_actif) else chemin_defaut
 
 
-FILE_BG_ACCUEIL_ACTIF = os.path.join(PATH_INTERFACE, "accueil_actif.jpg")
-POLICE_FICHIER_ACTIF  = os.path.join(BASE_DIR, "assets/fonts/police_active.ttf")
-PATH_ACCUEIL_BIBLIO   = os.path.join(PATH_INTERFACE, "accueil")
-PATH_FONTS_BIBLIO     = os.path.join(BASE_DIR, "assets/fonts/bibliotheque")
-PATH_SLIDESHOW_PERSO  = os.path.join(PATH_ASSETS, "slideshow")
-PATH_CORBEILLE        = os.path.join(PATH_DATA, "corbeille")
+FILE_BG_ACCUEIL_ACTIF    = os.path.join(PATH_INTERFACE, "accueil_actif.jpg")
+FILE_BG_TRANSITION_ACTIF = os.path.join(PATH_INTERFACE, "transition_actif.jpg")
+POLICE_FICHIER_ACTIF     = os.path.join(BASE_DIR, "assets/fonts/police_active.ttf")
+PATH_ACCUEIL_BIBLIO      = os.path.join(PATH_INTERFACE, "accueil")
+PATH_TRANSITION_BIBLIO   = os.path.join(PATH_INTERFACE, "transition")
+PATH_FONTS_BIBLIO        = os.path.join(BASE_DIR, "assets/fonts/bibliotheque")
+PATH_SLIDESHOW_PERSO     = os.path.join(PATH_ASSETS, "slideshow")
+PATH_CORBEILLE           = os.path.join(PATH_DATA, "corbeille")
 
 BG_ACCUEIL_EFFECTIF = resoudre_actif(FILE_BG_ACCUEIL_ACTIF, FILE_BG_ACCUEIL)
 POLICE_EFFECTIVE    = resoudre_actif(POLICE_FICHIER_ACTIF, POLICE_FICHIER)
+
+# Fond des écrans de transition (annulation, reprise, attente d'impression).
+# Fallback en chaîne : transition activée → fond d'accueil activé → fond versionné.
+# Sans fond de transition dédié, l'invité voit toujours une image cohérente avec
+# l'accueil, quel que soit le moment où il annule.
+BG_TRANSITION_EFFECTIF = resoudre_actif(FILE_BG_TRANSITION_ACTIF, BG_ACCUEIL_EFFECTIF)
 
 
 TAILLE_DECOMPTE      = 300  # Chiffre 3, 2, 1...

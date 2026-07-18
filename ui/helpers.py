@@ -28,6 +28,7 @@ from config import (
     ANIM_V_BASE, ANIM_V_MAX_ADD, ANIM_FREQ,
     ANIM_NB_POINTS, ANIM_RAYON_POINT, ANIM_V_ELASTIQUE,
     COULEUR_FOND_LOADER,
+    POLICE_FICHIER, TAILLE_TEXTE_ALERTE,
     TXT_SPLASH_CAMERA, TXT_SPLASH_CAMERA_OK, TXT_SPLASH_CAMERA_FAIL,
     TIMEOUT_SPLASH_CAMERA,
     DUREE_ECRAN_ERREUR,
@@ -52,6 +53,7 @@ class UIContext:
     font_decompte = None
     font_imp_texte = None
     font_imp_compteur = None
+    font_path = None      # chemin du .ttf effectif — utilisé par ecran_erreur()
 
     @classmethod
     def setup(cls, screen, clock, font_titre, font_boutons, font_bandeau, font_decompte) -> None:
@@ -67,6 +69,7 @@ class UIContext:
 
         # --- Chargement des polices d'impression ---
         import config
+        cls.font_path = config.POLICE_EFFECTIVE
         try:
             cls.font_imp_texte = pygame.font.Font(config.POLICE_EFFECTIVE, config.TAILLE_TEXTE_IMP_COURANT)
             cls.font_imp_compteur = pygame.font.Font(config.POLICE_EFFECTIVE, config.TAILLE_COMPTEUR_IMP)
@@ -78,7 +81,10 @@ class UIContext:
         # ----------------------------------------------------
 
         global _fond_impression_cache
-        path_fond = "assets/interface/background.jpg"
+        # Fond des écrans de transition. Retombe sur le fond d'accueil si aucun
+        # fond de transition n'est activé : l'invité qui annule ne doit jamais
+        # voir une image sans rapport avec celle de l'accueil.
+        path_fond = config.BG_TRANSITION_EFFECTIF
         if os.path.exists(path_fond):
             try:
                 raw = pygame.image.load(path_fond).convert()
@@ -430,16 +436,12 @@ def ecran_erreur(message, timeout=None):
     if timeout is None:
         timeout = DUREE_ECRAN_ERREUR
     
-    # On récupère le chemin du fichier utilisé par font_titre
-    # Si font_titre n'a pas d'attribut .name, on utilise font_bandeau
+    # Police intermédiaire : la police effective (celle activée par l'admin), et à
+    # défaut la police versionnée du dépôt.
     try:
-        # On crée une version intermédiaire (taille 65 ici) à partir de ta police existante
-        # Note : On suppose que ctx.font_path contient le chemin vers ton fichier .ttf
-        # Si tu n'as pas font_path, on utilise le nom de la police chargée
-        font_inter = pygame.font.Font(ctx.font_path, 65) 
+        font_inter = pygame.font.Font(ctx.font_path, TAILLE_TEXTE_ALERTE)
     except Exception:
-        # Solution de secours si le chemin n'est pas accessible
-        font_inter = pygame.font.Font("assets/fonts/WesternBangBang-Regular.ttf", 65)
+        font_inter = pygame.font.Font(POLICE_FICHIER, TAILLE_TEXTE_ALERTE)
 
     t_start = time.time()
     couleur_alerte = (255, 100, 100)

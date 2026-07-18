@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import io
 import os
+from html import unescape
 
 import pytest
 from PIL import Image
@@ -42,9 +43,10 @@ def client(tmp_path, monkeypatch):
     data = tmp_path / "data"
     data.mkdir()
     accueil_bib = tmp_path / "accueil"
+    transition_bib = tmp_path / "transition"
     fonts_bib = tmp_path / "fonts"
     slides = tmp_path / "slides"
-    for d in (accueil_bib, fonts_bib, slides):
+    for d in (accueil_bib, transition_bib, fonts_bib, slides):
         d.mkdir()
     monkeypatch.setenv("PHOTOBOOTH_ADMIN_PASS", "test")
 
@@ -54,10 +56,12 @@ def client(tmp_path, monkeypatch):
     import web.routes.kiosque_route as kr
     monkeypatch.setattr(web.db, "DB_PATH", str(data / "admin.db"))
     monkeypatch.setattr(kr, "_RACINE_PAR_CATEGORIE", {
-        "accueil": str(accueil_bib), "police": str(fonts_bib), "slide": str(slides),
+        "accueil": str(accueil_bib), "transition": str(transition_bib),
+        "police": str(fonts_bib), "slide": str(slides),
     })
     monkeypatch.setattr(kr, "_CIBLE_ACTIVE", {
         "accueil": str(tmp_path / "accueil_actif.jpg"),
+        "transition": str(tmp_path / "transition_actif.jpg"),
         "police": str(tmp_path / "police_active.ttf"),
     })
 
@@ -146,12 +150,55 @@ class TestDefautKiosque:
         assert c.post("/kiosque/defaut/slide", headers=HEADERS).status_code == 404
 
 
+class TestCategorieTransition:
+    """Fond des écrans de transition (annulation, reprise, attente d'impression).
+
+    Même cycle de vie que `accueil` : c'est une catégorie à part entière, avec
+    sa propre cible activable, pour que l'annulation n'affiche plus une image
+    surprise sans rapport avec l'accueil.
+    """
+
+    def test_upload_fond_transition(self, client):
+        c, base = client
+        assert _uploader(c, "Voile", "transition", _png_bytes(), "voile.png") is not None
+
+    def test_activer_copie_cible(self, client):
+        c, base = client
+        tid = _uploader(c, "Voile", "transition", _png_bytes(), "voile.png")
+        r = c.post(f"/kiosque/activer/{tid}", headers=HEADERS, follow_redirects=True)
+        assert r.status_code == 200
+        assert os.path.isfile(os.path.join(base, "transition_actif.jpg"))
+
+    def test_defaut_supprime_cible(self, client):
+        c, base = client
+        tid = _uploader(c, "Voile", "transition", _png_bytes(), "voile.png")
+        c.post(f"/kiosque/activer/{tid}", headers=HEADERS, follow_redirects=True)
+        c.post("/kiosque/defaut/transition", headers=HEADERS, follow_redirects=True)
+        assert not os.path.exists(os.path.join(base, "transition_actif.jpg"))
+
+    def test_independante_de_accueil(self, client):
+        """Activer un fond de transition ne doit pas toucher le fond d'accueil."""
+        c, base = client
+        tid_a = _uploader(c, "Plage", "accueil", _png_bytes(), "plage.png")
+        c.post(f"/kiosque/activer/{tid_a}", headers=HEADERS, follow_redirects=True)
+        tid_t = _uploader(c, "Voile", "transition", _png_bytes(), "voile.png")
+        c.post(f"/kiosque/activer/{tid_t}", headers=HEADERS, follow_redirects=True)
+        assert os.path.isfile(os.path.join(base, "accueil_actif.jpg"))
+        assert os.path.isfile(os.path.join(base, "transition_actif.jpg"))
+
+        c.post("/kiosque/defaut/transition", headers=HEADERS, follow_redirects=True)
+        assert os.path.isfile(os.path.join(base, "accueil_actif.jpg")), (
+            "revenir au défaut sur transition ne doit pas désactiver le fond d'accueil"
+        )
+
+
 class TestPageEtThumb:
-    def test_page_trois_sections(self, client):
+    def test_page_liste_toutes_les_categories(self, client):
         c, base = client
         r = c.get("/kiosque/", headers=HEADERS)
-        html = r.get_data(as_text=True)
-        for txt in ("Fond d'accueil", "Police", "Slides"):
+        # Les libellés passent par Jinja : l'apostrophe est échappée en &#39;.
+        html = unescape(r.get_data(as_text=True))
+        for txt in ("Fond d'accueil", "Fond de transition", "Police", "Slides"):
             assert txt in html
 
     def test_thumb_police_rendue(self, client):

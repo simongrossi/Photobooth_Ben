@@ -370,7 +370,9 @@ def _get_chevrons_capture():
     try:
         _chevrons_capture_cache = [
             pygame.transform.smoothscale(
-                pygame.image.load(f"assets/interface/fleche_{i}.png").convert_alpha(),
+                pygame.image.load(
+                    os.path.join(config.PATH_INTERFACE, f"fleche_{i}.png")
+                ).convert_alpha(),
                 (100, 200),
             )
             for i in range(1, 4)

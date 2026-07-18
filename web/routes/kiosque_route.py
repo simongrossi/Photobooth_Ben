@@ -32,9 +32,11 @@ from PIL import Image, ImageDraw, ImageFont
 
 from config import (
     FILE_BG_ACCUEIL_ACTIF,
+    FILE_BG_TRANSITION_ACTIF,
     PATH_ACCUEIL_BIBLIO,
     PATH_FONTS_BIBLIO,
     PATH_SLIDESHOW_PERSO,
+    PATH_TRANSITION_BIBLIO,
     POLICE_FICHIER_ACTIF,
 )
 from web.auth import require_auth
@@ -42,23 +44,39 @@ from web.db import connexion
 
 bp = Blueprint("kiosque", __name__, url_prefix="/kiosque")
 
-CATEGORIES = ("accueil", "police", "slide")
+CATEGORIES = ("accueil", "transition", "police", "slide")
 EXTENSIONS_PAR_CATEGORIE = {
     "accueil": (".png", ".jpg", ".jpeg"),
+    "transition": (".png", ".jpg", ".jpeg"),
     "police": (".ttf", ".otf"),
     "slide": (".png", ".jpg", ".jpeg"),
+}
+LIBELLES_CATEGORIE = {
+    "accueil": "Fond d'accueil",
+    "transition": "Fond de transition",
+    "police": "Police des textes",
+    "slide": "Slides du diaporama",
+}
+AIDES_CATEGORIE = {
+    "accueil": "JPG/PNG plein écran — l'écran d'attente principal.",
+    "transition": "JPG/PNG plein écran — annulation, reprise, attente d'impression. "
+                  "Sans fond dédié, l'écran reprend le fond d'accueil.",
+    "police": ".ttf/.otf — tous les textes affichés par le kiosque.",
+    "slide": "JPG/PNG — ajoutés à la rotation du diaporama d'attente.",
 }
 THUMB_MAX = (240, 240)
 
 # Cibles actives lues par le kiosque au boot ('slide' n'a pas de cible : tous tournent).
 _CIBLE_ACTIVE = {
     "accueil": FILE_BG_ACCUEIL_ACTIF,
+    "transition": FILE_BG_TRANSITION_ACTIF,
     "police": POLICE_FICHIER_ACTIF,
 }
 
 # Dossier bibliothèque par catégorie.
 _RACINE_PAR_CATEGORIE = {
     "accueil": PATH_ACCUEIL_BIBLIO,
+    "transition": PATH_TRANSITION_BIBLIO,
     "police": PATH_FONTS_BIBLIO,
     "slide": PATH_SLIDESHOW_PERSO,
 }
@@ -132,6 +150,12 @@ def index():
         assets=assets,
         actifs=actifs,
         racines=_RACINE_PAR_CATEGORIE,
+        categories=CATEGORIES,
+        libelles=LIBELLES_CATEGORIE,
+        aides=AIDES_CATEGORIE,
+        extensions=EXTENSIONS_PAR_CATEGORIE,
+        # Une catégorie sans cible n'a pas de notion d'« actif » (cas de `slide`).
+        categories_avec_actif=tuple(_CIBLE_ACTIVE),
     )
 
 

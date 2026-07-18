@@ -143,22 +143,34 @@ Pour les modifier en production voir [RUNBOOK.md](RUNBOOK.md).
 
 ### Assets kiosque gérés par l'admin web (volet 2)
 
-L'admin web peut activer un fond d'accueil et une police personnalisés. Le
-kiosque préfère le fichier « actif » s'il existe (`resoudre_actif()`), sinon
-retombe sur le défaut. Effet au redémarrage du kiosque (slides : à chaud).
+L'admin web peut activer un fond d'accueil, un fond de transition et une police
+personnalisés. Le kiosque préfère le fichier « actif » s'il existe
+(`resoudre_actif()`), sinon retombe sur le défaut. Effet au redémarrage du
+kiosque (slides : à chaud).
 
 | Constante | Défaut | Usage |
 |---|---|---|
 | `FILE_BG_ACCUEIL_ACTIF` | `assets/interface/accueil_actif.jpg` | Fond d'accueil activé par l'admin |
+| `FILE_BG_TRANSITION_ACTIF` | `assets/interface/transition_actif.jpg` | Fond de transition activé par l'admin |
 | `POLICE_FICHIER_ACTIF` | `assets/fonts/police_active.ttf` | Police activée par l'admin |
 | `PATH_ACCUEIL_BIBLIO` | `assets/interface/accueil/` | Bibliothèque de fonds d'accueil |
+| `PATH_TRANSITION_BIBLIO` | `assets/interface/transition/` | Bibliothèque de fonds de transition |
 | `PATH_FONTS_BIBLIO` | `assets/fonts/bibliotheque/` | Bibliothèque de polices |
 | `PATH_SLIDESHOW_PERSO` | `assets/slideshow/` | Visuels perso ajoutés à la rotation du slideshow |
 | `PATH_CORBEILLE` | `data/corbeille/` | Photos retirées de la galerie/slideshow (restaurables) |
 | `PATH_EVENEMENT_ACTIF` | `data/evenement_actif.json` | Instantané atomique de l'événement lu par le kiosque au début d'une session |
 | `PATH_QUOTA_IMPRESSIONS` | `data/quota_impressions.json` | Compteur persistant de feuilles DNP + quota, partagé kiosque/web (voir `core/quota.py`) |
 | `BG_ACCUEIL_EFFECTIF` | résolu à l'import | Actif si présent, sinon `FILE_BG_ACCUEIL` |
+| `BG_TRANSITION_EFFECTIF` | résolu à l'import | Actif si présent, **sinon `BG_ACCUEIL_EFFECTIF`** |
 | `POLICE_EFFECTIVE` | résolu à l'import | Active si présente, sinon `POLICE_FICHIER` |
+
+**Fond de transition.** C'est le fond des écrans d'attente : annulation d'une
+photo, reprise, préparation et attente d'impression. Sa résolution est une
+chaîne à trois niveaux — fond de transition activé → fond d'accueil activé →
+fond versionné — de sorte qu'un admin qui personnalise seulement l'accueil voit
+tous les écrans suivre. Avant cette chaîne, l'écran de transition chargeait un
+chemin codé en dur : l'invité qui annulait voyait l'ancien fond du dépôt alors
+que l'accueil affichait le nouveau.
 
 ### Tailles de police
 

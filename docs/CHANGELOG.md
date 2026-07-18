@@ -5,6 +5,50 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
 ---
 
+## `WIP` — Cohérence des assets d'écran (phases 0-1)
+
+### Added
+- Catégorie d'asset **« fond de transition »** dans la page Kiosque : le fond des
+  écrans d'attente (annulation, reprise, impression) est désormais activable
+  indépendamment du fond d'accueil, avec bibliothèque, activation et retour au
+  défaut comme les autres catégories. `BG_TRANSITION_EFFECTIF` résout en chaîne
+  — transition activée → accueil activé → fond versionné — pour qu'un admin qui
+  ne personnalise que l'accueil voie malgré tout tous les écrans suivre.
+- `tests/test_config_assets.py` : les quatre branches de la chaîne de fallback,
+  dont l'indépendance entre fond de transition et fond d'accueil.
+
+### Changed
+- La page Kiosque itère sur `CATEGORIES` au lieu de deux listes codées en dur
+  dans le gabarit : ajouter une catégorie ne demande plus de retoucher le HTML.
+  Chaque section porte une aide décrivant son effet.
+
+### Fixed
+- L'écran de transition (annulation d'une photo, reprise, attente d'impression)
+  chargeait son fond via le littéral `"assets/interface/background.jpg"` : il
+  ignorait donc le fond activé depuis l'admin web et continuait d'afficher
+  l'ancien fond versionné, alors que l'accueil, lui, suivait
+  `BG_ACCUEIL_EFFECTIF`. L'invité qui annulait voyait une image inattendue.
+  Le fond suit désormais `config.BG_ACCUEIL_EFFECTIF`.
+- `ecran_erreur()` lisait `ctx.font_path`, un attribut qui n'a jamais existé sur
+  `UIContext` : l'appel levait systématiquement et le `except` rechargeait la
+  police versionnée en dur, ignorant la police activée par l'admin.
+  `UIContext.font_path` existe maintenant et porte `POLICE_EFFECTIVE`.
+- Chemins d'assets relatifs (fond de transition, police de secours, chevrons du
+  décompte) remplacés par des chemins absolus dérivés de `config.PATH_*` : lancé
+  par systemd depuis un autre répertoire, le kiosque tombait silencieusement en
+  mode dégradé.
+
+### Changed
+- L'écran d'erreur utilise `TAILLE_TEXTE_ALERTE` (80) au lieu d'un `65` codé en
+  dur, s'alignant sur la police d'alerte déjà employée ailleurs.
+
+### Added
+- `tests/test_config_assets.py` : toute constante de chemin de `config` doit être
+  absolue, et un garde-fou anti-récidive échoue si `ui/`, `core/` ou
+  `Photobooth_start.py` réintroduit un littéral `"assets/…"` relatif.
+
+---
+
 ## `WIP` — Quota d'impressions (idée de Benjamin)
 
 ### Added

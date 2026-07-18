@@ -3,8 +3,6 @@
 {% block contenu %}
 <h1>Kiosque</h1>
 
-{% set libelles = {"accueil": "Fond d'accueil", "police": "Police des textes", "slide": "Slides du diaporama"} %}
-
 <section class="panel">
   <h2>Uploader un asset</h2>
   <form class="form" method="post" action="{{ url_for('kiosque.upload') }}" enctype="multipart/form-data">
@@ -15,9 +13,11 @@
     <label>
       Catégorie
       <select name="categorie" required>
-        <option value="accueil">Fond d'accueil (JPG/PNG — plein écran)</option>
-        <option value="police">Police (.ttf/.otf — textes du kiosque)</option>
-        <option value="slide">Slide du diaporama (JPG/PNG)</option>
+        {% for categorie in categories %}
+          <option value="{{ categorie }}">
+            {{ libelles[categorie] }} ({{ extensions[categorie] | join(', ') }})
+          </option>
+        {% endfor %}
       </select>
     </label>
     <label>
@@ -27,17 +27,18 @@
     <button type="submit">Uploader</button>
   </form>
   <p class="muted">
-    Fond d'accueil et police : effet au <strong>prochain redémarrage du kiosque</strong>.
+    Fonds et police : effet au <strong>prochain redémarrage du kiosque</strong>.
     Slides : pris en compte <strong>à chaud</strong> (≤ 30 s), ajoutés à la rotation
     du diaporama d'attente avec les photos de l'événement.
   </p>
 </section>
 
-{% for categorie in ["accueil", "police", "slide"] %}
+{% for categorie in categories %}
 <section class="panel">
   <h2>{{ libelles[categorie] }}</h2>
+  <p class="muted">{{ aides[categorie] }}</p>
 
-  {% if categorie != "slide" %}
+  {% if categorie in categories_avec_actif %}
     <ul class="etats">
       <li>
         {% set nom_actif = actifs.get(categorie) %}
@@ -48,7 +49,7 @@
         {% endif %}
         <form method="post" class="inline"
               action="{{ url_for('kiosque.defaut', categorie=categorie) }}"
-              onsubmit="return confirm('Revenir au {{ categorie }} par défaut ?');">
+              onsubmit="return confirm('Revenir au réglage par défaut pour « {{ libelles[categorie] }} » ?');">
           <button type="submit" class="btn">Revenir au défaut</button>
         </form>
       </li>
@@ -68,7 +69,7 @@
               <span class="muted">{{ a.taille_ko }} Ko — {{ a.uploaded_at }}</span>
             </p>
             <div class="actions">
-              {% if categorie != "slide" and not a.actif %}
+              {% if categorie in categories_avec_actif and not a.actif %}
                 <form method="post" action="{{ url_for('kiosque.activer', asset_id=a.id) }}">
                   <button type="submit" class="btn btn--primary">Activer</button>
                 </form>
