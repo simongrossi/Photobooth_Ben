@@ -62,6 +62,9 @@ if [[ ! -f "${ENV_FILE}" ]]; then
 # Le mot de passe ci-dessous protège l'interface — conserve-le précieusement.
 PHOTOBOOTH_ADMIN_PASS=${PASSWORD}
 PHOTOBOOTH_ADMIN_PORT=8080
+# Mode consultation anonyme (dashboard + galerie en lecture seule pour le LAN).
+# Mettre 0 pour exiger le mot de passe partout (événement privé).
+PHOTOBOOTH_ACCES_LIBRE=1
 EOF
     chmod 640 "${ENV_FILE}"
     chown root:"${TARGET_USER}" "${ENV_FILE}"

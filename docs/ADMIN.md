@@ -113,6 +113,25 @@ est actif ; sinon ils seront appliqués lors de sa prochaine activation. La
 bibliothèque située dessous reste dédiée à l'upload, à l'aperçu et à l'édition
 de la mise en page des fichiers.
 
+## Niveaux d'accès
+
+Deux rôles, gérés par `web/auth.py` :
+
+- **admin** — Basic Auth (`admin` + `PHOTOBOOTH_ADMIN_PASS`) : accès complet,
+  toutes les actions. Bouton « Connexion admin » dans la nav pour déclencher la
+  fenêtre de mot de passe du navigateur. Déconnexion = fermer le navigateur
+  (limite du Basic Auth).
+- **viewer** — anonyme, **consultation seule** : dashboard (sans chemins système
+  ni bouton de déblocage quota) et galerie (sans « Retirer » ni corbeille).
+  Aucune action possible, aucune page de gestion accessible.
+
+⚠️ **Vie privée** : en mode viewer, la galerie (photos de l'événement) est
+visible de **tout appareil connecté au même réseau/wifi**. Pour un événement
+privé, couper le mode public : `PHOTOBOOTH_ACCES_LIBRE=0` dans
+`/etc/photobooth-admin.env` puis `sudo systemctl restart photobooth-admin` —
+tout exige alors le mot de passe admin. Sans `PHOTOBOOTH_ADMIN_PASS` configuré,
+tout est fermé (503), viewer compris.
+
 ## Installation
 
 ```bash
