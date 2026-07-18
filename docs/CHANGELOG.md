@@ -9,6 +9,11 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 - Document de référence `docs/roadmap-performance.md` détaillant les étapes d'optimisation.
 - Mode SQLite WAL (`journal_mode = WAL`) activé à l'ouverture de la base pour éviter les conflits de verrous concurrents.
 - Nettoyage des processus USB bloquants (`pkill`) désormais sécurisé (exécuté sur Linux uniquement) et protégé contre les erreurs.
+- État d'erreur d'impression récupérable : la photo et le montage restent à
+  l'écran avec les actions « Terminer sans imprimer », « Réessayer » et
+  « Appeler l'animateur ».
+- Tests de régression du flux CUPS : succès réel, échec partiel, retry des seules
+  feuilles restantes et conservation de la session.
 
 ### Changed
 - Utilisation de Pillow `.draft()` et de l'interpolation `BILINEAR` pour charger instantanément l'aperçu de validation des clichés.
@@ -17,6 +22,10 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 - Choix intelligent d'interpolation selon le contexte : `BILINEAR` pour les previews et `LANCZOS` réservé à l'impression finale.
 - Mise en cache des textures de texte ombré dans `draw_text_shadow_soft` (évite les rendus de polices et allocations de surfaces Pygame à 30 FPS).
 - Libération de mémoire agressive via `.close()` sur les instances d'images PIL intermédiaires et appel explicite à `gc.collect()` après chaque montage final.
+- L'écran d'attente d'impression suit désormais la durée réelle du worker CUPS
+  au lieu d'un compte à rebours fixe. `printed` et le son de succès ne sont émis
+  qu'après acceptation de toutes les feuilles par `lp` ; un retry réutilise le
+  même montage et ne duplique pas les feuilles déjà soumises.
 
 ---
 

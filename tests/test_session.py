@@ -57,6 +57,10 @@ class TestSessionState:
         session_vide.id_session_timestamp = "2026-04-20_12h00_00"
         session_vide.path_montage = "/tmp/x.jpg"
         session_vide.img_preview_cache = object()
+        session_vide.erreur_impression = True
+        session_vide.message_erreur_impression = "hors ligne"
+        session_vide.chemin_impression = "/tmp/print.jpg"
+        session_vide.impressions_restantes = 2
 
         session_vide.reset_pour_accueil()
 
@@ -66,6 +70,10 @@ class TestSessionState:
         assert session_vide.id_session_timestamp == ""
         assert session_vide.path_montage == ""
         assert session_vide.img_preview_cache is None
+        assert session_vide.erreur_impression is False
+        assert session_vide.message_erreur_impression == ""
+        assert session_vide.chemin_impression == ""
+        assert session_vide.impressions_restantes == 0
 
     def test_reset_preserve_last_activity_ts(self, session_vide):
         session_vide.last_activity_ts = 42.0

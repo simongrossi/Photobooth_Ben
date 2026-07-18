@@ -788,32 +788,49 @@ def _verifier_quota_ou_debloquer(session: SessionState) -> bool:
     return ecran_deblocage_quota(session)
 
 
-def traiter_impression_session(session) -> str:
-    """Genere, archive et imprime le montage final avec diagnostic precis."""
-    try:
-        perf_montage_t0 = time.perf_counter()
-        p = executer_avec_spinner(
-            lambda: _generer_montage_final(session),
-            TXT_PREPARATION_IMP,
-        )
-        duree_montage_ms = (time.perf_counter() - perf_montage_t0) * 1000
-        log_info(
-            f"[PERF] montage_final mode={session.mode_actuel} "
-            f"duree={duree_montage_ms / 1000:.3f}s"
-        )
-        ecrire_performance(
-            "montage_final",
-            session_id=session.id_session_timestamp,
-            mode=session.mode_actuel,
-            duration_ms=round(duree_montage_ms, 3),
-        )
-        destination = _destination_montage_imprime(session)
+def _marquer_erreur_impression(session: SessionState, message: str) -> str:
+    """Conserve la session à l'écran et expose une erreur lisible à l'invité."""
+    session.erreur_impression = True
+    session.message_erreur_impression = message or TXT_ERREUR_IMPRIMANTE
+    log_warning(f"Impression non envoyée : {session.message_erreur_impression}")
+    return "print_failed"
 
-        # Copie si necessaire (Strips gerent leur propre chemin)
-        if session.mode_actuel != "strips":
-            shutil.copy(p, destination)
-        else:
-            destination = p
+
+def traiter_impression_session(session) -> str:
+    """Génère puis soumet toutes les feuilles, en confirmant leur acceptation.
+
+    En cas d'échec, la session, le montage et le nombre de feuilles restantes
+    sont conservés pour permettre un nouvel essai sans dupliquer les feuilles
+    déjà acceptées par CUPS.
+    """
+    try:
+        # Un retry réutilise exactement le fichier du premier essai : pas de
+        # nouveau montage, pas de risque de changer d'habillage entre les deux.
+        destination = session.chemin_impression
+        if not destination or not os.path.exists(destination):
+            perf_montage_t0 = time.perf_counter()
+            p = executer_avec_spinner(
+                lambda: _generer_montage_final(session),
+                TXT_PREPARATION_IMP,
+            )
+            duree_montage_ms = (time.perf_counter() - perf_montage_t0) * 1000
+            log_info(
+                f"[PERF] montage_final mode={session.mode_actuel} "
+                f"duree={duree_montage_ms / 1000:.3f}s"
+            )
+            ecrire_performance(
+                "montage_final",
+                session_id=session.id_session_timestamp,
+                mode=session.mode_actuel,
+                duration_ms=round(duree_montage_ms, 3),
+            )
+            destination = _destination_montage_imprime(session)
+
+            if session.mode_actuel != "strips":
+                shutil.copy(p, destination)
+            else:
+                destination = p
+            session.chemin_impression = destination
 
         if not ACTIVER_IMPRESSION:
             log_info(f"Impression desactivee : montage enregistre ({destination})")
@@ -821,19 +838,23 @@ def traiter_impression_session(session) -> str:
             time.sleep(1.2)
             return "print_disabled"
 
-        # Sans copies multiples, une pression lance directement une seule feuille :
-        # 1 photo en 10×15 ou les 2 bandelettes déjà assemblées en mode strips.
-        est_strip = (session.mode_actuel == "strips")
-        nb_copies = demander_nombre_copies(session) if ACTIVER_IMPRESSIONS_MULTIPLES else (2 if est_strip else 1)
-
-        # --- CONVERSION EN IMPRESSIONS PHYSIQUES REELLES ---
-        nb_impressions_reelles = int(nb_copies / 2) if est_strip else nb_copies
+        if session.impressions_restantes <= 0:
+            # Sans copies multiples, une pression lance une seule feuille : une
+            # photo 10×15 ou les deux bandelettes déjà assemblées en strips.
+            est_strip = session.mode_actuel == "strips"
+            nb_copies = (
+                demander_nombre_copies(session)
+                if ACTIVER_IMPRESSIONS_MULTIPLES
+                else (2 if est_strip else 1)
+            )
+            session.impressions_restantes = int(nb_copies / 2) if est_strip else nb_copies
 
         # --- MODIFICATION ANTI-FLASH ---
-        from ui import helpers
-        if hasattr(helpers, '_fond_impression_cache') and helpers._fond_impression_cache:
-            helpers.UIContext.screen.blit(helpers._fond_impression_cache, (0, 0))
-            pygame.display.flip()
+        if pygame is not None:
+            from ui import helpers
+            if hasattr(helpers, '_fond_impression_cache') and helpers._fond_impression_cache:
+                helpers.UIContext.screen.blit(helpers._fond_impression_cache, (0, 0))
+                pygame.display.flip()
 
         # ===========================================================
         # --- VERIFICATION DE SECURITE (Etat initial de la machine) ---
@@ -853,69 +874,76 @@ def traiter_impression_session(session) -> str:
             detail=None if etat_imprimante is True else str(etat_imprimante),
         )
         if etat_imprimante is not True:
-            log_warning(f"Impression bloquée : {etat_imprimante}")
-            ecran_erreur(printer_mgr.last_error or TXT_ERREUR_IMPRIMANTE)
-            return "print_failed"
+            return _marquer_erreur_impression(
+                session, printer_mgr.last_error or str(etat_imprimante)
+            )
 
-        # ===========================================================
-        # --- ETAPE 1 : FONCTION INTERNE D'ENVOI EN ARRIÈRE-PLAN ---
-        # ===========================================================
         perf_session_id = session.id_session_timestamp
         perf_mode = session.mode_actuel
+        a_envoyer = session.impressions_restantes
+        resultat_envoi = {"envoyees": 0, "erreur": ""}
 
         def boucle_envoi_dnp():
-            for i in range(nb_impressions_reelles):
-                log_info(f"🚀 [Thread DNP] Envoi de l'impression physique {i+1}/{nb_impressions_reelles}...")
+            try:
+                for i in range(a_envoyer):
+                    log_info(
+                        f"🚀 [Thread DNP] Envoi de l'impression physique "
+                        f"{i + 1}/{a_envoyer}..."
+                    )
+                    envoi_t0 = time.perf_counter()
+                    envoi_ok = printer_mgr.send(destination, perf_mode, verifier=False)
+                    ecrire_performance(
+                        "printer_submit",
+                        session_id=perf_session_id,
+                        mode=perf_mode,
+                        copy=i + 1,
+                        duration_ms=round((time.perf_counter() - envoi_t0) * 1000, 3),
+                        success=envoi_ok,
+                    )
+                    if not envoi_ok:
+                        resultat_envoi["erreur"] = printer_mgr.last_error or TXT_ERREUR_IMPRIMANTE
+                        break
 
-                # CUPS copie le contenu dans son spool : inutile de dupliquer le
-                # JPEG sur la carte SD pour chaque ticket.
-                envoi_t0 = time.perf_counter()
-                envoi_ok = printer_mgr.send(destination, perf_mode, verifier=False)
-                if envoi_ok:
-                    # Une feuille DNP réellement partie vers CUPS = un tirage compté.
                     quota_mgr.enregistrer_tirage(1)
-                ecrire_performance(
-                    "printer_submit",
-                    session_id=perf_session_id,
-                    mode=perf_mode,
-                    copy=i + 1,
-                    duration_ms=round((time.perf_counter() - envoi_t0) * 1000, 3),
-                    success=envoi_ok,
-                )
+                    resultat_envoi["envoyees"] += 1
 
-                # Attente entre deux impressions pour ne pas saturer CUPS
-                if nb_impressions_reelles > 1 and i < (nb_impressions_reelles - 1):
-                    log_info("⏳ Thread DNP : Pause de 15s avant le prochain envoi...")
-                    time.sleep(15.0)
-            
-            # Une fois toutes les impressions envoyées, on joue le son de succès
-            jouer_son("success")
+                    if i < a_envoyer - 1:
+                        log_info("⏳ Thread DNP : pause de 15 s avant le prochain envoi...")
+                        time.sleep(15.0)
+            except BaseException as exc:
+                resultat_envoi["erreur"] = str(exc) or TXT_ERREUR_IMPRIMANTE
+                log_critical(f"Erreur worker impression : {exc}")
 
-        # ===========================================================
-        # --- ETAPE 2 : CONFIGURATION DU TIMER ET LANCEMENT CONCURRENT ---
-        # ===========================================================
-        # 1 photo = 15s | 2 photos = 32s | 3 photos = 48s
-        if nb_impressions_reelles == 1:
-            helpers.TEMPS_ATTENTE_IMP = 14
-        else:
-            helpers.TEMPS_ATTENTE_IMP = nb_impressions_reelles * 13
-
-        log_info(f"⏱️ Configuration de la roue visuelle sur {helpers.TEMPS_ATTENTE_IMP}s")
-        
-        # ON LANCE L'ENVOI DANS UN THREAD SÉPARÉ (Il s'exécute en arrière-plan)
-        thread_imprimante = threading.Thread(target=boucle_envoi_dnp)
-        thread_imprimante.daemon = True # S'arrête automatiquement si le programme principal coupe
+        thread_imprimante = threading.Thread(
+            target=boucle_envoi_dnp,
+            daemon=True,
+            name="dnp-submit",
+        )
         thread_imprimante.start()
+        ecran_attente_impression(thread_imprimante)
+        thread_imprimante.join(timeout=1.0)
 
-        # ON LANCE IMMEDIATEMENT L'ECRAN DE LA ROUE (Qui s'affiche en même temps)
-        ecran_attente_impression()
-        
+        session.impressions_restantes = max(
+            0, session.impressions_restantes - resultat_envoi["envoyees"]
+        )
+        if resultat_envoi["erreur"] or session.impressions_restantes:
+            return _marquer_erreur_impression(
+                session, resultat_envoi["erreur"] or TXT_ERREUR_IMPRIMANTE
+            )
+
+        session.erreur_impression = False
+        session.message_erreur_impression = ""
+        jouer_son("success")
+        afficher_message_plein_ecran(
+            config.TXT_IMPRESSION_ENVOYEE,
+            couleur=(100, 255, 100),
+        )
+        time.sleep(1.2)
         return "printed"
 
     except Exception as e:
         log_critical(f"Erreur impression finale : {e}")
-        ecran_erreur(TXT_ERREUR_IMPRIMANTE)
-        return "print_failed"
+        return _marquer_erreur_impression(session, str(e) or TXT_ERREUR_IMPRIMANTE)
 
 
 def demander_arret(signum=None, frame=None) -> None:
@@ -1396,7 +1424,11 @@ def render_validation(session: SessionState) -> bool:
     y_b = HEIGHT - BANDEAU_HAUTEUR
     screen.blit(BANDEAU_CACHE, (0, y_b))
 
-    if session.mode_actuel == "strips":
+    if session.erreur_impression:
+        txt_g = config.TXT_IMPRESSION_SANS
+        txt_m = config.TXT_IMPRESSION_REESSAYER
+        txt_d = config.TXT_IMPRESSION_AIDE
+    elif session.mode_actuel == "strips":
         txt_g = config.TXT_VALID_REPRENDRE_STRIP
         txt_m = config.TXT_VALID_VALIDER_STRIP
         txt_d = config.TXT_VALID_ACCUEIL_STRIP
@@ -1434,7 +1466,19 @@ def render_validation(session: SessionState) -> bool:
             screen.blit(burst_bg, (bx - 20, by - 6))
             screen.blit(burst_surf, (bx, by))
     
-    # 4. Overlay de confirmation d'abandon (À insérer juste avant le return False)
+    # 4. État récupérable après un refus CUPS : la photo reste visible et les
+    # trois boutons deviennent terminer / réessayer / demander de l'aide.
+    if session.erreur_impression:
+        _dessiner_texte_centre_avec_garde(
+            screen,
+            config.TXT_IMPRESSION_ECHEC,
+            font_alerte,
+            (255, 120, 120),
+            15,
+            int(WIDTH * 0.8),
+        )
+
+    # 5. Overlay de confirmation d'abandon
     if session.abandon_confirm_until and time.time() < session.abandon_confirm_until:
         screen.blit(_get_overlay_abandon(), (0, 0))
         
@@ -1483,11 +1527,29 @@ def render_fin(session: SessionState) -> None:
     # 4. Bandeau de boutons
     y_b = HEIGHT - BANDEAU_HAUTEUR
     screen.blit(BANDEAU_CACHE, (0, y_b))
-    _dessiner_actions_bandeau((
-        (config.TXT_BOUTON_REPRENDRE, config.COULEUR_TEXTE_G),
-        (config.TXT_BOUTON_IMPRIMER, config.COULEUR_TEXTE_M),
-        (config.TXT_BOUTON_SUPPRIMER, config.COULEUR_TEXTE_D),
-    ), y_b)
+    if session.erreur_impression:
+        actions = (
+            (config.TXT_IMPRESSION_SANS, config.COULEUR_TEXTE_G),
+            (config.TXT_IMPRESSION_REESSAYER, config.COULEUR_TEXTE_M),
+            (config.TXT_IMPRESSION_AIDE, config.COULEUR_TEXTE_D),
+        )
+    else:
+        actions = (
+            (config.TXT_BOUTON_REPRENDRE, config.COULEUR_TEXTE_G),
+            (config.TXT_BOUTON_IMPRIMER, config.COULEUR_TEXTE_M),
+            (config.TXT_BOUTON_SUPPRIMER, config.COULEUR_TEXTE_D),
+        )
+    _dessiner_actions_bandeau(actions, y_b)
+
+    if session.erreur_impression:
+        _dessiner_texte_centre_avec_garde(
+            screen,
+            config.TXT_IMPRESSION_ECHEC,
+            font_alerte,
+            (255, 120, 120),
+            15,
+            int(WIDTH * 0.8),
+        )
 
     # 5. Overlay de confirmation d'abandon
     if session.abandon_confirm_until and time.time() < session.abandon_confirm_until:
@@ -1531,9 +1593,48 @@ def handle_accueil_event(event: pygame.event.Event, session: SessionState,   # t
         session.etat = Etat.DECOMPTE
 
 
+def _handle_erreur_impression(event: pygame.event.Event, session: SessionState,  # type: ignore
+                              maintenant: float) -> None:
+    """Actions disponibles sans perdre la photo après un échec CUPS."""
+    if event.key == TOUCHE_GAUCHE:
+        _journaliser_action("finish_without_print")
+        terminer_session_et_revenir_accueil("print_failed")
+        session.dernier_clic_time = maintenant
+        return
+
+    if event.key == TOUCHE_MILIEU:
+        _journaliser_action(
+            "retry_print",
+            remaining_copies=session.impressions_restantes,
+        )
+        if not _verifier_quota_ou_debloquer(session):
+            session.dernier_clic_time = maintenant
+            pygame.event.clear()
+            return
+        issue = traiter_impression_session(session)
+        pygame.event.clear()
+        if issue != "print_failed":
+            terminer_session_et_revenir_accueil(issue)
+        session.dernier_clic_time = maintenant
+        return
+
+    if event.key == TOUCHE_DROITE:
+        _journaliser_action("print_help_requested")
+        afficher_message_plein_ecran(
+            config.TXT_IMPRESSION_AIDE_MESSAGE,
+            couleur=(255, 150, 150),
+        )
+        time.sleep(2.0)
+        session.dernier_clic_time = time.time()
+
+
 def _handle_validation_10x15(event: pygame.event.Event, session: SessionState,  # type: ignore
                              maintenant: float) -> None:
     """VALIDATION mode 10x15 : retake / imprimer / abandon (debounce géré par caller)."""
+    if session.erreur_impression:
+        _handle_erreur_impression(event, session, maintenant)
+        return
+
     if event.key == TOUCHE_GAUCHE:
         # Retake : archive en RETAKE puis retourne au décompte
         _journaliser_action("retake")
@@ -1564,7 +1665,8 @@ def _handle_validation_10x15(event: pygame.event.Event, session: SessionState,  
             return
         issue = traiter_impression_session(session)
         pygame.event.clear()
-        terminer_session_et_revenir_accueil(issue)
+        if issue != "print_failed":
+            terminer_session_et_revenir_accueil(issue)
         session.dernier_clic_time = maintenant
 
     elif event.key == TOUCHE_DROITE:
@@ -1637,6 +1739,10 @@ def handle_fin_event(event: pygame.event.Event, session: SessionState,   # type:
     if ecoule < 1.0:
         return
 
+    if session.erreur_impression:
+        _handle_erreur_impression(event, session, maintenant)
+        return
+
     if event.key == TOUCHE_GAUCHE:
         # Recommencer : archive en RETAKE + repars au décompte (garde id_session)
         _journaliser_action("restart_session")
@@ -1677,7 +1783,8 @@ def handle_fin_event(event: pygame.event.Event, session: SessionState,   # type:
             return
         issue = traiter_impression_session(session)
         pygame.event.clear()
-        terminer_session_et_revenir_accueil(issue)
+        if issue != "print_failed":
+            terminer_session_et_revenir_accueil(issue)
         session.dernier_clic_time = maintenant
         return
 

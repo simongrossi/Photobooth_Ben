@@ -354,6 +354,13 @@ TXT_SPLASH_CAMERA_FAIL  = "Appareil photo non détecté - mode dégradé"
 TXT_PREPARATION_IMP     = "Préparation de votre impression..."
 TXT_ERREUR_CAPTURE      = "Erreur de capture - réessayez"
 TXT_ERREUR_IMPRIMANTE   = "Imprimante indisponible"
+TXT_ENVOI_IMPRIMANTE    = "Envoi à l'imprimante..."
+TXT_IMPRESSION_ENVOYEE  = "Impression envoyée !"
+TXT_IMPRESSION_ECHEC    = "IMPRESSION NON ENVOYÉE"
+TXT_IMPRESSION_SANS     = "Terminer sans imprimer"
+TXT_IMPRESSION_REESSAYER = "RÉESSAYER"
+TXT_IMPRESSION_AIDE     = "APPELER L'ANIMATEUR"
+TXT_IMPRESSION_AIDE_MESSAGE = "Veuillez prévenir l'animateur"
 TXT_CONFIRM_ABANDON_1   = "Abandonner ?"
 TXT_CONFIRM_ABANDON_2   = "Appuyez à nouveau pour confirmer"
 
@@ -576,6 +583,13 @@ _ECRANS_OVERRIDES_WHITELIST = {
     "TXT_PREPARATION_IMP": (str, 1, _LONG_TEXTE_MAX),
     "TXT_ERREUR_CAPTURE": (str, 1, _LONG_TEXTE_MAX),
     "TXT_ERREUR_IMPRIMANTE": (str, 1, _LONG_TEXTE_MAX),
+    "TXT_ENVOI_IMPRIMANTE": (str, 1, _LONG_TEXTE_MAX),
+    "TXT_IMPRESSION_ENVOYEE": (str, 1, _LONG_TEXTE_MAX),
+    "TXT_IMPRESSION_ECHEC": (str, 1, _LONG_TEXTE_MAX),
+    "TXT_IMPRESSION_SANS": (str, 1, _LONG_TEXTE_MAX),
+    "TXT_IMPRESSION_REESSAYER": (str, 1, _LONG_TEXTE_MAX),
+    "TXT_IMPRESSION_AIDE": (str, 1, _LONG_TEXTE_MAX),
+    "TXT_IMPRESSION_AIDE_MESSAGE": (str, 1, _LONG_TEXTE_MAX),
     "TXT_CONFIRM_ABANDON_1": (str, 1, _LONG_TEXTE_MAX),
     "TXT_CONFIRM_ABANDON_2": (str, 1, _LONG_TEXTE_MAX),
     "TXT_BURST_COUNTDOWN": (str, 1, _LONG_TEXTE_MAX),

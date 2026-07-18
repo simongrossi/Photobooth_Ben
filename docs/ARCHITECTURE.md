@@ -184,14 +184,19 @@ normalement, quelle que soit la durée d'inactivité.
         - non → montage archivé, metadata issue=print_disabled
         - oui → choix des copies si ACTIVER_IMPRESSIONS_MULTIPLES, sinon une feuille
           → printer_mgr.is_ready(mode) ?
-            - oui → lp -d nom -o fit-to-page chemin, issue=printed
-            - non → ecran_erreur(TXT_ERREUR_IMPRIMANTE), issue=print_failed
-    • ecran_attente_impression() (TEMPS_ATTENTE_IMP secondes)
+            - oui → soumission des feuilles dans un worker, une par une
+              → ecran_attente_impression(worker) reste actif jusqu'à la fin
+              → chaque lp accepté décrémente les copies restantes + le quota
+              → toutes acceptées : confirmation « Impression envoyée », issue=printed
+            - non ou lp échoué → session et montage conservés, issue provisoire=print_failed
+              → boutons : terminer sans imprimer / réessayer / appeler l'animateur
+              → un retry ne soumet que les feuilles qui n'ont pas encore été acceptées
            │
  6.        ▼
-    • ecrire_metadata_session(issue=<résultat impression>, nb_photos, duree_s)
-    • session.reset_pour_accueil()
-    • Retour ACCUEIL
+    • Succès ou « terminer sans imprimer » :
+      ecrire_metadata_session(issue=<résultat impression>, nb_photos, duree_s)
+    • session.reset_pour_accueil() puis retour ACCUEIL
+    • Échec récupérable : reste dans VALIDATION (10×15) ou FIN (strip)
 ```
 
 ### Artifacts produits

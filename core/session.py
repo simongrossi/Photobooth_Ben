@@ -48,6 +48,10 @@ class SessionState:
     evenement_nom: Optional[str] = None
     evenement_tags: list[str] = field(default_factory=list)
     evenement_charge: bool = False
+    erreur_impression: bool = False
+    message_erreur_impression: str = ""
+    chemin_impression: str = ""
+    impressions_restantes: int = 0
 
     def reset_pour_accueil(self) -> None:
         """Reset complet après fin de session (printed/abandoned/capture_failed/print_failed/print_disabled).
@@ -62,6 +66,10 @@ class SessionState:
         self.evenement_nom = None
         self.evenement_tags = []
         self.evenement_charge = False
+        self.erreur_impression = False
+        self.message_erreur_impression = ""
+        self.chemin_impression = ""
+        self.impressions_restantes = 0
 
 
 def ecrire_metadata_session(

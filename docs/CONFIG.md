@@ -303,12 +303,17 @@ en i18n/FR.json si on ajoute le multi-langue (voir ROADMAP.md).
 
 ### Fin (validation finale)
 `TXT_BOUTON_REPRENDRE`, `TXT_BOUTON_ACCUEIL`, `TXT_BOUTON_IMPRIMER`,
-`TXT_BOUTON_SUPPRIMER`.
+`TXT_BOUTON_SUPPRIMER`. Après un échec CUPS, les trois actions récupérables
+utilisent `TXT_IMPRESSION_SANS`, `TXT_IMPRESSION_REESSAYER` et
+`TXT_IMPRESSION_AIDE`, avec le titre `TXT_IMPRESSION_ECHEC` et le message
+`TXT_IMPRESSION_AIDE_MESSAGE`.
 
 ### Splash / erreur / abandon
 `TXT_SPLASH_CAMERA`, `TXT_SPLASH_CAMERA_OK`, `TXT_SPLASH_CAMERA_FAIL`,
 `TXT_PREPARATION_IMP`, `TXT_ERREUR_CAPTURE`, `TXT_ERREUR_IMPRIMANTE`,
-`TXT_CONFIRM_ABANDON_1`, `TXT_CONFIRM_ABANDON_2`.
+`TXT_CONFIRM_ABANDON_1`, `TXT_CONFIRM_ABANDON_2`. L'envoi réel à CUPS utilise
+`TXT_ENVOI_IMPRIMANTE`, puis `TXT_IMPRESSION_ENVOYEE` uniquement lorsque toutes
+les feuilles demandées ont été acceptées.
 
 ### Durées associées
 

@@ -30,6 +30,7 @@ from config import (
     COULEUR_FOND_LOADER,
     POLICE_FICHIER, TAILLE_TEXTE_ALERTE,
     TXT_SPLASH_CAMERA, TXT_SPLASH_CAMERA_OK, TXT_SPLASH_CAMERA_FAIL,
+    TXT_ENVOI_IMPRIMANTE,
     TIMEOUT_SPLASH_CAMERA,
     DUREE_ECRAN_ERREUR,
     TEMPS_ATTENTE_IMP,
@@ -495,8 +496,14 @@ _fond_impression_cache = None
 _global_spinner = None
 
 
-def ecran_attente_impression():
-    """Roue d'attente fluide sans flash noir et sans saut d'animation."""
+def ecran_attente_impression(tache=None):
+    """Anime l'attente jusqu'à la fin réelle des soumissions à CUPS.
+
+    Sans ``tache``, conserve le comportement historique basé sur
+    ``TEMPS_ATTENTE_IMP`` pour les éventuels appels externes. Avec un thread,
+    l'écran reste affiché tant que ce thread travaille : le caller peut alors
+    lire son résultat avant d'annoncer un succès.
+    """
     # 1. TOUTES les déclarations global en PREMIER
     global _global_spinner, _fond_impression_cache
     ctx = UIContext
@@ -514,9 +521,10 @@ def ecran_attente_impression():
 
     # 4. BOUCLE D'ANIMATION
     temps_debut = time.time()
-    surf_txt = ctx.font_imp_texte.render("Impression en cours...", True, (255, 255, 255))
+    message = TXT_ENVOI_IMPRIMANTE if tache is not None else "Impression en cours..."
+    surf_txt = ctx.font_imp_texte.render(message, True, (255, 255, 255))
     compteurs = {}
-    while time.time() - temps_debut < TEMPS_ATTENTE_IMP:
+    while tache.is_alive() if tache is not None else time.time() - temps_debut < TEMPS_ATTENTE_IMP:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -532,22 +540,21 @@ def ecran_attente_impression():
         _global_spinner.update_and_draw(ctx.screen)
         
         try:
-            restant = max(0, int(TEMPS_ATTENTE_IMP - (time.time() - temps_debut)))
-            
-            # Utilisation des polices dédiées
-            surf_num = compteurs.get(restant)
-            if surf_num is None:
-                surf_num = ctx.font_imp_compteur.render(f"{restant}s", True, (255, 255, 255))
-                compteurs[restant] = surf_num
-            
-            # Le chiffre (le plus gros) est placé à 150px du bord bas
-            pos_y_num = HEIGHT - 10 - surf_num.get_height()
-            # Le texte "Impression en cours" est placé juste au-dessus du chiffre
-            pos_y_txt = pos_y_num - surf_txt.get_height() - 10 
-            
-            # Centrage horizontal classique
+            if tache is None:
+                restant = max(0, int(TEMPS_ATTENTE_IMP - (time.time() - temps_debut)))
+                surf_num = compteurs.get(restant)
+                if surf_num is None:
+                    surf_num = ctx.font_imp_compteur.render(f"{restant}s", True, (255, 255, 255))
+                    compteurs[restant] = surf_num
+                pos_y_num = HEIGHT - 10 - surf_num.get_height()
+                pos_y_txt = pos_y_num - surf_txt.get_height() - 10
+                ctx.screen.blit(surf_num, (WIDTH // 2 - surf_num.get_width() // 2, pos_y_num))
+            else:
+                # La durée dépend de CUPS et du nombre de feuilles : afficher un
+                # faux compte à rebours recréerait précisément le mensonge corrigé.
+                pos_y_txt = HEIGHT - 120
+
             ctx.screen.blit(surf_txt, (WIDTH // 2 - surf_txt.get_width() // 2, pos_y_txt))
-            ctx.screen.blit(surf_num, (WIDTH // 2 - surf_num.get_width() // 2, pos_y_num))
 
         except Exception as e:
             log_warning(f"Rendu attente impression : {e}")

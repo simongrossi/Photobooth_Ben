@@ -4,7 +4,7 @@
 > effets exotiques, hardware, brainstorm), voir [IDEAS.md](IDEAS.md).
 > Pour l'historique de ce qui a été fait, voir [CHANGELOG.md](CHANGELOG.md).
 
-Dernière mise à jour : 2026-07-15 (télémétrie et priorités guidées par les mesures)
+Dernière mise à jour : 2026-07-19 (audit du parcours invité et de l'exploitation)
 
 ---
 
@@ -46,6 +46,208 @@ au rendu final. Les trois zones strip sont réglables indépendamment.
 exclusive partagée à chaud avec le kiosque, instantané dans chaque session,
 quatre templates facultatifs appliqués automatiquement, filtres
 dashboard/galerie, compatibilité « Sans événement » et export ZIP/CSV.
+
+---
+
+## Priorité produit — fiabiliser le parcours utilisateur
+
+Audit réalisé le 2026-07-19 à partir du parcours complet : démarrage, choix du
+format, LiveView, capture, validation, reprise, impression, erreurs et retour à
+l'accueil. La validation finale devra être faite sur le Raspberry Pi avec le
+Canon, la DNP et plusieurs personnes qui ne connaissent pas l'application.
+
+### P0 — fiabilité avant la prochaine prestation
+
+- [x] **Ne déclarer une impression réussie qu'après confirmation de l'envoi** *(livré le 2026-07-19)*
+  - Remonter le résultat de chaque appel `PrinterManager.send()` du thread vers
+    la machine d'état au lieu de retourner systématiquement `printed` après un
+    compte à rebours fixe.
+  - Ne jouer le son de succès et ne consommer le quota que pour les feuilles
+    effectivement acceptées par CUPS.
+  - Distinguer dans l'interface « envoyée à l'imprimante » de « physiquement
+    imprimée » et conserver le détail de chaque copie dans la télémétrie.
+  - Empêcher une nouvelle impression concurrente tant que la précédente n'a
+    pas fini d'être soumise.
+
+- [x] **Rendre les erreurs d'impression récupérables** *(livré le 2026-07-19)*
+  - Conserver la session et son montage à l'écran si CUPS ou la DNP refuse le
+    travail, au lieu de revenir immédiatement à l'accueil.
+  - Proposer `Réessayer`, `Terminer sans imprimer` et `Appeler l'animateur`.
+  - Afficher un message invité compréhensible ; réserver le diagnostic CUPS
+    détaillé aux logs et au dashboard.
+
+- [ ] **Bloquer proprement les sessions quand la caméra n'est pas prête** *(3–5 h)*
+  - Remplacer le trompeur « mode dégradé » par un état explicite « Caméra
+    indisponible — reconnexion en cours ».
+  - Désactiver le démarrage tant que la caméra n'est pas connectée et qu'aucune
+    première frame LiveView valide n'a été reçue.
+  - Réactiver automatiquement les formats après reconnexion, avec timeout,
+    retour accueil et diagnostic visible par l'exploitant.
+  - Ne jamais lancer un décompte sur un écran noir.
+
+- [ ] **Conserver un identifiant unique pendant toutes les reprises** *(1–2 h)*
+  - Initialiser une session selon l'absence de `id_session_timestamp`, pas selon
+    `len(photos_validees) == 0`.
+  - Vérifier la reprise de la première photo, `Recommencer`, les trois photos
+    strip, les événements et les métriques de durée.
+  - Ajouter un test d'intégration garantissant un seul `session_start` et une
+    seule ligne de fin par parcours utilisateur.
+
+- [ ] **Uniformiser la confirmation d'abandon** *(1–2 h)*
+  - Appliquer la double confirmation au strip comme au 10×15 et à l'écran final.
+  - Afficher clairement l'action armée et faire clignoter uniquement le bouton
+    rouge pendant la fenêtre de confirmation.
+  - Archiver les fichiers sans afficher « Préparation de votre impression ».
+
+- [ ] **Libérer automatiquement une session laissée sans utilisateur** *(2–3 h)*
+  - Ajouter une inactivité propre à `VALIDATION`, `FIN` et au choix des copies.
+  - Avertir avant expiration, puis revenir à l'accueil après un délai
+    configurable de 60–90 s.
+  - Conserver les fichiers dans les abandons récupérables et tracer la cause
+    `idle_timeout`.
+
+- [ ] **Protéger la vie privée du diaporama et de la galerie** *(2–4 h)*
+  - Limiter le diaporama aux photos de l'événement actif et exclure par défaut
+    les événements précédents.
+  - Rendre la publication d'une photo et l'accès viewer explicites et opt-in.
+  - Prévoir un mode privé, une politique de rétention et une purge/restauration
+    compréhensible par l'exploitant.
+
+### P1 — cohérence et simplicité du parcours invité
+
+- [ ] **Définir un contrat permanent pour les trois boutons** *(2–4 h)*
+  - Gauche/blanc = retour ou reprendre ; milieu/vert = continuer ou valider ;
+    droite/rouge = annuler ou abandonner.
+  - Ne plus utiliser le bouton rouge pour `PLUS` sur l'écran des copies.
+  - Ajouter des pictogrammes et la position physique du bouton : la couleur ne
+    doit jamais être le seul moyen de comprendre l'action.
+
+- [ ] **Repenser le choix du nombre de copies** *(2–3 h)*
+  - En strip, afficher `2 bandelettes — 1 feuille` ou `4 bandelettes — 2 feuilles`.
+  - Ajouter une action d'annulation et un rappel du quota disponible.
+  - Ne pas valider silencieusement la valeur courante après 20 s ; avertir puis
+    revenir au choix final ou appliquer uniquement la valeur minimale sûre.
+  - Piloter correctement les LEDs Arduino pendant cet écran modal.
+
+- [ ] **Réduire le délai invisible entre les appuis** *(1–2 h)*
+  - Remplacer le verrou global de 2 s par un anti-rebond court, par état et par
+    transition ; tenir compte des 30 ms déjà assurées par le firmware Arduino.
+  - Ne jamais allumer une LED invitant à appuyer pendant que l'action est encore
+    ignorée par le programme.
+
+- [ ] **Rendre le réveil du diaporama intuitif** *(1 h)*
+  - Un appui gauche ou droit doit réveiller et sélectionner directement le
+    format correspondant, ou l'invitation doit annoncer qu'un premier appui ne
+    fait qu'afficher les choix.
+  - Tester séparément le comportement du bouton central.
+
+- [ ] **Afficher exactement le cadrage qui sera imprimé** *(3–6 h)*
+  - Préserver le ratio du LiveView au lieu de le déformer en 1280×800.
+  - Reproduire le crop final 10×15/strip, les masques, la rotation et les zones
+    réellement visibles sur le papier.
+  - Ajouter des guides facultatifs de placement des visages et de marge sûre.
+
+- [ ] **Clarifier le moment réel du déclenchement** *(2–3 h)*
+  - Synchroniser le flash écran, le son et le feedback avec la capture réellement
+    confirmée par gphoto2.
+  - Afficher « Ne bougez plus… » pendant l'acquisition, puis une confirmation
+    nette une fois le fichier reçu.
+
+- [ ] **Uniformiser les parcours 10×15 et strip** *(3–5 h)*
+  - Utiliser le même enchaînement mental : photo(s) → aperçu final → copies →
+    impression.
+  - Décider explicitement si le 10×15 doit conserver son impression directe ou
+    passer par l'écran `FIN`, puis supprimer les branches inutilisées.
+  - Éviter le calcul bloquant sans spinner lors de la génération de la preview
+    finale strip.
+
+- [ ] **Rendre tous les écrans d'erreur actionnables** *(2–4 h)*
+  - Capture : `Réessayer` / `Accueil`.
+  - Impression : `Réessayer` / `Sans impression` / `Accueil`.
+  - Quota : message neutre pour l'invité et déblocage opérateur séparé ; ne pas
+    exposer un écran de saisie de code comme parcours normal.
+  - Traduire les erreurs techniques en consignes simples sans perdre le détail
+    dans les logs.
+
+- [ ] **Alléger les reprises et les abandons** *(2–3 h)*
+  - Ne pas générer un montage final complet lorsqu'un invité veut seulement
+    reprendre une photo.
+  - Déplacer ou référencer la brute immédiatement, puis effectuer les archives
+    coûteuses en arrière-plan si nécessaire.
+  - Harmoniser l'archivage du 10×15 et des strips.
+
+### P2 — qualité visuelle, accessibilité et validation terrain
+
+- [ ] **Faire un passage accessibilité de tous les écrans** *(3–5 h)*
+  - Augmenter si nécessaire le bandeau bas et les zones réservées aux actions.
+  - Vérifier contrastes, tailles, accents, casse, lisibilité de la police active
+    et textes longs configurés depuis l'admin.
+  - Ajouter un mode sans pulsations rapides et prévoir un fonctionnement
+    silencieux qui reste parfaitement compréhensible.
+  - Ne jamais dépendre uniquement du couple rouge/vert.
+
+- [ ] **Créer des tests visuels headless du kiosque** *(4–8 h)*
+  - Capturer des références pour accueil, décompte sans/avec LiveView,
+    validation, confirmation, copies, impression et erreurs.
+  - Tester les textes longs, assets manquants, ratios 1280×800 et 1920×1080 et
+    absence de chevauchement dans les trois zones d'action.
+
+- [ ] **Organiser un test avec des utilisateurs novices** *(1–2 h + observation)*
+  - Faire exécuter les parcours 10×15, strip, reprise, abandon, copies et erreur
+    simulée à au moins cinq personnes sans explication préalable.
+  - Mesurer appuis inutiles, hésitations, abandons, durée et compréhension de la
+    récupération de la photo imprimée.
+  - Transformer chaque incompréhension reproductible en critère d'acceptation.
+
+### Exploitation et administration liées au parcours
+
+Les chantiers heartbeat, verrouillage des actions pendant une session,
+activation atomique, CSRF, historique et sauvegardes restent détaillés dans
+« Prochain sprint fonctionnel — sécurisation des fonctions récentes ».
+
+- [ ] **Compléter le tableau de santé opérateur** *(3–5 h)*
+  - Ajouter caméra, Arduino, profondeur/âge de la file CUPS, dernier envoi
+    réussi, dernier échec et état de synchronisation du kiosque.
+  - Séparer les alertes invité des diagnostics techniques et fournir une action
+    de résolution sûre pour chaque état rouge.
+  - Étudier un suivi papier/ruban DNP ou, à défaut, une estimation explicite à
+    partir des feuilles consommées.
+
+- [ ] **Définir le comportement réel des dates d'événement** *(1–2 h)*
+  - Indiquer clairement si début/fin sont informatifs ou déclenchent activation
+    et clôture automatiques.
+  - Empêcher toute bascule d'événement au milieu d'une session et afficher ce
+    qui arrivera aux templates et à la galerie lors de la clôture.
+
+- [ ] **Renforcer l'authentification si l'admin sort du LAN privé** *(3–8 h)*
+  - Conserver Basic Auth uniquement pour un réseau privé documenté.
+  - Sinon ajouter HTTPS, sessions, expiration et vraie déconnexion ; garder la
+    galerie publique séparée des routes d'administration.
+
+### Évolutions produit après fiabilisation
+
+- [ ] **Récupération invitée par QR code**, limitée à la session ou à la photo,
+  avec expiration et consentement avant publication.
+- [ ] **Presets de langue par événement** pour tous les libellés et erreurs du
+  kiosque, avec test de débordement.
+- [ ] **Modes d'usage explicites** : session rapide, groupe avec décompte long,
+  impressions désactivées et galerie privée.
+- [ ] **Filtres simples avant capture** : noir et blanc, sépia ou vintage, avec
+  aperçu fidèle et possibilité de revenir au rendu naturel.
+- [ ] **Écran final court et festif** indiquant clairement que le tirage a été
+  envoyé et où le récupérer, puis retour automatique.
+- [ ] **Entonnoir UX dans les statistiques** : format choisi, captures,
+  reprises, validations, impressions, échecs, timeouts et abandons.
+
+### Ordre produit recommandé
+
+1. Vérité de l'impression et reprise après erreur.
+2. Caméra prête avant décompte et LiveView fiable.
+3. Identité de session, abandon cohérent et timeout d'inactivité.
+4. Contrat des boutons, choix des copies et cadrage fidèle.
+5. Confidentialité, accessibilité et tests terrain.
+6. Santé opérateur et sécurisation complète de l'administration.
+7. QR code, langues, modes et effets.
 
 ---
 
