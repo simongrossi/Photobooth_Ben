@@ -50,6 +50,10 @@ de données. Document à mettre à jour lors des refactors structurels majeurs.
      │      │  └─────────────────┘   │
      │      │                        │
      │      │  ┌─────────────────┐   │
+     │      │  │ quota           │   │  ◄── compteur feuilles DNP + bridage
+     │      │  └─────────────────┘   │       (data/quota_impressions.json)
+     │      │                        │
+     │      │  ┌─────────────────┐   │
      │      │  │ arduino         │   │  ◄── pyserial + thread → injecte des KEYDOWN
      │      │  │ (3 btns + LEDs) │   │       pilote les LEDs selon Etat
      │      │  └─────────────────┘   │
@@ -78,6 +82,11 @@ de données. Document à mettre à jour lors des refactors structurels majeurs.
   `data/evenement_actif.json`, `data/mise_en_page_10x15.json`,
   `data/mise_en_page_strip.json` et `data/config_overrides.json` en écriture).
   Voir `docs/ADMIN.md`.
+- `data/quota_impressions.json` est le seul fichier écrit par **les deux**
+  process (kiosque : incrément des tirages ; web : déblocage). Chaque écriture
+  de `core/quota.py` fait relecture → modification → remplacement atomique
+  (tmp + `os.replace`) ; la fenêtre de course de quelques ms est acceptée
+  (pire cas : une feuille non comptée).
 
 ---
 

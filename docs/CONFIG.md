@@ -156,6 +156,7 @@ retombe sur le défaut. Effet au redémarrage du kiosque (slides : à chaud).
 | `PATH_SLIDESHOW_PERSO` | `assets/slideshow/` | Visuels perso ajoutés à la rotation du slideshow |
 | `PATH_CORBEILLE` | `data/corbeille/` | Photos retirées de la galerie/slideshow (restaurables) |
 | `PATH_EVENEMENT_ACTIF` | `data/evenement_actif.json` | Instantané atomique de l'événement lu par le kiosque au début d'une session |
+| `PATH_QUOTA_IMPRESSIONS` | `data/quota_impressions.json` | Compteur persistant de feuilles DNP + quota, partagé kiosque/web (voir `core/quota.py`) |
 | `BG_ACCUEIL_EFFECTIF` | résolu à l'import | Actif si présent, sinon `FILE_BG_ACCUEIL` |
 | `POLICE_EFFECTIVE` | résolu à l'import | Active si présente, sinon `POLICE_FICHIER` |
 
@@ -395,6 +396,20 @@ kiosque. Désactivé par défaut.
 | `NOM_IMPRIMANTE_STRIP` | `DNP_STRIP` | Nom CUPS de la file strip |
 | `TEMPS_ATTENTE_IMP` | `20` | Affichage roue avant retour accueil (s) |
 
+### Quota d'impressions (bridage)
+
+Le compteur de feuilles DNP vit dans `data/quota_impressions.json` (jamais remis
+à zéro, même après redémarrage — voir `core/quota.py`). Quand le quota est
+atteint, l'appui sur IMPRIMER affiche un écran de déblocage : saisir la séquence
+gauche→droite→milieu, puis la ressaisir pour confirmer.
+
+| Constante | Défaut | Effet |
+|---|---|---|
+| `ACTIVER_QUOTA_IMPRESSIONS` | `True` | `False` désactive le bridage (les feuilles restent comptées) |
+| `QUOTA_IMPRESSIONS_INITIAL` | `100` | Quota posé **à la création du fichier uniquement** ; ensuite le quota courant vit dans le JSON |
+| `QUOTA_IMPRESSIONS_INCREMENT` | `100` | Feuilles ajoutées à chaque déblocage (code kiosque ou bouton admin) |
+| `DELAI_DEBLOCAGE_QUOTA` | `30.0` | Inactivité (s) avant abandon de l'écran de saisie du code |
+
 ### Animation roue de chargement
 
 `ANIM_COULEUR_TETE`, `ANIM_COULEUR_QUEUE`, `ANIM_TAILLE_ROUE`,
@@ -422,6 +437,7 @@ Fonction `_valider_config()` en fin de fichier — appelée à l'import. Vérifi
 - Marges strip >= 0
 - Tailles de montage positives
 - Noms d'imprimantes non vides et str
+- Quota d'impressions cohérent (`QUOTA_IMPRESSIONS_INITIAL >= 1`, `QUOTA_IMPRESSIONS_INCREMENT >= 1`, `DELAI_DEBLOCAGE_QUOTA > 0`)
 
 **Un `AssertionError` au démarrage = bug de config, pas de code**. Lire le
 message pour savoir quelle assertion a sauté.

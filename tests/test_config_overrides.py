@@ -79,6 +79,35 @@ class TestApplicationOverrides:
         config.ACTIVER_DIAPORAMA_VEILLE = True
         config.ACTIVER_IMPRESSIONS_MULTIPLES = True
 
+    def test_overrides_quota(self, tmp_path, monkeypatch):
+        path = tmp_path / "config_overrides.json"
+        with open(path, "w") as f:
+            json.dump({
+                "ACTIVER_QUOTA_IMPRESSIONS": False,
+                "QUOTA_IMPRESSIONS_INITIAL": 200,
+                "QUOTA_IMPRESSIONS_INCREMENT": 50,
+            }, f)
+        import config
+        monkeypatch.setattr(config, "CONFIG_OVERRIDES_PATH", str(path))
+        config._appliquer_overrides()
+        assert config.ACTIVER_QUOTA_IMPRESSIONS is False
+        assert config.QUOTA_IMPRESSIONS_INITIAL == 200
+        assert config.QUOTA_IMPRESSIONS_INCREMENT == 50
+        config.ACTIVER_QUOTA_IMPRESSIONS = True
+        config.QUOTA_IMPRESSIONS_INITIAL = 100
+        config.QUOTA_IMPRESSIONS_INCREMENT = 100
+
+    def test_quota_bool_strict(self, tmp_path, monkeypatch):
+        path = tmp_path / "config_overrides.json"
+        # 1 est aussi un int : ne doit PAS être accepté comme bool
+        with open(path, "w") as f:
+            json.dump({"ACTIVER_QUOTA_IMPRESSIONS": 1}, f)
+        import config
+        monkeypatch.setattr(config, "CONFIG_OVERRIDES_PATH", str(path))
+        original = config.ACTIVER_QUOTA_IMPRESSIONS
+        config._appliquer_overrides()
+        assert config.ACTIVER_QUOTA_IMPRESSIONS == original
+
     def test_int_pour_float_tolere(self, tmp_path, monkeypatch):
         path = tmp_path / "config_overrides.json"
         with open(path, "w") as f:

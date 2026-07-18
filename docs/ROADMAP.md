@@ -14,6 +14,8 @@ Dernière mise à jour : 2026-07-15 (télémétrie et priorités guidées par le
 
 **UX événementiel** : splash caméra, flash + shutter sound, beep décompte, écran "Préparation...", confirmation abandon, slideshow d'attente désactivable, compteur photo strip, mode burst et impressions multiples désactivables.
 
+**Quota d'impressions** : compteur persistant de feuilles DNP (`core/quota.py`, jamais remis à zéro), bridage au moment d'imprimer, déblocage par code 3 boutons (G→D→M ×2) ou depuis le dashboard admin, paliers configurables.
+
 **Architecture modulaire** : split en `core/` + `ui/` — `core/session` (Etat+SessionState+metadata), `core/monitoring` (DiskMonitor+slideshow), UIContext singleton, render functions extraites (DECOMPTE/VALIDATION/FIN/ACCUEIL), event handlers par état, MontageGenerator/CameraManager/PrinterManager encapsulés. `Photobooth_start.py` est importable sans lancer le kiosque ; `main()` initialise le runtime.
 
 **Hardware** : contrôleur Arduino Nano (`core/arduino.py`) — 3 boutons-poussoirs à LED intégrée via pyserial, pilotage LED selon `Etat`, fallback clavier si pyserial absent. `core/camera.py` dégrade proprement si `gphoto2`/`cv2`/`numpy`/`pygame` manque. Firmware `arduino/photobooth_buttons/`.

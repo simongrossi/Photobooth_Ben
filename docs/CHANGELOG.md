@@ -5,6 +5,27 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
 ---
 
+## `WIP` — Quota d'impressions (idée de Benjamin)
+
+### Added
+- `core/quota.py` : compteur persistant de feuilles DNP dans
+  `data/quota_impressions.json` (écriture atomique, jamais remis à zéro même
+  après redémarrage ; fichier corrompu conservé en `.corrompu-<ts>`), plafond
+  cumulé (`quota`) et machine pure `SaisieSequence` pour le code 3 boutons.
+- Bridage à l'impression : quand le quota est atteint, l'appui sur IMPRIMER
+  affiche un écran de déblocage — saisir gauche→droite→milieu, puis ressaisir
+  la même séquence pour confirmer (anti-fausses détections). Succès :
+  `+QUOTA_IMPRESSIONS_INCREMENT` feuilles et l'impression s'enchaîne.
+- L'écran « nombre de copies » plafonne le choix au quota restant.
+- Dashboard admin : carte Impressions DNP (consommées / quota / restant, jauge)
+  et bouton POST protégé `+N impressions` ; réglages quota exposés dans la page
+  Réglages (`ACTIVER_QUOTA_IMPRESSIONS`, `QUOTA_IMPRESSIONS_INITIAL`,
+  `QUOTA_IMPRESSIONS_INCREMENT` via `config_overrides.json`).
+- Événement de télémétrie `quota_deblocage` (source kiosque ou web).
+- Tests : `tests/test_quota.py`, `tests/test_web_quota.py`, cas overrides quota.
+
+---
+
 ## `WIP` — Optimisation globale des performances
 
 ### Changed

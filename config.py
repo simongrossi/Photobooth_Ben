@@ -27,6 +27,7 @@ PATH_SKIPPED    = os.path.join(PATH_DATA, "skipped")
 PATH_SKIPPED_RETAKE  = os.path.join(PATH_SKIPPED, "skipped_retake")
 PATH_SKIPPED_DELETED = os.path.join(PATH_SKIPPED, "skipped_deleted")
 PATH_EVENEMENT_ACTIF = os.path.join(PATH_DATA, "evenement_actif.json")
+PATH_QUOTA_IMPRESSIONS = os.path.join(PATH_DATA, "quota_impressions.json")
 PATH_MISE_EN_PAGE_10X15 = os.path.join(PATH_DATA, "mise_en_page_10x15.json")
 PATH_MISE_EN_PAGE_STRIP = os.path.join(PATH_DATA, "mise_en_page_strip.json")
 
@@ -86,6 +87,17 @@ MASQUE = 200   # Transparance des bande latérale noire si ratio image modifié 
 
 # Nombre maximal de copies qu'un utilisateur peut demander sur l'écran dynamique
 MAX_COPIES_IMPRESSION = 3
+
+# --- Quota d'impressions (bridage) ---
+# Compteur persistant de feuilles DNP dans data/quota_impressions.json
+# (partagé kiosque/web, jamais remis à zéro — voir core/quota.py).
+# QUOTA_IMPRESSIONS_INITIAL ne sert qu'à la création du fichier ; ensuite le
+# quota courant vit dans le JSON et grandit par paliers de
+# QUOTA_IMPRESSIONS_INCREMENT (code 3 boutons sur le kiosque ou admin web).
+ACTIVER_QUOTA_IMPRESSIONS = True
+QUOTA_IMPRESSIONS_INITIAL = 100
+QUOTA_IMPRESSIONS_INCREMENT = 100
+DELAI_DEBLOCAGE_QUOTA = 30.0  # Timeout (s) de l'écran de saisie du code de déblocage
 
 TEMPS_DECOMPTE = 5
 
@@ -468,6 +480,9 @@ _CONFIG_OVERRIDES_WHITELIST = {
     "NOM_IMPRIMANTE_STRIP": str,
     "ACTIVER_IMPRESSION": bool,
     "ACTIVER_IMPRESSIONS_MULTIPLES": bool,
+    "ACTIVER_QUOTA_IMPRESSIONS": bool,
+    "QUOTA_IMPRESSIONS_INITIAL": int,
+    "QUOTA_IMPRESSIONS_INCREMENT": int,
     "TEMPS_ATTENTE_IMP": int,
     "ACTIVER_DIAPORAMA_VEILLE": bool,
     "DUREE_IDLE_SLIDESHOW": float,
@@ -584,6 +599,11 @@ def _valider_config():
     # Noms d'imprimantes
     assert NOM_IMPRIMANTE_10X15 and isinstance(NOM_IMPRIMANTE_10X15, str)
     assert NOM_IMPRIMANTE_STRIP and isinstance(NOM_IMPRIMANTE_STRIP, str)
+
+    # Quota d'impressions
+    assert QUOTA_IMPRESSIONS_INITIAL >= 1, f"QUOTA_IMPRESSIONS_INITIAL invalide : {QUOTA_IMPRESSIONS_INITIAL}"
+    assert QUOTA_IMPRESSIONS_INCREMENT >= 1, f"QUOTA_IMPRESSIONS_INCREMENT invalide : {QUOTA_IMPRESSIONS_INCREMENT}"
+    assert DELAI_DEBLOCAGE_QUOTA > 0, f"DELAI_DEBLOCAGE_QUOTA invalide : {DELAI_DEBLOCAGE_QUOTA}"
 
 
 _valider_config()

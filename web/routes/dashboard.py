@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from datetime import date, datetime, timedelta
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 
 import config
 
@@ -19,7 +19,9 @@ from config import (
     SEUIL_TEMP_CRITIQUE_C,
     TEMP_PATH,
 )
+from core import quota
 from core.monitoring import DiskMonitor, TempMonitor
+from core.performance import ecrire_performance
 from core.printer import PrinterManager
 from stats import calculer_stats, filtrer_sessions, load_sessions, stats_du_jour, stats_par_jour
 from web.auth import require_auth
@@ -169,8 +171,19 @@ def index():
     if stats.get("total", 0) > 0:
         heures_total = [{"heure": h, "nb": stats.get("heures", {}).get(h, 0)} for h in HEURES_ORDRE]
 
+    quota_etat = quota.charger_etat()
+    quota_rest = quota.quota_restant()
+    quota_pct = (
+        round(quota_etat["tirages_total"] * 100 / quota_etat["quota"]) if quota_etat["quota"] else 100
+    )
+
     return render_template(
         "dashboard.html",
+        quota_etat=quota_etat,
+        quota_restant=quota_rest,
+        quota_pct=min(100, quota_pct),
+        quota_actif=config.ACTIVER_QUOTA_IMPRESSIONS,
+        quota_increment=config.QUOTA_IMPRESSIONS_INCREMENT,
         sante=_construire_sante(disk, temp),
         jour=jour,
         date_affichee=date.today().strftime("%d/%m/%Y"),
@@ -190,3 +203,21 @@ def index():
         tags=tags_disponibles,
         **_contexte_heure_serveur(),
     )
+
+
+@bp.route("/quota/debloquer", methods=["POST"])
+@require_auth
+def debloquer_quota():
+    """Déblocage admin : augmente le plafond du même palier que le code kiosque."""
+    increment = config.QUOTA_IMPRESSIONS_INCREMENT
+    etat = quota.debloquer(increment)
+    ecrire_performance(
+        "quota_deblocage",
+        source="web",
+        increment=increment,
+        quota=etat["quota"],
+        tirages_total=etat["tirages_total"],
+    )
+    restant = max(0, etat["quota"] - etat["tirages_total"])
+    flash(f"Quota débloqué : +{increment} impressions (restant : {restant}).", "success")
+    return redirect(url_for("dashboard.index"))

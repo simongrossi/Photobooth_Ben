@@ -4,11 +4,12 @@ from __future__ import annotations
 # Liste triée alphabétiquement, mise à jour en ajoutant de nouvelles constantes.
 from config import (
     ACTIVER_DIAPORAMA_VEILLE, ACTIVER_IMPRESSION, ACTIVER_IMPRESSIONS_MULTIPLES,
+    ACTIVER_QUOTA_IMPRESSIONS,
     ALPHA_TEXTE_REPOS, ARDUINO_BAUDRATE, ARDUINO_ENABLED, ARDUINO_PORT,
     BANDEAU_10X15, BANDEAU_ACCUEIL, BANDEAU_ALPHA,
     BANDEAU_COULEUR, BANDEAU_HAUTEUR, BANDEAU_STRIP, COULEUR_DECOMPTE,
     COULEUR_FLASH, COULEUR_SOURIEZ, COULEUR_TEXTE_OFF, COULEUR_TEXTE_ON, COULEUR_TEXTE_REPOS,
-    DELAI_SECURITE,
+    DELAI_DEBLOCAGE_QUOTA, DELAI_SECURITE,
     DUREE_CONFIRM_ABANDON, DUREE_FLASH_BLANC, DUREE_IDLE_SLIDESHOW, DUREE_PAR_IMAGE_SLIDESHOW,
     BG_ACCUEIL_EFFECTIF, FORMAT_TIMESTAMP, HEIGHT,
     INTERVALLE_CHECK_DISQUE_S, INTERVALLE_CHECK_TEMP_S, LARGEUR_ICONE_10X15, LARGEUR_ICONE_STRIP, MARGE_ACCUEIL,
@@ -20,6 +21,7 @@ from config import (
     PATH_SLIDESHOW_PERSO, POLICE_EFFECTIVE, PREFIXE_DELETED, PREFIXE_PRINT_10X15, PREFIXE_PRINT_STRIP,
     PREFIXE_RAW, PREFIXE_RETAKE, PULSE_LENT_MAX, PULSE_LENT_MIN, PULSE_LENT_VITESSE, PULSE_MAX,
     PULSE_MIN, PULSE_VITESSE,
+    QUOTA_IMPRESSIONS_INCREMENT,
     SEUIL_DISQUE_CRITIQUE_MB, SEUIL_TEMP_CRITIQUE_C,
     STRIP_BURST_DELAI_S, STRIP_MODE_BURST,
     TAILLE_DECOMPTE, TAILLE_TEXTE_BANDEAU,
@@ -60,6 +62,8 @@ from core.session import (  # noqa: E402
     terminer_session_et_revenir_accueil as _terminer_session_et_revenir_accueil,
 )
 from core.evenements import charger_evenement_actif  # noqa: E402
+from core import quota as quota_mgr  # noqa: E402
+from core.quota import SaisieSequence  # noqa: E402
 
 
 # ========================================================================================================
@@ -581,11 +585,22 @@ def demander_nombre_copies(session: SessionState) -> int:
     bandeau_bas.set_alpha(90)   
     y_bandeau = HEIGHT - HAUTEUR_BANDEAU_CHOIX
 
+    # Plafonnement par le quota : on ne propose jamais plus de copies que de
+    # feuilles DNP restantes (1 feuille = 2 bandelettes en strips). Le blocage
+    # total (restant = 0) est géré en amont par _verifier_quota_ou_debloquer.
+    if ACTIVER_QUOTA_IMPRESSIONS:
+        restant = quota_mgr.quota_restant()
+        plafond_quota = restant * 2 if est_strip else restant
+    else:
+        plafond_quota = None
+
     while not selection_validee:
         # Définition dynamique du pas (step) et du maximum selon le mode
         pas = 2 if est_strip else 1
         minimum_autorise = 2 if est_strip else 1
         maximum_autorise = 4 if est_strip else MAX_COPIES_IMPRESSION
+        if plafond_quota is not None:
+            maximum_autorise = max(minimum_autorise, min(maximum_autorise, plafond_quota))
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -657,6 +672,118 @@ def demander_nombre_copies(session: SessionState) -> int:
 
     log_info(f"🔢 Choix validé : {compteur} | Temps configuré : {config.TEMPS_ATTENTE_IMP}s")
     return compteur
+
+
+def ecran_deblocage_quota(session: SessionState) -> bool:
+    """Écran « quota atteint » : saisie du code G→D→M puis confirmation par re-saisie.
+
+    Deux phases pilotées par la même séquence (gauche→droite→milieu) :
+    la première saisit le code, la seconde le confirme pour écarter les fausses
+    détections des boutons. Succès → quota += QUOTA_IMPRESSIONS_INCREMENT et
+    retourne True (l'impression peut s'enchaîner). Inactivité de
+    DELAI_DEBLOCAGE_QUOTA secondes ou mauvaise touche en phase 2 → retour
+    phase 1 / abandon (False). La séquence n'est volontairement pas affichée.
+    """
+    log_info("🔒 Quota d'impressions atteint : affichage de l'écran de déblocage")
+    sequence = SaisieSequence((TOUCHE_GAUCHE, TOUCHE_DROITE, TOUCHE_MILIEU))
+    phase_confirmation = False
+    dernier_appui_ts = time.time()
+    flash_rouge_until = 0.0
+    ANTI_REBOND_S = 0.3  # DELAI_SECURITE (2 s) rendrait la séquence insaisissable
+
+    COULEUR_BLANCHE = (255, 255, 255)
+    COULEUR_ROUGE = (220, 50, 50)
+    COULEUR_VERTE = (0, 200, 0)
+    COULEUR_GRIS = (70, 70, 70)
+
+    while True:
+        maintenant = time.time()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.KEYDOWN and event.key in (TOUCHE_GAUCHE, TOUCHE_MILIEU, TOUCHE_DROITE):
+                if maintenant - dernier_appui_ts < ANTI_REBOND_S:
+                    continue
+                dernier_appui_ts = maintenant
+                resultat = sequence.presser(event.key)
+                if resultat == "reset":
+                    jouer_son("beep")
+                    flash_rouge_until = maintenant + 0.25
+                    if phase_confirmation:
+                        # Erreur pendant la confirmation : tout reprendre du début
+                        phase_confirmation = False
+                elif resultat == "en_cours":
+                    jouer_son("click")
+                elif resultat == "complete":
+                    jouer_son("click")
+                    if not phase_confirmation:
+                        phase_confirmation = True
+                        sequence.reinitialiser()
+                    else:
+                        etat = quota_mgr.debloquer(QUOTA_IMPRESSIONS_INCREMENT)
+                        ecrire_performance(
+                            "quota_deblocage",
+                            source="kiosque",
+                            increment=QUOTA_IMPRESSIONS_INCREMENT,
+                            quota=etat["quota"],
+                            tirages_total=etat["tirages_total"],
+                        )
+                        log_info(
+                            f"🔓 Quota débloqué : +{QUOTA_IMPRESSIONS_INCREMENT} "
+                            f"(quota={etat['quota']}, tirages={etat['tirages_total']})"
+                        )
+                        jouer_son("success")
+                        afficher_message_plein_ecran(
+                            f"Quota debloque : +{QUOTA_IMPRESSIONS_INCREMENT} impressions",
+                            couleur=COULEUR_VERTE,
+                        )
+                        time.sleep(1.5)
+                        return True
+
+        if maintenant - dernier_appui_ts > DELAI_DEBLOCAGE_QUOTA:
+            log_info("⏰ Écran de déblocage quota : timeout, retour sans déblocage")
+            return False
+
+        # --- RENDU ---
+        inserer_background(screen, fond_accueil)
+        if maintenant < flash_rouge_until:
+            voile = pygame.Surface((WIDTH, HEIGHT))
+            voile.fill(COULEUR_ROUGE)
+            voile.set_alpha(90)
+            screen.blit(voile, (0, 0))
+
+        titre = "QUOTA D'IMPRESSIONS ATTEINT"
+        sous_titre = (
+            "Confirmer : ressaisir le code" if phase_confirmation
+            else "Saisir le code de deblocage"
+        )
+        txt_titre = font_boutons.render(titre, True, COULEUR_ROUGE)
+        screen.blit(txt_titre, (WIDTH // 2 - txt_titre.get_width() // 2, HEIGHT // 5))
+        couleur_sous_titre = COULEUR_VERTE if phase_confirmation else COULEUR_BLANCHE
+        txt_sous = font_boutons.render(sous_titre, True, couleur_sous_titre)
+        screen.blit(txt_sous, (WIDTH // 2 - txt_sous.get_width() // 2, HEIGHT // 5 + 70))
+
+        # Pastilles de progression (une par touche de la séquence)
+        nb_pastilles = len(sequence.sequence)
+        rayon, espace = 22, 90
+        x0 = WIDTH // 2 - ((nb_pastilles - 1) * espace) // 2
+        y0 = HEIGHT // 2
+        for i in range(nb_pastilles):
+            couleur = COULEUR_VERTE if i < sequence.progression else COULEUR_GRIS
+            pygame.draw.circle(screen, couleur, (x0 + i * espace, y0), rayon)
+
+        pygame.display.flip()
+        clock.tick(30)
+
+
+def _verifier_quota_ou_debloquer(session: SessionState) -> bool:
+    """True si l'impression peut continuer (quota restant, bridage désactivé,
+    ou déblocage par code réussi)."""
+    if not ACTIVER_QUOTA_IMPRESSIONS or quota_mgr.quota_restant() > 0:
+        return True
+    _journaliser_action("quota_atteint")
+    return ecran_deblocage_quota(session)
 
 
 def traiter_impression_session(session) -> str:
@@ -742,6 +869,9 @@ def traiter_impression_session(session) -> str:
                 # JPEG sur la carte SD pour chaque ticket.
                 envoi_t0 = time.perf_counter()
                 envoi_ok = printer_mgr.send(destination, perf_mode, verifier=False)
+                if envoi_ok:
+                    # Une feuille DNP réellement partie vers CUPS = un tirage compté.
+                    quota_mgr.enregistrer_tirage(1)
                 ecrire_performance(
                     "printer_submit",
                     session_id=perf_session_id,
@@ -1425,6 +1555,11 @@ def _handle_validation_10x15(event: pygame.event.Event, session: SessionState,  
         # Imprimer direct + retour accueil
         _journaliser_action("print")
         session.abandon_confirm_until = 0.0
+        if not _verifier_quota_ou_debloquer(session):
+            # Quota atteint et déblocage refusé : la session reste affichée
+            session.dernier_clic_time = maintenant
+            pygame.event.clear()
+            return
         issue = traiter_impression_session(session)
         pygame.event.clear()
         terminer_session_et_revenir_accueil(issue)
@@ -1533,6 +1668,11 @@ def handle_fin_event(event: pygame.event.Event, session: SessionState,   # type:
         # Imprimer : génère HD, copie en PRINT_<mode>, envoie CUPS
         _journaliser_action("print")
         session.abandon_confirm_until = 0.0
+        if not _verifier_quota_ou_debloquer(session):
+            # Quota atteint et déblocage refusé : la session reste affichée
+            session.dernier_clic_time = maintenant
+            pygame.event.clear()
+            return
         issue = traiter_impression_session(session)
         pygame.event.clear()
         terminer_session_et_revenir_accueil(issue)

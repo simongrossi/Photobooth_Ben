@@ -96,6 +96,35 @@
   {% endfor %}
 </section>
 
+<!-- Étage 3 bis : quota d'impressions DNP -->
+<section class="panel">
+  <h2>Impressions DNP</h2>
+  {% if not quota_actif %}
+    <p class="muted">Bridage par quota désactivé (les tirages restent comptés).</p>
+  {% endif %}
+  <div class="cards">
+    <div class="card">
+      <div class="card__label">Feuilles consommées</div>
+      <div class="card__value">{{ quota_etat.tirages_total }}</div>
+    </div>
+    <div class="card">
+      <div class="card__label">Quota</div>
+      <div class="card__value">{{ quota_etat.quota }}</div>
+    </div>
+    <div class="card {{ 'card--err' if quota_restant == 0 else 'card--ok' }}">
+      <div class="card__label">Restant</div>
+      <div class="card__value">{{ quota_restant }}</div>
+    </div>
+  </div>
+  <div class="quota-jauge" style="background:#2a2f3a;border-radius:6px;height:10px;margin:12px 0;overflow:hidden;">
+    <div style="width: {{ quota_pct }}%;height:100%;background: {{ '#e05252' if quota_restant == 0 else '#4caf7d' }};"></div>
+  </div>
+  <form method="post" action="{{ url_for('dashboard.debloquer_quota') }}"
+        onsubmit="return confirm('Débloquer {{ quota_increment }} impressions supplémentaires ?');">
+    <button type="submit" class="btn">Débloquer +{{ quota_increment }} impressions</button>
+  </form>
+</section>
+
 <!-- Étage 4 : Répartition horaire globale -->
 {% if heures_total %}
 <section class="panel">

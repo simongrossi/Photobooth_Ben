@@ -7,7 +7,10 @@ sur le même LAN, sans toucher au code.
 - **Dashboard** : santé matériel en un coup d'œil (imprimantes, disque, CPU),
   compteurs du jour avec activité par heure, totaux (taux d'impression, photos,
   durées, modes), heure locale du serveur toujours visible et historique par journée. Thème clair/sombre automatique
-  (suit le réglage du navigateur/téléphone).
+  (suit le réglage du navigateur/téléphone). Carte **Impressions DNP** :
+  feuilles consommées / quota / restant, avec bouton de déblocage
+  (`+QUOTA_IMPRESSIONS_INCREMENT` feuilles, équivalent au code 3 boutons du
+  kiosque).
 - **Événements** : création avec dates, tags et quatre choix de templates,
   activation exclusive, fin et archivage. L'événement actif et son habillage
   sont appliqués aux nouvelles sessions sans redémarrer le kiosque. Accès direct aux statistiques, à la galerie et à
@@ -61,6 +64,7 @@ sur le même LAN, sans toucher au code.
 | Mise en page 10×15 active | `data/mise_en_page_10x15.json` (remplacement atomique) | admin | kiosque à chaque rendu |
 | Mise en page strip active | `data/mise_en_page_strip.json` (remplacement atomique) | admin | kiosque à chaque rendu |
 | Surcharges config | `data/config_overrides.json` | admin | kiosque (à chaque import de `config`) |
+| Compteur/quota d'impressions | `data/quota_impressions.json` (remplacement atomique) | kiosque (tirages) + admin (déblocage) | kiosque + admin (dashboard) |
 
 Le kiosque n'a **pas besoin** de connaître l'admin : les overrides sont lus au
 démarrage de `config.py` via une whitelist stricte (voir
