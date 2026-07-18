@@ -10,6 +10,7 @@ generer_montage_* qui étaient dupliquées dans Photobooth_start.py.
 from __future__ import annotations
 
 import os
+import gc
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
@@ -252,7 +253,7 @@ class MontageGenerator10x15(MontageBase):
         cls._appliquer_grain(canvas)
         canvas.save(path_hd, quality=cls.FINAL_QUALITY)
         canvas.close()
-        import gc; gc.collect()
+        gc.collect()
         return path_hd
 
 
@@ -394,6 +395,6 @@ class MontageGeneratorStrip(MontageBase):
         bloc_photos.close()
         bande_horiz.close()
         bande_finale.close()
-        import gc; gc.collect()
+        gc.collect()
 
         return path_ready
