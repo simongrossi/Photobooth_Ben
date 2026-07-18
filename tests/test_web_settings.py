@@ -129,14 +129,14 @@ class TestEnregistrement:
 
     def test_enregistrer_et_appliquer_redemarre_le_kiosque(self, ctx, monkeypatch):
         c, _ = ctx
-        import web.routes.settings_route as sr
         appels = []
 
         def fake_run(commande, **options):
             appels.append((commande, options))
             return subprocess.CompletedProcess(commande, 0, stdout="", stderr="")
 
-        monkeypatch.setattr(sr.subprocess, "run", fake_run)
+        from web import systeme
+        monkeypatch.setattr(systeme.subprocess, "run", fake_run)
         r = c.post(
             "/settings/",
             data={"action": "apply"},
@@ -146,15 +146,15 @@ class TestEnregistrement:
 
         assert r.status_code == 200
         assert b"service kiosque a \xc3\xa9t\xc3\xa9 red\xc3\xa9marr\xc3\xa9" in r.data
-        assert appels[0][0] == [sr.SUDO_PATH, "-n", sr.SYSTEMCTL_PATH, "restart", "photobooth.service"]
+        assert appels[0][0] == [systeme.SUDO_PATH, "-n", systeme.SYSTEMCTL_PATH, "restart", "photobooth.service"]
         assert appels[0][1]["timeout"] == 20
         assert appels[0][1]["check"] is False
 
     def test_echec_application_est_affiche(self, ctx, monkeypatch):
         c, _ = ctx
-        import web.routes.settings_route as sr
+        from web import systeme
         monkeypatch.setattr(
-            sr.subprocess,
+            systeme.subprocess,
             "run",
             lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 1, stderr="sudo refusé"),
         )
@@ -165,7 +165,8 @@ class TestEnregistrement:
             headers=HEADERS,
             follow_redirects=True,
         )
-        assert b"n&#39;a pas pu \xc3\xaatre red\xc3\xa9marr\xc3\xa9" in r.data
+        # Nouveau message générique de web.systeme : l'échec et son détail sont affichés
+        assert b"sudo refus" in r.data
 
 
 class TestWhitelist:

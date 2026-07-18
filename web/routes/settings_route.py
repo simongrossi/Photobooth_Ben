@@ -7,8 +7,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
-import subprocess
 from dataclasses import dataclass
 from typing import Any
 
@@ -23,13 +21,11 @@ from flask import (
 
 import config
 from config import CONFIG_OVERRIDES_PATH, _CONFIG_OVERRIDES_WHITELIST
+from web import systeme
 from web.auth import require_auth
 
 bp = Blueprint("settings", __name__, url_prefix="/settings")
 
-KIOSQUE_SERVICE = "photobooth.service"
-SUDO_PATH = shutil.which("sudo") or "/usr/bin/sudo"
-SYSTEMCTL_PATH = shutil.which("systemctl") or "/usr/bin/systemctl"
 
 
 @dataclass
@@ -113,25 +109,11 @@ def _ecrire_overrides(overrides: dict) -> None:
 
 
 def _redemarrer_kiosque() -> tuple[bool, str]:
-    """Redémarre seulement le kiosque via la règle sudoers installée."""
-    commande = [SUDO_PATH, "-n", SYSTEMCTL_PATH, "restart", KIOSQUE_SERVICE]
-    try:
-        resultat = subprocess.run(
-            commande,
-            capture_output=True,
-            text=True,
-            timeout=20,
-            check=False,
-        )
-    except subprocess.TimeoutExpired:
-        return False, "Le redémarrage du kiosque a dépassé 20 secondes."
-    except OSError as e:
-        return False, f"Commande de redémarrage indisponible : {e}"
-    if resultat.returncode == 0:
+    """Redémarre seulement le kiosque (délégué à web.systeme, liste blanche)."""
+    ok, message = systeme.executer_action("redemarrer-kiosque")
+    if ok:
         return True, "Réglages appliqués : le service kiosque a été redémarré."
-    detail = (resultat.stderr or resultat.stdout).strip()
-    suffixe = f" ({detail[:200]})" if detail else ""
-    return False, f"Le service kiosque n'a pas pu être redémarré{suffixe}. Relancez l'installation admin."
+    return False, message
 
 
 def _lister_reglages() -> list[Reglage]:
