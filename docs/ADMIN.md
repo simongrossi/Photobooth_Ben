@@ -30,10 +30,13 @@ sur le même LAN, sans toucher au code.
   éditeur visuel. Pour le strip, les trois
   photos se déplacent et se redimensionnent indépendamment, avec un aperçu
   exact fond → photos → overlay et mémorisation par template.
-- **Kiosque** : assets globaux de la borne — **fond d'écran d'accueil** et
-  **police des textes** (bibliothèque + activation « actif + fallback », effet au
-  redémarrage du kiosque, bouton « Revenir au défaut »), et **slides perso**
-  ajoutés à la rotation du diaporama d'attente (effet à chaud, ≤ 30 s).
+- **Kiosque** : assets globaux de la borne — **fond d'écran d'accueil**, **fond
+  de transition** et **police des textes** (bibliothèque + activation « actif +
+  fallback », effet au redémarrage du kiosque, bouton « Revenir au défaut »), et
+  **slides perso** ajoutés à la rotation du diaporama d'attente (effet à chaud,
+  ≤ 30 s). Le fond de transition couvre les écrans d'attente (annulation d'une
+  photo, reprise, impression) ; laissé au défaut, il reprend automatiquement le
+  fond d'accueil, pour qu'aucun écran n'affiche une image inattendue.
 - **Réglages** : édition d'un sous-ensemble de `config.py` via
   `data/config_overrides.json` (timings, imprimantes, slideshow, watermark…).
 
@@ -57,8 +60,8 @@ sur le même LAN, sans toucher au code.
 | Overlays PNG (bibliothèque) | `assets/overlays/*.png` | admin | kiosque (montage) |
 | Fonds JPG/PNG (bibliothèque) | `assets/backgrounds/*` | admin | kiosque (montage) |
 | Couches actives | `assets/overlays/{10x15,strips}_overlay.png` et `assets/backgrounds/{10x15,strips}_background.jpg` (copies du template activé ; fichier absent = « aucun ») | admin | kiosque |
-| Assets kiosque (bibliothèques) | `assets/interface/accueil/`, `assets/fonts/bibliotheque/`, `assets/slideshow/` | admin | kiosque (slideshow à chaud) |
-| Assets kiosque actifs | `assets/interface/accueil_actif.jpg`, `assets/fonts/police_active.ttf` (absents = défauts versionnés) | admin | kiosque (au boot) |
+| Assets kiosque (bibliothèques) | `assets/interface/accueil/`, `assets/interface/transition/`, `assets/fonts/bibliotheque/`, `assets/slideshow/` | admin | kiosque (slideshow à chaud) |
+| Assets kiosque actifs | `assets/interface/accueil_actif.jpg`, `assets/interface/transition_actif.jpg`, `assets/fonts/police_active.ttf` (absents = défauts versionnés) | admin | kiosque (au boot) |
 | Corbeille galerie | `data/corbeille/<mode>/` | admin | admin (restauration) |
 | Métadonnées templates & assets | `data/admin.db` (SQLite) | admin | admin |
 | Mise en page 10×15 active | `data/mise_en_page_10x15.json` (remplacement atomique) | admin | kiosque à chaque rendu |
@@ -112,6 +115,37 @@ et strip. L'enregistrement publie immédiatement les quatre choix si l'événeme
 est actif ; sinon ils seront appliqués lors de sa prochaine activation. La
 bibliothèque située dessous reste dédiée à l'upload, à l'aperçu et à l'édition
 de la mise en page des fichiers.
+
+## Contrôle du kiosque (dashboard, admin uniquement)
+
+Trois boutons sur le dashboard, avec confirmation (double pour la machine) :
+
+- **Redémarrer le kiosque** (~10 s) — applique fond/police activés, débloque un
+  plantage. Sert aussi de « Démarrer » si le kiosque est arrêté.
+- **Arrêter le kiosque** — fin d'événement sans éteindre la machine.
+- **Redémarrer la machine** (~1 min) — si le problème dépasse l'appli (USB, CUPS).
+
+Une pastille « Kiosque : actif / arrêté / en panne » est affichée dans le
+bandeau santé (visible aussi du viewer).
+
+**Prérequis** : le kiosque doit tourner en service systemd
+(`sudo ./deploy/install.sh`) et la règle sudoers doit être posée
+(`sudo ./deploy/install-admin.sh`, validée par `visudo -c`) — elle n'autorise
+que les commandes systemctl exactes ci-dessus, rien d'autre.
+
+### Migration depuis l'autostart XFCE (une fois)
+
+```bash
+cd <dossier du projet>
+sudo ./deploy/install.sh                       # crée + enable photobooth.service
+rm ~/.config/autostart/photobooth.desktop      # fin de l'autostart XFCE
+sudo ./deploy/install-admin.sh                 # pose/actualise la règle sudoers
+sudo reboot                                    # le kiosque revient via systemd
+```
+
+Réversible : recréer le `.desktop` et `sudo systemctl disable photobooth.service`.
+Bonus systemd : redémarrage automatique en cas de crash du kiosque
+(`Restart=on-failure`, 5 essais max par minute).
 
 ## Niveaux d'accès
 

@@ -89,8 +89,8 @@ SYSTEMCTL_BIN="$(command -v systemctl)"
 SUDOERS_FILE="/etc/sudoers.d/photobooth-admin"
 SUDOERS_TMP="$(mktemp)"
 trap 'rm -f "${SUDOERS_TMP}"' EXIT
-printf '%s ALL=(root) NOPASSWD: %s restart photobooth.service\n' \
-    "${TARGET_USER}" "${SYSTEMCTL_BIN}" > "${SUDOERS_TMP}"
+printf '%s ALL=(root) NOPASSWD: %s restart photobooth.service, %s stop photobooth.service, %s start photobooth.service, %s reboot\n' \
+    "${TARGET_USER}" "${SYSTEMCTL_BIN}" "${SYSTEMCTL_BIN}" "${SYSTEMCTL_BIN}" "${SYSTEMCTL_BIN}" > "${SUDOERS_TMP}"
 chmod 440 "${SUDOERS_TMP}"
 visudo -cf "${SUDOERS_TMP}" >/dev/null
 install -o root -g root -m 440 "${SUDOERS_TMP}" "${SUDOERS_FILE}"
