@@ -17,7 +17,7 @@ from config import (
     PATH_RAW, PATH_SKIPPED_DELETED, PATH_SKIPPED_RETAKE
 )
 from core.monitoring import est_image_publique
-from web.auth import require_auth
+from web.auth import require_auth, require_lecture
 from stats import load_sessions
 from web.evenements import lister_evenements, tous_les_tags
 
@@ -181,7 +181,7 @@ def _lister_corbeille() -> list[Item]:
 
 
 @bp.route("/")
-@require_auth
+@require_lecture
 def index():
     type_galerie = request.args.get("type", "all")
     if type_galerie not in TYPES_GALERIE:
@@ -266,14 +266,14 @@ def restaurer(mode: str, nom: str):
 
 
 @bp.route("/image/<mode>/<nom>")
-@require_auth
+@require_lecture
 def image(mode: str, nom: str):
     chemin = _resoudre_chemin(mode, nom)
     return send_file(chemin)
 
 
 @bp.route("/thumb/<mode>/<nom>")
-@require_auth
+@require_lecture
 def thumb(mode: str, nom: str):
     chemin = _resoudre_chemin(mode, nom)
     stat = os.stat(chemin)

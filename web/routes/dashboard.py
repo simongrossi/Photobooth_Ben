@@ -24,7 +24,7 @@ from core.monitoring import DiskMonitor, TempMonitor
 from core.performance import ecrire_performance
 from core.printer import PrinterManager
 from stats import calculer_stats, filtrer_sessions, load_sessions, stats_du_jour, stats_par_jour
-from web.auth import require_auth
+from web.auth import require_auth, require_lecture
 from web.evenements import lister_evenements, tous_les_tags
 
 bp = Blueprint("dashboard", __name__, url_prefix="/dashboard")
@@ -58,7 +58,7 @@ def _contexte_heure_serveur() -> dict:
 
 
 @bp.route("/heure")
-@require_auth
+@require_lecture
 def heure_serveur():
     """Point de resynchronisation de l'horloge persistante du dashboard."""
     return jsonify(_contexte_heure_serveur())
@@ -119,7 +119,7 @@ def _construire_sante(disk: DiskMonitor, temp: TempMonitor) -> list[dict]:
 
 
 @bp.route("/")
-@require_auth
+@require_lecture
 def index():
     periode = request.args.get("periode", "7jours")
     evenement_filtre = request.args.get("evenement", "")

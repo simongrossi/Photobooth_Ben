@@ -78,7 +78,9 @@ class TestAuth:
         assert r.status_code == 503
 
     def test_sans_auth_retourne_401(self, client):
-        r = client.get("/dashboard/")
+        # /dashboard/ est désormais consultable en anonyme (mode viewer) —
+        # les pages de gestion, elles, exigent toujours l'admin.
+        r = client.get("/settings/")
         assert r.status_code == 401
         assert "WWW-Authenticate" in r.headers
 

@@ -45,11 +45,13 @@
           {% if item.event_name %}<span class="badge badge--actif">{{ item.event_name }}</span>{% else %}<span class="badge">Sans événement</span>{% endif %}
           {% for tag in item.event_tags %}<span class="badge">{{ tag }}</span>{% endfor %}
           <span class="galerie__taille">{{ item.taille_ko }} Ko</span>
+          {% if role == 'admin' %}
           <form method="post" class="inline"
                 action="{{ url_for('gallery.retirer', mode=item.mode, nom=item.nom) }}"
                 onsubmit="return confirm('Retirer cette photo du slideshow et de la galerie ? (restaurable)');">
             <button type="submit" class="btn btn--danger">Retirer</button>
           </form>
+          {% endif %}
         </div>
       </div>
     {% endfor %}
@@ -68,7 +70,7 @@
   <p class="muted">Aucune image trouvée pour ce filtre.</p>
 {% endif %}
 
-{% if corbeille %}
+{% if corbeille and role == 'admin' %}
 <section class="panel">
   <h2>Corbeille <span class="muted">— {{ corbeille | length }} photo{{ 's' if corbeille | length > 1 }}</span></h2>
   <p class="muted">Retirées du slideshow et de la galerie. Rien n'est supprimé définitivement.</p>

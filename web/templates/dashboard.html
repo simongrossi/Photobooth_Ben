@@ -119,10 +119,12 @@
   <div class="quota-jauge" style="background:#2a2f3a;border-radius:6px;height:10px;margin:12px 0;overflow:hidden;">
     <div style="width: {{ quota_pct }}%;height:100%;background: {{ '#e05252' if quota_restant == 0 else '#4caf7d' }};"></div>
   </div>
+  {% if role == 'admin' %}
   <form method="post" action="{{ url_for('dashboard.debloquer_quota') }}"
         onsubmit="return confirm('Débloquer {{ quota_increment }} impressions supplémentaires ?');">
     <button type="submit" class="btn">Débloquer +{{ quota_increment }} impressions</button>
   </form>
+  {% endif %}
 </section>
 
 <!-- Étage 4 : Répartition horaire globale -->
@@ -159,9 +161,11 @@
   {% else %}
     <p class="muted">Aucune session enregistrée.</p>
   {% endif %}
+  {% if role == 'admin' %}
   <p class="muted">
     Journal : <code>{{ sessions_path }}</code> · Impressions : <code>{{ print_path }}</code>
   </p>
+  {% endif %}
 </section>
 {% endblock %}
 {% block scripts %}

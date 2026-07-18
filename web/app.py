@@ -45,8 +45,22 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     app.register_blueprint(settings_route.bp)
     app.register_blueprint(evenements_route.bp)
 
+    from web.auth import require_auth, role_courant
+
+    @app.context_processor
+    def _injecter_role():
+        # `role` pilote le masquage nav/actions dans les gabarits (admin/viewer).
+        return {"role": role_courant()}
+
     @app.route("/")
     def index():
+        return redirect(url_for("dashboard.index"))
+
+    @app.route("/connexion")
+    @require_auth
+    def connexion():
+        # Sous require_auth : un anonyme reçoit le challenge Basic du navigateur,
+        # puis atterrit sur le dashboard en admin.
         return redirect(url_for("dashboard.index"))
 
     return app
