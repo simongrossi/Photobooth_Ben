@@ -1197,7 +1197,7 @@ def render_decompte(session: SessionState) -> None:
             if surf and generation != derniere_generation:
                 perf_frames_ok += 1
                 derniere_generation = generation
-                derniere_preview_affichee = pygame.transform.scale(surf, (WIDTH, HEIGHT))
+                derniere_preview_affichee = surf
 
             if derniere_preview_affichee:
                 screen.blit(derniere_preview_affichee, (0, 0))
@@ -1361,10 +1361,10 @@ def render_validation(session: SessionState) -> bool:
 
         largeur_cible = int(hauteur_cible / r_v)
 
-        # `with` garantit la fermeture du handle fichier (sinon fuite mémoire 30 FPS)
         with Image.open(derniere_photo) as raw_img:
+            raw_img.draft("RGB", (largeur_cible, hauteur_cible))
             oriented = ImageOps.exif_transpose(raw_img)
-        pil_img = ImageOps.fit(oriented, (largeur_cible, hauteur_cible), Image.Resampling.LANCZOS)
+        pil_img = ImageOps.fit(oriented, (largeur_cible, hauteur_cible), Image.Resampling.BILINEAR)
         session.img_preview_cache = pygame.image.fromstring(
             pil_img.tobytes(), pil_img.size, pil_img.mode
         ).convert()

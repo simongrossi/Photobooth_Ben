@@ -14,6 +14,7 @@ import os
 import subprocess
 import threading
 import time
+import sys
 from collections import deque
 from typing import Any, Optional
 
@@ -37,6 +38,7 @@ try:
 except ImportError:
     pygame = None  # type: ignore[assignment]
 
+from config import WIDTH, HEIGHT
 from core.logger import log_info, log_warning, log_critical
 from core.performance import resumer_durees
 
@@ -300,6 +302,7 @@ class CameraManager:
                         image_data = np.frombuffer(memoryview(file_bits), dtype=np.uint8)
                         frame = cv2.imdecode(image_data, cv2.IMREAD_COLOR)
                         if frame is not None:
+                            frame = cv2.resize(frame, (WIDTH, HEIGHT))
                             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                             frame = cv2.flip(frame, 1)
                             # pygame.surfarray attend l'axe largeur en premier.
@@ -334,8 +337,12 @@ class CameraManager:
             return False
 
         # Nettoyage des processus système qui bloquent souvent l'USB sur Linux
-        subprocess.run(["pkill", "-f", "gvfs-gphoto2-volume-monitor"], capture_output=True)
-        subprocess.run(["pkill", "-f", "gphoto2"], capture_output=True)
+        if sys.platform.startswith("linux"):
+            try:
+                subprocess.run(["pkill", "-f", "gvfs-gphoto2-volume-monitor"], capture_output=True)
+                subprocess.run(["pkill", "-f", "gphoto2"], capture_output=True)
+            except Exception:
+                pass
         try:
             cam = gp.Camera()
             cam.init()

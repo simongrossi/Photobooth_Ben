@@ -155,6 +155,10 @@ def test_get_preview_frame_convertit_surface(monkeypatch):
             return ("decoded", data)
 
         @staticmethod
+        def resize(frame, dsize):
+            return ("resize", frame)
+
+        @staticmethod
         def cvtColor(frame, mode):
             assert mode == 2
             return ("rgb", frame)

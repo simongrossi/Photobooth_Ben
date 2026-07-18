@@ -230,14 +230,35 @@ def obtenir_couleur_pulse(c1, c2, vitesse):
     return tuple(int(c1[i] + (c2[i] - c1[i]) * f) for i in range(3))
 
 
+_text_shadow_cache = {}
+
+
 def draw_text_shadow_soft(surface, text, font, color, x, y, shadow_alpha=100, offset=2):
     """Dessine un texte avec une ombre noire transparente (lisibilité sur fonds variés)."""
-    shadow_surf = font.render(text, True, (0, 0, 0))
-    temp_surf = pygame.Surface(shadow_surf.get_size(), pygame.SRCALPHA)
-    temp_surf.blit(shadow_surf, (0, 0))
-    temp_surf.set_alpha(shadow_alpha)
-    surface.blit(temp_surf, (x + offset, y + offset))
-    surface.blit(font.render(text, True, color), (x, y))
+    key = (text, id(font), color, shadow_alpha, offset)
+    cached_surf = _text_shadow_cache.get(key)
+    if cached_surf is None:
+        shadow_surf = font.render(text, True, (0, 0, 0))
+        text_surf = font.render(text, True, color)
+        
+        tw, th = text_surf.get_size()
+        sw, sh = shadow_surf.get_size()
+        canvas_w = max(tw, sw + offset)
+        canvas_h = max(th, sh + offset)
+        
+        combined_surf = pygame.Surface((canvas_w, canvas_h), pygame.SRCALPHA)
+        
+        temp_shadow = pygame.Surface((sw, sh), pygame.SRCALPHA)
+        temp_shadow.blit(shadow_surf, (0, 0))
+        temp_shadow.set_alpha(shadow_alpha)
+        
+        combined_surf.blit(temp_shadow, (offset, offset))
+        combined_surf.blit(text_surf, (0, 0))
+        
+        _text_shadow_cache[key] = combined_surf
+        cached_surf = combined_surf
+
+    surface.blit(cached_surf, (x, y))
 
 
 def inserer_background(screen, fond_image):

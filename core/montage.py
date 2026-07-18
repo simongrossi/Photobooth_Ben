@@ -62,54 +62,70 @@ def charger_et_corriger(
 class MontageBase:
     """Helpers partagés pour la génération de montages PIL."""
 
-    _asset_cache: dict[str, tuple[int, int, str, Image.Image]] = {}
+    _transformed_asset_cache: dict[tuple, tuple[int, int, Image.Image]] = {}
 
     @classmethod
-    def _charger_asset(cls, chemin: str, mode: str) -> Image.Image:
-        """Charge un asset une fois, puis invalide le cache si le fichier change."""
+    def _charger_asset_transforme(
+        cls,
+        chemin: str,
+        mode: str,
+        size: tuple[int, int],
+        rotation: float,
+        redresser_si_horizontal: bool,
+    ) -> Image.Image:
+        """Charge, oriente et redimensionne un asset, et le met en cache."""
         stat = os.stat(chemin)
-        cache = cls._asset_cache.get(chemin)
-        signature = (stat.st_mtime_ns, stat.st_size, mode)
-        if cache is not None and cache[:3] == signature:
-            return cache[3].copy()
+        key = (chemin, mode, size, rotation, redresser_si_horizontal)
+        cache = cls._transformed_asset_cache.get(key)
+        signature = (stat.st_mtime_ns, stat.st_size)
+        if cache is not None and cache[:2] == signature:
+            return cache[2].copy()
 
         with Image.open(chemin) as src:
-            image = src.convert(mode)
-        if cache is not None:
-            cache[3].close()
-        cls._asset_cache[chemin] = (*signature, image)
-        return image.copy()
+            img = src.convert(mode)
+        if redresser_si_horizontal and img.width > img.height:
+            img = img.rotate(90, expand=True)
+        if rotation:
+            img = img.rotate(rotation)
+        img = img.resize(size)
 
-    @staticmethod
+        if cache is not None:
+            cache[2].close()
+        cls._transformed_asset_cache[key] = (*signature, img)
+        return img.copy()
+
+    @classmethod
     def _canvas_depuis_bg_ou_blanc(
-        bg_path: str, size: tuple, rotation: float = 0, redresser_si_horizontal: bool = False,
+        cls,
+        bg_path: str,
+        size: tuple,
+        rotation: float = 0,
+        redresser_si_horizontal: bool = False,
     ) -> Image.Image:
         """Charge le fond ou retourne une toile blanche.
         `redresser_si_horizontal` : si le fond source est paysage, le met debout
         (rotation 90° expand) avant d'appliquer `rotation` et le resize final."""
         if bg_path and os.path.exists(bg_path) and os.path.isfile(bg_path):
-            canvas = MontageBase._charger_asset(bg_path, "RGB")
-            if redresser_si_horizontal and canvas.width > canvas.height:
-                canvas = canvas.rotate(90, expand=True)
-            if rotation:
-                canvas = canvas.rotate(rotation)
-            return canvas.resize(size)
+            return cls._charger_asset_transforme(
+                bg_path, "RGB", size, rotation, redresser_si_horizontal
+            )
         return Image.new("RGB", size, "white")
 
-    @staticmethod
+    @classmethod
     def _coller_overlay(
-        canvas: Image.Image, overlay_path: str, size: tuple,
-        rotation: float = 0, redresser_si_horizontal: bool = False,
+        cls,
+        canvas: Image.Image,
+        overlay_path: str,
+        size: tuple,
+        rotation: float = 0,
+        redresser_si_horizontal: bool = False,
     ) -> None:
         """Applique l'overlay RGBA si le fichier existe."""
         if not (overlay_path and os.path.exists(overlay_path)):
             return
-        ov = MontageBase._charger_asset(overlay_path, "RGBA")
-        if redresser_si_horizontal and ov.width > ov.height:
-            ov = ov.rotate(90, expand=True)
-        if rotation:
-            ov = ov.rotate(rotation)
-        ov = ov.resize(size)
+        ov = cls._charger_asset_transforme(
+            overlay_path, "RGBA", size, rotation, redresser_si_horizontal
+        )
         canvas.paste(ov, (0, 0), ov)
 
     @staticmethod
@@ -195,6 +211,7 @@ class MontageGenerator10x15(MontageBase):
         cls,
         chemin_photo: str,
         taille_sortie: tuple[int, int] | None = None,
+        resampling: Image.Resampling = Image.Resampling.LANCZOS,
     ) -> Image.Image:
         """Compose fond → photo → overlay avec la géométrie active."""
         taille_sortie = taille_sortie or cls.FINAL_SIZE
@@ -214,7 +231,7 @@ class MontageGenerator10x15(MontageBase):
         photo_fit = ImageOps.fit(
             img_brute,
             zone,
-            Image.Resampling.LANCZOS,
+            resampling,
         )
         canvas.paste(photo_fit, position)
         cls._coller_overlay(canvas, OVERLAY_10X15, taille_sortie)
@@ -223,7 +240,7 @@ class MontageGenerator10x15(MontageBase):
     @classmethod
     def preview(cls, photos: list) -> str:
         path_prev = cls._chemin_prev()
-        apercu = cls._composer(photos[0], taille_sortie=cls.PREVIEW_SIZE)
+        apercu = cls._composer(photos[0], taille_sortie=cls.PREVIEW_SIZE, resampling=Image.Resampling.BILINEAR)
         apercu.save(path_prev, quality=cls.PREVIEW_QUALITY)
         return path_prev
 
@@ -234,6 +251,8 @@ class MontageGenerator10x15(MontageBase):
         cls._appliquer_watermark(canvas, WATERMARK_TAILLE_10X15, WATERMARK_POSITION_10X15)
         cls._appliquer_grain(canvas)
         canvas.save(path_hd, quality=cls.FINAL_QUALITY)
+        canvas.close()
+        import gc; gc.collect()
         return path_hd
 
 
@@ -279,6 +298,7 @@ class MontageGeneratorStrip(MontageBase):
         cls,
         photos: list,
         taille_sortie: tuple[int, int] | None = None,
+        resampling: Image.Resampling = Image.Resampling.LANCZOS,
     ) -> Image.Image:
         """Compose fond → trois photos → overlay avec la géométrie active."""
         taille_sortie = taille_sortie or cls.FINAL_SIZE
@@ -297,7 +317,7 @@ class MontageGeneratorStrip(MontageBase):
             position = (round(zone.x * echelle_x), round(zone.y * echelle_y))
             img = charger_et_corriger(chemin, taille_cible=taille_photo)
             img_fit = ImageOps.fit(
-                img, taille_photo, Image.Resampling.LANCZOS,
+                img, taille_photo, resampling,
             )
             canvas.paste(img_fit, position)
         cls._coller_overlay(
@@ -318,7 +338,7 @@ class MontageGeneratorStrip(MontageBase):
             max(1, round(cls.FINAL_SIZE[0] * facteur)),
             max(1, round(cls.FINAL_SIZE[1] * facteur)),
         )
-        bande_v = cls._composer(photos, taille_sortie=taille_preview)
+        bande_v = cls._composer(photos, taille_sortie=taille_preview, resampling=Image.Resampling.BILINEAR)
         bande_v.save(path_prev, "JPEG", quality=cls.PREVIEW_QUALITY)
         return path_prev
 
@@ -367,5 +387,13 @@ class MontageGeneratorStrip(MontageBase):
 
         # Sauvegarde avec qualité maximale et sans sous-échantillonnage (plus net)
         canvas_10x15.save(path_ready, "JPEG", quality=cls.FINAL_QUALITY, subsampling=0)
+
+        # Libération explicite de la mémoire
+        canvas.close()
+        canvas_10x15.close()
+        bloc_photos.close()
+        bande_horiz.close()
+        bande_finale.close()
+        import gc; gc.collect()
 
         return path_ready
