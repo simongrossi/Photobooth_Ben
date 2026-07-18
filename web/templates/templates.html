@@ -17,6 +17,12 @@
   </div>
 </div>
 
+{% if verrou_session.actif %}
+<p class="flash flash--error">
+  Session photo en cours ({{ verrou_session.ecran }}) : l'habillage actif est verrouillé jusqu'au retour à l'accueil.
+</p>
+{% endif %}
+
 {% set libelles_couche = {"overlay": "Overlays (cadres PNG)", "fond": "Fonds (sous les photos)"} %}
 {% set libelles_type = {"10x15": "10×15 (grand format)", "strip": "Bandelette (strip)"} %}
 
@@ -33,6 +39,7 @@
   <div class="event-template-cards">
     {% for evenement in evenements %}
     {% set selection = affectations_par_evenement[evenement.id] %}
+    {% set evenement_verrouille = verrou_session.actif and evenement.statut == 'actif' %}
     <article id="evenement-{{ evenement.id }}" class="event-template-card {% if evenement.statut == 'actif' %}event-template-card--active{% endif %}">
       <header>
         <div>
@@ -59,7 +66,7 @@
             </div>
             <label>
               <span>{{ emplacement.libelle }}</span>
-              <select name="{{ emplacement.champ }}">
+              <select name="{{ emplacement.champ }}" {% if evenement_verrouille %}disabled{% endif %}>
               <option value="" data-thumb="">Aucun template</option>
               {% for template in options_par_emplacement[emplacement.champ] %}
               <option value="{{ template.id }}"
@@ -76,7 +83,7 @@
           <span class="muted">
             {% if evenement.statut == 'actif' %}Visible sur le kiosque dès l'enregistrement.{% else %}Appliqué lors de l'activation de l'événement.{% endif %}
           </span>
-          <button type="submit" class="btn btn--primary">Enregistrer les 4 choix</button>
+          <button type="submit" class="btn btn--primary" {% if evenement_verrouille %}disabled{% endif %}>Enregistrer les 4 choix</button>
         </div>
       </form>
     </article>
@@ -147,13 +154,13 @@
           <form method="post" class="inline"
                 action="{{ url_for('templates.desactiver', couche=couche, type_t=type_t) }}"
                 onsubmit="return confirm('Passer en « aucun template » pour ce mode ?');">
-            <button type="submit" class="btn btn--danger">Aucun (désactiver)</button>
+            <button type="submit" class="btn btn--danger" {% if verrou_session.actif %}disabled{% endif %}>Aucun (désactiver)</button>
           </form>
         {% else %}
           <span class="badge">Aucun</span>
           <form method="post" class="inline"
                 action="{{ url_for('templates.desactiver', couche=couche, type_t=type_t) }}">
-            <button type="submit" class="btn" title="Supprime aussi un fichier actif posé à la main">Forcer « aucun »</button>
+            <button type="submit" class="btn" title="Supprime aussi un fichier actif posé à la main" {% if verrou_session.actif %}disabled{% endif %}>Forcer « aucun »</button>
           </form>
         {% endif %}
       </li>
@@ -187,10 +194,14 @@
             </div>
             {% endif %}
             <div class="actions">
-              <a class="btn" href="{{ url_for('templates.editer', template_id=t.id) }}">Modifier la mise en page</a>
+              {% if verrou_session.actif and t.actif %}
+                <span class="btn btn--disabled" aria-disabled="true">Modifier la mise en page</span>
+              {% else %}
+                <a class="btn" href="{{ url_for('templates.editer', template_id=t.id) }}">Modifier la mise en page</a>
+              {% endif %}
               {% if not t.actif %}
                 <form method="post" action="{{ url_for('templates.activer', template_id=t.id) }}">
-                  <button type="submit" class="btn btn--primary">Activer</button>
+                  <button type="submit" class="btn btn--primary" {% if verrou_session.actif %}disabled{% endif %}>Activer</button>
                 </form>
                 <form method="post" action="{{ url_for('templates.supprimer', template_id=t.id) }}" onsubmit="return confirm('Supprimer ce template ?');">
                   <button type="submit" class="btn btn--danger">Supprimer</button>

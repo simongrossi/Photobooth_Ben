@@ -98,6 +98,9 @@ orientés comme ils le seront dans le fichier imprimé.
    SQLite peut avoir le statut `actif` ; activer un autre événement termine le
    précédent et publie automatiquement ses quatre choix de templates ainsi que
    leurs mises en page.
+   Pendant une session photo, activation, clôture, modification de l'événement
+   actif, changement d'habillage actif et mise en page active sont verrouillés
+   dans l'interface et refusés côté serveur. Un heartbeat périmé lève ce verrou.
 3. Le kiosque lit `evenement_actif.json` au début de la première capture et
    copie `event_id`, `event_name` et `event_tags` dans `sessions.jsonl`.
 4. Utiliser les filtres du dashboard et de la galerie. Les anciennes sessions

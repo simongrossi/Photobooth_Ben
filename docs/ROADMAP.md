@@ -308,15 +308,15 @@ agrège les temps de frame en mémoire et n'écrit que quelques lignes par sessi
     relancer le service.
   - Conserver automatiquement la dernière configuration valide et la restaurer
     si le kiosque ne redémarre pas correctement.
-- [ ] **État de santé et protection des sessions en cours** *(3–5 h)*
+- [x] **État de santé et protection des sessions en cours** *(livré le 2026-07-19)*
   - Publier un heartbeat du kiosque avec son état courant (`ACCUEIL`,
     `DECOMPTE`, `VALIDATION`, `FIN`).
   - Afficher cet état dans le dashboard avec la date du dernier signal reçu.
   - Refuser ou mettre en attente les redémarrages, changements d'événement et
     changements de template pendant une session photo.
-  - **Partiellement livré (2026-07-19)** : heartbeat, dashboard et refus des
-    redémarrages/arrêts/reboots pendant une session. Les changements
-    d'événement et de template restent à protéger.
+  - Heartbeat périmé = déverrouillage automatique. Les routes serveur et les
+    contrôles visuels protègent redémarrages/arrêts/reboots, activation ou
+    clôture d'événement, habillage actif et mise en page active.
 - [ ] **Activation atomique des templates** *(2–4 h)*
   - Préparer les quatre couches et la configuration de mise en page dans des
     fichiers temporaires.

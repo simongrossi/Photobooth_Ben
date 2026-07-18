@@ -8,6 +8,12 @@
   </div>
 </div>
 
+{% if verrou_session.actif %}
+<p class="flash flash--error">
+  Session photo en cours ({{ verrou_session.ecran }}) : activation, clôture et modification de l'habillage actif sont verrouillées.
+</p>
+{% endif %}
+
 {% if actif %}
 <section class="panel evenement-actif">
   <div>
@@ -24,7 +30,7 @@
     <a class="btn" href="{{ url_for('dashboard.index', evenement=actif.id, periode='toutes') }}">Statistiques</a>
     <a class="btn" href="{{ url_for('gallery.index', evenement=actif.id) }}">Galerie</a>
     <form method="post" action="{{ url_for('evenements.terminer', evenement_id=actif.id) }}">
-      <button class="btn--danger" type="submit">Terminer</button>
+      <button class="btn--danger" type="submit" {% if verrou_session.actif %}disabled{% endif %}>Terminer</button>
     </form>
   </div>
 </section>
@@ -93,7 +99,7 @@
           <div class="actions-row">
             {% if evenement.statut not in ('actif', 'archive') %}
             <form method="post" action="{{ url_for('evenements.activer', evenement_id=evenement.id) }}">
-              <button class="btn--primary" type="submit">Activer</button>
+              <button class="btn--primary" type="submit" {% if verrou_session.actif %}disabled{% endif %}>Activer</button>
             </form>
             {% endif %}
             <a class="btn" href="{{ url_for('dashboard.index', evenement=evenement.id, periode='toutes') }}">Stats</a>
@@ -103,7 +109,7 @@
             {% if evenement.statut != 'archive' %}
             <form method="post" action="{{ url_for('evenements.archiver', evenement_id=evenement.id) }}"
                   onsubmit="return confirm('Archiver cet événement ?');">
-              <button type="submit">Archiver</button>
+              <button type="submit" {% if verrou_session.actif and evenement.statut == 'actif' %}disabled{% endif %}>Archiver</button>
             </form>
             {% endif %}
           </div>

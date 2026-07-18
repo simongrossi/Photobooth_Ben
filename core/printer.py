@@ -121,11 +121,27 @@ class PrinterManager:
 
 
     def purger_file_attente(self) -> None:
-        """Purge de manière sécurisée toutes les tâches d'impression CUPS en cours ou bloquées."""
-        try:
-            subprocess.run(["cancel", "-a"], capture_output=True, text=True, check=True)
-            log_info("🗑️ CUPS : Les tâches d'impression résiduelles ont été purgées avec succès.")
-        except subprocess.CalledProcessError as e:
-            log_critical(f"Impossible de purger la file d'attente d'impression (CUPS) : {e.stderr}")
-        except FileNotFoundError:
-            log_critical("La commande système Linux 'cancel' est introuvable. Pas de purge CUPS effectuée.")
+        """Purge manuellement les jobs des seules files DNP configurées.
+
+        Cette opération ne doit pas être lancée automatiquement au démarrage :
+        un job peut encore être en cours de finalisation après la sortie du tirage.
+        """
+        for nom_file in dict.fromkeys(self._noms.values()):
+            try:
+                subprocess.run(
+                    ["cancel", "-a", nom_file],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                log_info(f"🗑️ CUPS : file {nom_file} purgée avec succès.")
+            except subprocess.CalledProcessError as e:
+                log_critical(
+                    f"Impossible de purger la file {nom_file} (CUPS) : {e.stderr}"
+                )
+            except FileNotFoundError:
+                log_critical(
+                    "La commande système Linux 'cancel' est introuvable. "
+                    "Pas de purge CUPS effectuée."
+                )
+                break

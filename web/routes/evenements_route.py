@@ -40,6 +40,7 @@ from web.evenements import (
 )
 from web.routes.gallery import _lister_tous
 from web.routes.templates_route import appliquer_selection_templates
+from web.session_guard import refuser_mutation_pendant_session
 
 bp = Blueprint("evenements", __name__, url_prefix="/evenements")
 
@@ -232,6 +233,14 @@ def modifier(evenement_id: str):
             selection_templates=_selection_par_champ(selection_templates_evenement(evenement_id)),
         )
 
+    if evenement.statut == "actif":
+        refus = refuser_mutation_pendant_session(
+            "evenements.index",
+            action="modifier l'événement actif ou ses templates",
+        )
+        if refus is not None:
+            return refus
+
     donnees, erreurs = _valider_formulaire()
     selection, erreurs_templates = _lire_selection_formulaire(
         selection_templates_evenement(evenement_id)
@@ -271,6 +280,12 @@ def activer(evenement_id: str):
     evenement = trouver_evenement(evenement_id)
     if evenement is None:
         abort(404)
+    refus = refuser_mutation_pendant_session(
+        "evenements.index",
+        action="activer un événement",
+    )
+    if refus is not None:
+        return refus
     if evenement.statut == "archive":
         flash("Un événement archivé ne peut pas être réactivé.", "error")
         return redirect(url_for("evenements.index"))
@@ -309,6 +324,14 @@ def _changer_statut(evenement_id: str, statut: str) -> None:
 @bp.route("/<evenement_id>/terminer", methods=["POST"])
 @require_auth
 def terminer(evenement_id: str):
+    if trouver_evenement(evenement_id) is None:
+        abort(404)
+    refus = refuser_mutation_pendant_session(
+        "evenements.index",
+        action="terminer l'événement actif",
+    )
+    if refus is not None:
+        return refus
     _changer_statut(evenement_id, "termine")
     flash("Événement terminé. Les prochaines sessions seront sans événement jusqu'à une activation.", "success")
     return redirect(url_for("evenements.index"))
@@ -317,6 +340,16 @@ def terminer(evenement_id: str):
 @bp.route("/<evenement_id>/archiver", methods=["POST"])
 @require_auth
 def archiver(evenement_id: str):
+    evenement = trouver_evenement(evenement_id)
+    if evenement is None:
+        abort(404)
+    if evenement.statut == "actif":
+        refus = refuser_mutation_pendant_session(
+            "evenements.index",
+            action="archiver l'événement actif",
+        )
+        if refus is not None:
+            return refus
     _changer_statut(evenement_id, "archive")
     flash("Événement archivé.", "success")
     return redirect(url_for("evenements.index"))

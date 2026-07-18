@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import io
 import os
+import time
 
 import pytest
 from PIL import Image
@@ -12,6 +13,19 @@ from web.app import create_app
 from web.db import connexion
 
 HEADERS = {"Authorization": "Basic " + base64.b64encode(b"admin:test").decode()}
+
+
+def _simuler_session_kiosque(monkeypatch):
+    from web import session_guard
+
+    heartbeat = {
+        "online": True,
+        "heartbeat_ts": time.time(),
+        "session_active": True,
+        "etat": "FIN",
+        "session_id": "session-test",
+    }
+    monkeypatch.setattr(session_guard.ecrans, "lire_etat_kiosque", lambda: heartbeat)
 
 
 def _png_bytes(taille=(100, 100), couleur=(255, 0, 0, 128)) -> bytes:
@@ -169,6 +183,24 @@ class TestActivation:
             ).fetchone()
         assert actifs["n"] == 1
 
+    def test_post_direct_activation_refuse_pendant_session(self, client, monkeypatch):
+        c, overlays, _ = client
+        template_id = _uploader(c, "Bloqué", "10x15", "overlay", _png_bytes(), "bloque.png")
+        _simuler_session_kiosque(monkeypatch)
+
+        reponse = c.post(
+            f"/templates/activer/{template_id}",
+            headers=HEADERS,
+            follow_redirects=True,
+        )
+
+        assert "Action refusée" in reponse.get_data(as_text=True)
+        assert not os.path.exists(os.path.join(overlays, "10x15_overlay.png"))
+        with connexion() as conn:
+            assert conn.execute(
+                "SELECT actif FROM template WHERE id = ?", (template_id,),
+            ).fetchone()["actif"] == 0
+
 
 class TestAssociationEvenement:
     @staticmethod
@@ -286,6 +318,30 @@ class TestAssociationEvenement:
                 "AND type = '10x15' AND couche = 'overlay'"
             ).fetchone()
         assert association["template_id"] == template_id
+
+    def test_post_direct_affectation_active_refuse_pendant_session(self, client, monkeypatch):
+        c, overlays, _ = client
+        self._creer_evenement(statut="actif")
+        template_id = _uploader(
+            c, "Cadre refusé", "10x15", "overlay", _png_bytes(), "refuse.png",
+        )
+        _simuler_session_kiosque(monkeypatch)
+
+        reponse = c.post(
+            "/templates/evenement/evt-1",
+            data={"template_overlay_10x15": template_id},
+            headers=HEADERS,
+            follow_redirects=True,
+        )
+
+        assert "Action refusée" in reponse.get_data(as_text=True)
+        assert not os.path.exists(os.path.join(overlays, "10x15_overlay.png"))
+        with connexion() as conn:
+            association = conn.execute(
+                "SELECT template_id FROM evenement_template WHERE evenement_id = 'evt-1' "
+                "AND type = '10x15' AND couche = 'overlay'",
+            ).fetchone()
+        assert association is None
 
 
 class TestSuppression:
@@ -492,6 +548,29 @@ class TestDesactivation:
         r = c.post("/templates/desactiver/overlay/13x18", headers=HEADERS)
         assert r.status_code == 404
 
+    def test_post_direct_desactivation_refuse_pendant_session(self, client, monkeypatch):
+        c, overlays, _ = client
+        template_id = _uploader(c, "Actif", "10x15", "overlay", _png_bytes(), "actif.png")
+        c.post(f"/templates/activer/{template_id}", headers=HEADERS)
+        cible = os.path.join(overlays, "10x15_overlay.png")
+        _simuler_session_kiosque(monkeypatch)
+
+        reponse = c.post(
+            "/templates/desactiver/overlay/10x15",
+            headers=HEADERS,
+            follow_redirects=True,
+        )
+
+        assert "Action refusée" in reponse.get_data(as_text=True)
+        assert os.path.exists(cible)
+        html = reponse.get_data(as_text=True)
+        assert "l'habillage actif est verrouillé" in html
+        assert "aria-disabled=\"true\"" in html
+        with connexion() as conn:
+            assert conn.execute(
+                "SELECT actif FROM template WHERE id = ?", (template_id,),
+            ).fetchone()["actif"] == 1
+
 
 class TestPageDeuxCouches:
     def test_page_contient_sections_et_desactivation(self, client):
@@ -575,6 +654,31 @@ class TestEditeurMiseEnPage:
             actif = json.load(fichier)
         assert actif["template_id"] == template_id
         assert actif["largeur"] == 1500
+
+    def test_post_direct_mise_en_page_active_refuse_pendant_session(self, client, monkeypatch):
+        c, _, _ = client
+        template_id = _uploader(
+            c, "Mise en page bloquée", "10x15", "overlay", _png_bytes(), "layout.png",
+        )
+        c.post(f"/templates/activer/{template_id}", headers=HEADERS)
+        _simuler_session_kiosque(monkeypatch)
+
+        reponse = c.post(f"/templates/editer/{template_id}", data={
+            "photo_x": "120", "photo_y": "90",
+            "photo_largeur": "1500", "photo_hauteur": "1000",
+        }, headers=HEADERS, follow_redirects=True)
+
+        assert "Action refusée" in reponse.get_data(as_text=True)
+        with connexion() as conn:
+            row = conn.execute(
+                "SELECT photo_x, photo_y FROM template WHERE id = ?", (template_id,),
+            ).fetchone()
+        assert row["photo_x"] is None and row["photo_y"] is None
+
+        editeur = c.get(f"/templates/editer/{template_id}", headers=HEADERS)
+        html = editeur.get_data(as_text=True)
+        assert "mise en page active est consultable mais verrouillée" in html
+        assert "session-lock-fieldset\" disabled" in html
 
     def test_refuse_zone_hors_canvas(self, client):
         c, _, _ = client

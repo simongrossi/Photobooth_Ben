@@ -15,6 +15,7 @@ from flask import Flask, redirect, url_for
 from web.db import init_db
 from web.evenements import synchroniser_evenement_actif
 from web.routes import dashboard, evenements_route, gallery, kiosque_route, settings_route, templates_route
+from web.session_guard import etat_verrou_session
 
 
 def create_app(config_overrides: dict | None = None) -> Flask:
@@ -50,7 +51,10 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     @app.context_processor
     def _injecter_role():
         # `role` pilote le masquage nav/actions dans les gabarits (admin/viewer).
-        return {"role": role_courant()}
+        return {
+            "role": role_courant(),
+            "verrou_session": etat_verrou_session(),
+        }
 
     @app.route("/")
     def index():

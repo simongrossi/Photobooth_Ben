@@ -62,6 +62,7 @@ from web.evenements import (
     lister_evenements,
     selection_templates_evenement,
 )
+from web.session_guard import etat_verrou_session, refuser_mutation_pendant_session
 
 bp = Blueprint("templates", __name__, url_prefix="/templates")
 
@@ -380,8 +381,12 @@ def _options_par_emplacement(templates: list[TemplateRow]) -> dict[str, list[Tem
 @bp.route("/", methods=["GET"])
 @require_auth
 def index():
-    _synchroniser_disque_et_db()
-    _synchroniser_mise_en_page_active()
+    # Ces synchronisations peuvent écrire en DB et republier la mise en page.
+    # Une simple consultation de l'admin ne doit donc rien modifier pendant
+    # qu'un invité utilise le kiosque.
+    if not etat_verrou_session()["actif"]:
+        _synchroniser_disque_et_db()
+        _synchroniser_mise_en_page_active()
     templates = _lister()
     actifs = {(t.couche, t.type): t.nom for t in templates if t.actif}
     evenements = [e for e in lister_evenements() if e.statut != "archive"]
@@ -414,6 +419,13 @@ def affecter_evenement(evenement_id: str):
         if evenement["statut"] == "archive":
             flash("Un événement archivé ne peut pas être modifié.", "error")
             return redirect(url_for("templates.index"))
+        if evenement["statut"] == "actif":
+            refus = refuser_mutation_pendant_session(
+                "templates.index",
+                action="modifier les templates de l'événement actif",
+            )
+            if refus is not None:
+                return refus
 
         selection = {}
         erreurs = []
@@ -472,6 +484,13 @@ def associer_evenement(template_id: int):
         if evenement is None or evenement["statut"] == "archive":
             flash("Événement introuvable ou archivé.", "error")
             return redirect(url_for("templates.index"))
+        if evenement["statut"] == "actif":
+            refus = refuser_mutation_pendant_session(
+                "templates.index",
+                action="modifier les templates de l'événement actif",
+            )
+            if refus is not None:
+                return refus
         conn.execute(
             "INSERT INTO evenement_template (evenement_id, type, couche, template_id) "
             "VALUES (?, ?, ?, ?) "
@@ -560,6 +579,12 @@ def activer(template_id: int):
         ).fetchone()
         if row is None:
             abort(404)
+        refus = refuser_mutation_pendant_session(
+            "templates.index",
+            action="activer un template",
+        )
+        if refus is not None:
+            return refus
         type_t = row["type"]
         couche = row["couche"]
         fichier = row["fichier"]
@@ -594,6 +619,12 @@ def desactiver(couche: str, type_t: str):
     """
     if couche not in COUCHES_AUTORISEES or type_t not in TYPES_AUTORISES:
         abort(404)
+    refus = refuser_mutation_pendant_session(
+        "templates.index",
+        action="désactiver un template",
+    )
+    if refus is not None:
+        return refus
     cible_active = _CIBLE_ACTIVE[(couche, type_t)]
     try:
         os.remove(cible_active)
@@ -720,6 +751,13 @@ def editer(template_id: int):
     if row is None:
         abort(404)
     if request.method == "POST":
+        if row["actif"]:
+            refus = refuser_mutation_pendant_session(
+                "templates.index",
+                action="modifier la mise en page d'un template actif",
+            )
+            if refus is not None:
+                return refus
         if row["type"] == "strip":
             try:
                 mise_en_page_strip = MiseEnPageStrip(photos=tuple(

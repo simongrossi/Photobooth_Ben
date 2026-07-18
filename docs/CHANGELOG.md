@@ -18,6 +18,8 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
   cours, caméra, Arduino et dernier tirage réellement accepté par CUPS.
 - Dashboard enrichi avec l'âge du heartbeat, les périphériques, la profondeur
   des files CUPS, le dernier tirage réussi et l'espace disque.
+- Verrou partagé `web/session_guard.py` et tests de contournement HTTP pour les
+  événements, templates actifs et mises en page actives.
 
 ### Changed
 - Utilisation de Pillow `.draft()` et de l'interpolation `BILINEAR` pour charger instantanément l'aperçu de validation des clichés.
@@ -33,6 +35,12 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 - Les commandes admin de redémarrage, arrêt du kiosque et reboot machine sont
   refusées pendant une session active ; un heartbeat périmé libère le verrou
   pour permettre une récupération après plantage.
+- Activation/clôture d'événement et changements d'habillage ayant un effet sur
+  la session courante sont désormais refusés côté serveur et désactivés dans
+  l'interface. Uploads et préparation des brouillons restent disponibles.
+- La purge CUPS globale n'est plus exécutée au démarrage : elle risquait
+  d'annuler un tirage encore en cours de finalisation. La maintenance manuelle
+  est désormais limitée aux deux files DNP configurées.
 
 ---
 

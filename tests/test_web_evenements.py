@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import time
 import zipfile
 
 import pytest
@@ -77,6 +78,19 @@ def _creer(client, nom="Mariage Alice & Ben", tags="mariage, Lyon", **templates)
 def _id_evenement():
     from web.evenements import lister_evenements
     return lister_evenements()[0].id
+
+
+def _simuler_session_kiosque(monkeypatch, *, age_s=0.0):
+    from web import session_guard
+
+    heartbeat = {
+        "online": True,
+        "heartbeat_ts": time.time() - age_s,
+        "session_active": True,
+        "etat": "VALIDATION",
+        "session_id": "session-test",
+    }
+    monkeypatch.setattr(session_guard.ecrans, "lire_etat_kiosque", lambda: heartbeat)
 
 
 def test_creation_et_tags(contexte):
@@ -167,6 +181,64 @@ def test_terminer_retire_le_fichier_actif(contexte):
     evenement_id = _id_evenement()
     client.post(f"/evenements/{evenement_id}/activer", headers=HEADERS)
     client.post(f"/evenements/{evenement_id}/terminer", headers=HEADERS)
+    assert not (data / "evenement_actif.json").exists()
+
+
+def test_activation_http_refusee_pendant_session(contexte, monkeypatch):
+    client, data, _, _ = contexte
+    _creer(client, "Premier")
+    premier = _id_evenement()
+    client.post(f"/evenements/{premier}/activer", headers=HEADERS)
+    _creer(client, "Second")
+    from web.evenements import lister_evenements
+    second = next(e.id for e in lister_evenements() if e.nom == "Second")
+    _simuler_session_kiosque(monkeypatch)
+
+    reponse = client.post(
+        f"/evenements/{second}/activer",
+        headers=HEADERS,
+        follow_redirects=True,
+    )
+
+    evenements = {e.id: e for e in lister_evenements()}
+    assert evenements[premier].statut == "actif"
+    assert evenements[second].statut == "brouillon"
+    assert json.loads((data / "evenement_actif.json").read_text())["id"] == premier
+    assert "Action refusée" in reponse.get_data(as_text=True)
+
+
+def test_cloture_http_refusee_et_boutons_desactives(contexte, monkeypatch):
+    client, data, _, _ = contexte
+    _creer(client)
+    evenement_id = _id_evenement()
+    client.post(f"/evenements/{evenement_id}/activer", headers=HEADERS)
+    _simuler_session_kiosque(monkeypatch)
+
+    reponse = client.post(
+        f"/evenements/{evenement_id}/terminer",
+        headers=HEADERS,
+        follow_redirects=True,
+    )
+
+    from web.evenements import trouver_evenement
+    assert trouver_evenement(evenement_id).statut == "actif"
+    assert (data / "evenement_actif.json").exists()
+    html = reponse.get_data(as_text=True)
+    assert "Session photo en cours" in html
+    assert '>Terminer</button>' in html and "disabled" in html
+
+
+def test_heartbeat_perime_autorise_la_cloture(contexte, monkeypatch):
+    client, data, _, _ = contexte
+    _creer(client)
+    evenement_id = _id_evenement()
+    client.post(f"/evenements/{evenement_id}/activer", headers=HEADERS)
+    _simuler_session_kiosque(monkeypatch, age_s=60)
+
+    client.post(f"/evenements/{evenement_id}/terminer", headers=HEADERS)
+
+    from web.evenements import trouver_evenement
+    assert trouver_evenement(evenement_id).statut == "termine"
     assert not (data / "evenement_actif.json").exists()
 
 

@@ -178,3 +178,21 @@ class TestSend:
 
         monkeypatch.setattr(printer.subprocess, "Popen", raising_popen)
         assert mgr.send("/tmp/foo.jpg", "10x15") is False
+
+
+class TestPurge:
+    def test_limitee_aux_files_configurees(self, mgr, monkeypatch):
+        commandes = []
+
+        def fake_run(cmd, **kwargs):
+            commandes.append(cmd)
+            return SimpleNamespace(stdout="", stderr="", returncode=0)
+
+        monkeypatch.setattr(printer.subprocess, "run", fake_run)
+
+        mgr.purger_file_attente()
+
+        assert commandes == [
+            ["cancel", "-a", "DNP_10x15"],
+            ["cancel", "-a", "DNP_STRIP"],
+        ]

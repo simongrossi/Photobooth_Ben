@@ -38,7 +38,12 @@
 
   <section class="panel editor-controls">
     <h2>Zone{{ "s" if zones|length > 1 }} photo</h2>
+    {% set edition_verrouillee = verrou_session.actif and template.actif %}
+    {% if edition_verrouillee %}
+    <p class="flash flash--error">Session photo en cours ({{ verrou_session.ecran }}) : la mise en page active est consultable mais verrouillée.</p>
+    {% endif %}
     <form method="post" id="layout-form">
+      <fieldset class="session-lock-fieldset" {% if edition_verrouillee %}disabled{% endif %}>
       {% for zone in zones %}
       {% set numero = loop.index %}
       {% set prefixe = "photo" if zones|length == 1 else "photo_" ~ numero %}
@@ -64,6 +69,7 @@
         Conserver le ratio photo 3:2 pendant le redimensionnement
       </label>
       <button type="submit" class="btn btn--primary editor-save">Enregistrer la mise en page</button>
+      </fieldset>
     </form>
     <aside class="settings-notice editor-notice">
       <span class="settings-notice__mark" aria-hidden="true">i</span>

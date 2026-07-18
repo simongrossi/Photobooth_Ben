@@ -256,6 +256,14 @@ Le heartbeat est écrit par remplacement atomique. L'admin n'interprète
 `EXPIRATION_HEARTBEAT_KIOSQUE_S` secondes : un kiosque tué brutalement ne peut
 donc pas verrouiller indéfiniment les commandes de récupération.
 
+**Verrou partagé des mutations admin** : `web/session_guard.py` lit une seule
+fois ce heartbeat par décision et refuse les opérations qui modifieraient la
+session courante : redémarrage, activation/clôture d'événement, habillage actif
+et mise en page active. Les routes font ce contrôle avant toute écriture ; les
+gabarits reçoivent la même vue via un context processor Flask afin de désactiver
+les contrôles concernés. Les uploads et la préparation d'un événement brouillon
+restent possibles car ils n'altèrent aucun fichier lu par la session en cours.
+
 ---
 
 ## Décisions architecturales notables

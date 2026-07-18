@@ -4,7 +4,12 @@
 <p><a href="{{ url_for('evenements.index') }}">← Événements</a></p>
 <section class="panel">
   <h1>Modifier {{ evenement.nom }}</h1>
+  {% set edition_verrouillee = verrou_session.actif and evenement.statut == 'actif' %}
+  {% if edition_verrouillee %}
+  <p class="flash flash--error">Session photo en cours ({{ verrou_session.ecran }}) : cet événement actif est consultable mais non modifiable.</p>
+  {% endif %}
   <form class="form" method="post">
+    <fieldset class="session-lock-fieldset" {% if edition_verrouillee %}disabled{% endif %}>
     <label>Nom
       <input type="text" name="nom" required value="{{ evenement.nom }}">
     </label>
@@ -40,6 +45,7 @@
       <button class="btn btn--primary" type="submit">Enregistrer</button>
       <a class="btn" href="{{ url_for('evenements.index') }}">Annuler</a>
     </div>
+    </fieldset>
   </form>
 </section>
 {% endblock %}

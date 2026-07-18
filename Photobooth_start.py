@@ -453,9 +453,6 @@ def _initialiser_runtime() -> None:
     _preparer_dossiers_et_logs()
 
 
-#Purger file d'attent CUPS au démarrage pour éviter les blocages si des tâches résiduelles sont présentes.
-    printer_mgr.purger_file_attente()
-
     from ui import (
         UIContext as _UIContext,
         AccueilAssets as _AccueilAssets,

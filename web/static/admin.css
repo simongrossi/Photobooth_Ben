@@ -221,6 +221,11 @@ code {
 .btn--primary:hover { filter: brightness(1.1); }
 .btn--danger { background: var(--err-bg); color: var(--err-tx); border-color: transparent; }
 .btn--danger:hover { filter: brightness(1.08); }
+.btn[disabled], button[disabled], select[disabled], input[disabled], textarea[disabled],
+.btn--disabled {
+  cursor: not-allowed; opacity: .48; filter: grayscale(.35); pointer-events: none;
+}
+.session-lock-fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 form.inline { display: inline; margin: 0; }
 
 /* --- Événements --- */
