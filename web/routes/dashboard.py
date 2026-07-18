@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from datetime import date, datetime, timedelta
 
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
 
 import config
 
@@ -24,6 +24,7 @@ from core.monitoring import DiskMonitor, TempMonitor
 from core.performance import ecrire_performance
 from core.printer import PrinterManager
 from stats import calculer_stats, filtrer_sessions, load_sessions, stats_du_jour, stats_par_jour
+from web import systeme
 from web.auth import require_auth, require_lecture
 from web.evenements import lister_evenements, tous_les_tags
 
@@ -98,7 +99,12 @@ def _pastille_imprimante(mode: str, libelle: str) -> dict:
 
 
 def _construire_sante(disk: DiskMonitor, temp: TempMonitor) -> list[dict]:
+    etats_kiosque = {"active": ("ok", "actif"), "inactive": ("warn", "arrêté"),
+                     "failed": ("err", "en panne"), "indisponible": ("na", "N/A")}
+    etat_k = systeme.etat_kiosque()
+    etat, detail = etats_kiosque.get(etat_k, ("na", etat_k))
     sante = [
+        {"libelle": "Kiosque", "etat": etat, "detail": detail},
         _pastille_imprimante("10x15", "Imprimante 10×15"),
         _pastille_imprimante("strips", "Imprimante strip"),
     ]
@@ -220,4 +226,16 @@ def debloquer_quota():
     )
     restant = max(0, etat["quota"] - etat["tirages_total"])
     flash(f"Quota débloqué : +{increment} impressions (restant : {restant}).", "success")
+    return redirect(url_for("dashboard.index"))
+
+
+@bp.route("/systeme/<action>", methods=["POST"])
+@require_auth
+def action_systeme(action: str):
+    """Contrôle du kiosque (liste blanche web/systeme.py). Admin uniquement."""
+    try:
+        ok, message = systeme.executer_action(action)
+    except ValueError:
+        abort(404)
+    flash(message, "success" if ok else "error")
     return redirect(url_for("dashboard.index"))

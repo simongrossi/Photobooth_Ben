@@ -81,3 +81,43 @@ class TestEtatKiosque:
             raise OSError("systemctl introuvable")
         monkeypatch.setattr(systeme.subprocess, "run", run)
         assert systeme.etat_kiosque() == "indisponible"
+
+
+@pytest.fixture
+def client(tmp_path, monkeypatch):
+    data = tmp_path / "data"
+    data.mkdir()
+    monkeypatch.setenv("PHOTOBOOTH_ADMIN_PASS", "test")
+    import config
+    monkeypatch.setattr(config, "PATH_DATA", str(data))
+    import web.db
+    monkeypatch.setattr(web.db, "DB_PATH", str(data / "admin.db"))
+    app = create_app()
+    app.config["TESTING"] = True
+    return app.test_client()
+
+
+class TestRoutesSysteme:
+    def test_action_valide_redirige(self, client, monkeypatch):
+        monkeypatch.setattr(systeme.subprocess, "run", _fake_run(0))
+        r = client.post("/dashboard/systeme/redemarrer-kiosque",
+                        headers=HEADERS_OK, follow_redirects=True)
+        assert r.status_code == 200
+
+    def test_action_inconnue_404(self, client):
+        assert client.post("/dashboard/systeme/pwn",
+                           headers=HEADERS_OK).status_code == 404
+
+    def test_sans_auth_401(self, client):
+        assert client.post("/dashboard/systeme/redemarrer-kiosque").status_code == 401
+
+    def test_viewer_ne_voit_pas_le_panneau(self, client, monkeypatch):
+        monkeypatch.setattr(systeme.subprocess, "run", _fake_run(0, stdout="active\n"))
+        html = client.get("/dashboard/").get_data(as_text=True)
+        assert "Contrôle du kiosque" not in html
+
+    def test_admin_voit_le_panneau(self, client, monkeypatch):
+        monkeypatch.setattr(systeme.subprocess, "run", _fake_run(0, stdout="active\n"))
+        html = client.get("/dashboard/", headers=HEADERS_OK).get_data(as_text=True)
+        assert "Contrôle du kiosque" in html
+        assert "/dashboard/systeme/redemarrer-machine" in html

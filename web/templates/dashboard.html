@@ -45,6 +45,27 @@
   {% endfor %}
 </section>
 
+{% if role == 'admin' %}
+<section class="panel">
+  <h2>Contrôle du kiosque</h2>
+  <div class="actions">
+    <form method="post" class="inline" action="{{ url_for('dashboard.action_systeme', action='redemarrer-kiosque') }}"
+          onsubmit="return confirm('Redémarrer le kiosque ? (~10 s, coupe une éventuelle session en cours)');">
+      <button type="submit" class="btn btn--primary">Redémarrer le kiosque</button>
+    </form>
+    <form method="post" class="inline" action="{{ url_for('dashboard.action_systeme', action='arreter-kiosque') }}"
+          onsubmit="return confirm('Arrêter le kiosque ? (relançable via Redémarrer)');">
+      <button type="submit" class="btn">Arrêter le kiosque</button>
+    </form>
+    <form method="post" class="inline" action="{{ url_for('dashboard.action_systeme', action='redemarrer-machine') }}"
+          onsubmit="return confirm('Redémarrer TOUTE la machine ?') && confirm('Vraiment ? ~1 minute d\'indisponibilité totale.');">
+      <button type="submit" class="btn btn--danger">Redémarrer la machine</button>
+    </form>
+  </div>
+  <p class="muted">Nécessite le kiosque en service systemd (deploy/install.sh) et la règle sudoers (install-admin.sh).</p>
+</section>
+{% endif %}
+
 <!-- Étage 2 : aujourd'hui -->
 <section class="panel hero">
   <div class="hero__label">Aujourd'hui — {{ date_affichee }}</div>
