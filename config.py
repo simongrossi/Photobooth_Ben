@@ -507,6 +507,25 @@ _CONFIG_OVERRIDES_WHITELIST = {
     "ARDUINO_ENABLED": bool,
 }
 
+_CONFIG_OVERRIDES_BOURNES = {
+    # (mini, maxi) pour chaque clé. None = pas de borne.
+    "TEMPS_DECOMPTE": (1, 60),
+    "DELAI_SECURITE": (0.5, 10.0),
+    "NOM_IMPRIMANTE_10X15": (1, 64),
+    "NOM_IMPRIMANTE_STRIP": (1, 64),
+    "QUOTA_IMPRESSIONS_INITIAL": (1, 10000),
+    "QUOTA_IMPRESSIONS_INCREMENT": (1, 10000),
+    "TEMPS_ATTENTE_IMP": (1, 300),
+    "DUREE_IDLE_SLIDESHOW": (1.0, 3600.0),
+    "DUREE_PAR_IMAGE_SLIDESHOW": (0.5, 60.0),
+    "NB_MAX_IMAGES_SLIDESHOW": (1, 1000),
+    "STRIP_BURST_DELAI_S": (0.0, 30.0),
+    "WATERMARK_TEXT": (1, 100),
+    "GRAIN_INTENSITE": (0, 100),
+    "SEUIL_DISQUE_CRITIQUE_MB": (0.0, 100000.0),
+    "SEUIL_TEMP_CRITIQUE_C": (10.0, 100.0),
+}
+
 CONFIG_OVERRIDES_PATH = os.path.join(PATH_DATA, "config_overrides.json")
 
 
@@ -633,6 +652,30 @@ def _lire_json_dict(chemin):
     return donnees if isinstance(donnees, dict) else {}
 
 
+def valeur_config_valide(cle, valeur):
+    """Valide une valeur candidate pour une clé de configuration générale.
+
+    Retourne la valeur convertie, ou None si invalide ou hors bornes.
+    """
+    type_attendu = _CONFIG_OVERRIDES_WHITELIST.get(cle)
+    if type_attendu is None:
+        return None
+    convertie = _convertir(valeur, type_attendu)
+    if convertie is None:
+        return None
+
+    bornes = _CONFIG_OVERRIDES_BOURNES.get(cle)
+    if bornes is not None:
+        mini, maxi = bornes
+        mesure = len(convertie) if type_attendu is str else convertie
+        if type_attendu is not bool:
+            if mini is not None and mesure < mini:
+                return None
+            if maxi is not None and mesure > maxi:
+                return None
+    return convertie
+
+
 def _appliquer_overrides():
     """Lit CONFIG_OVERRIDES_PATH et surcharge les globals autorisés.
 
@@ -642,10 +685,7 @@ def _appliquer_overrides():
     """
     g = globals()
     for cle, valeur in _lire_json_dict(CONFIG_OVERRIDES_PATH).items():
-        type_attendu = _CONFIG_OVERRIDES_WHITELIST.get(cle)
-        if type_attendu is None:
-            continue
-        convertie = _convertir(valeur, type_attendu)
+        convertie = valeur_config_valide(cle, valeur)
         if convertie is None:
             continue
         g[cle] = convertie

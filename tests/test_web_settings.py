@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import subprocess
 
 import pytest
@@ -146,9 +147,10 @@ class TestEnregistrement:
 
         assert r.status_code == 200
         assert b"service kiosque a \xc3\xa9t\xc3\xa9 red\xc3\xa9marr\xc3\xa9" in r.data
-        assert appels[0][0] == [systeme.SUDO_PATH, "-n", systeme.SYSTEMCTL_PATH, "restart", "photobooth.service"]
-        assert appels[0][1]["timeout"] == 20
-        assert appels[0][1]["check"] is False
+        # Le premier appel est le pré-vol (import config), le dernier est le redémarrage.
+        assert appels[-1][0] == [systeme.SUDO_PATH, "-n", systeme.SYSTEMCTL_PATH, "restart", "photobooth.service"]
+        assert appels[-1][1]["timeout"] == 20
+        assert appels[-1][1]["check"] is False
 
     def test_echec_application_est_affiche(self, ctx, monkeypatch):
         c, _ = ctx
@@ -167,6 +169,43 @@ class TestEnregistrement:
         )
         # Nouveau message générique de web.systeme : l'échec et son détail sont affichés
         assert b"sudo refus" in r.data
+
+    def test_valeur_hors_bornes_rejetee(self, ctx):
+        c, overrides_path = ctx
+        form = {
+            "TEMPS_DECOMPTE": "-5",
+            "DELAI_SECURITE": "2.0",
+        }
+        r = c.post("/settings/", data=form, headers=HEADERS, follow_redirects=True)
+        assert r.status_code == 200
+        assert b"valeur hors bornes" in r.data
+        if os.path.exists(overrides_path):
+            with open(overrides_path) as f:
+                data = json.load(f)
+            assert "TEMPS_DECOMPTE" not in data
+
+    def test_preflight_rollback_en_cas_d_erreur_d_import(self, ctx, monkeypatch):
+        c, overrides_path = ctx
+        with open(overrides_path, "w") as f:
+            json.dump({"TEMPS_DECOMPTE": 5}, f)
+
+        class FakeCompletedProcess:
+            def __init__(self):
+                self.returncode = 1
+                self.stdout = ""
+                self.stderr = "AssertionError: simulation d'un crash de validation config"
+        
+        monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess())
+
+        form = {
+            "TEMPS_DECOMPTE": "10",
+        }
+        r = c.post("/settings/", data=form, headers=HEADERS, follow_redirects=True)
+        assert r.status_code == 200
+        assert b"La configuration est invalide et ferait planter le kiosque" in r.data
+        with open(overrides_path) as f:
+            data = json.load(f)
+        assert data["TEMPS_DECOMPTE"] == 5
 
 
 class TestWhitelist:

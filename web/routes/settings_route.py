@@ -7,6 +7,9 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
+import sys
 from dataclasses import dataclass
 from typing import Any
 
@@ -200,6 +203,20 @@ def save():
             erreurs.append(f"{cle} : {e}")
             continue
 
+        valeur_validee = config.valeur_config_valide(cle, valeur)
+        if valeur_validee is None:
+            bornes = getattr(config, "_CONFIG_OVERRIDES_BOURNES", {}).get(cle)
+            if bornes:
+                mini, maxi = bornes
+                if type_attendu is str:
+                    erreurs.append(f"{cle} : longueur hors bornes [{mini}, {maxi}] caractères.")
+                else:
+                    erreurs.append(f"{cle} : valeur hors bornes [{mini}, {maxi}].")
+            else:
+                erreurs.append(f"{cle} : valeur invalide.")
+            continue
+        valeur = valeur_validee
+
         # N'enregistrer que si différent du défaut hardcodé du config.py (pour un
         # fichier overrides propre) OU si déjà présent (permet de forcer une
         # valeur identique au défaut — utile pour tracer une décision explicite).
@@ -211,17 +228,83 @@ def save():
     if erreurs:
         for e in erreurs:
             flash(e, "error")
+
     if n_modifs:
+        # 1. Sauvegarde du fichier existant pour retour arrière
+        backup_path = CONFIG_OVERRIDES_PATH + ".bak"
+        existait = os.path.exists(CONFIG_OVERRIDES_PATH)
+        if existait:
+            try:
+                shutil.copy2(CONFIG_OVERRIDES_PATH, backup_path)
+            except OSError:
+                pass
+
+        # 2. Écriture du nouveau fichier
         _ecrire_overrides(overrides)
+
+        # 3. Test de pré-vol dans un sous-processus
+        preflight_ok = False
+        erreur_detail = ""
+        try:
+            res = subprocess.run(
+                [sys.executable, "-c", "import config"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                cwd=config.BASE_DIR,
+            )
+            if res.returncode == 0:
+                preflight_ok = True
+            else:
+                erreur_detail = (res.stderr or res.stdout or "").strip()
+        except Exception as e:
+            erreur_detail = str(e)
+
+        # 4. Traitement du résultat du pré-vol
+        if preflight_ok:
+            # Succès : on conserve la config comme dernière configuration valide connue
+            try:
+                shutil.copy2(CONFIG_OVERRIDES_PATH, CONFIG_OVERRIDES_PATH + ".last_valid")
+            except OSError:
+                pass
+            if os.path.exists(backup_path):
+                try:
+                    os.remove(backup_path)
+                except OSError:
+                    pass
+        else:
+            # Échec : on annule et on restaure le backup
+            if existait:
+                try:
+                    shutil.copy2(backup_path, CONFIG_OVERRIDES_PATH)
+                except OSError:
+                    pass
+            else:
+                if os.path.exists(CONFIG_OVERRIDES_PATH):
+                    try:
+                        os.remove(CONFIG_OVERRIDES_PATH)
+                    except OSError:
+                        pass
+            
+            # Suppression du fichier .bak
+            if os.path.exists(backup_path):
+                try:
+                    os.remove(backup_path)
+                except OSError:
+                    pass
+
+            n_modifs = 0
+            flash(f"La configuration est invalide et ferait planter le kiosque (les réglages ont été restaurés) : {erreur_detail[:300]}", "error")
+
     if erreurs:
         if n_modifs:
             flash(f"{n_modifs} réglage(s) valide(s) enregistré(s), sans redémarrage.", "info")
-    elif action == "apply":
+    elif action == "apply" and n_modifs > 0:
         succes, message = _redemarrer_kiosque()
         flash(message, "success" if succes else "error")
     elif n_modifs:
         flash(f"{n_modifs} réglage(s) enregistré(s).", "success")
-    else:
+    elif not erreurs:
         flash("Aucun changement.", "info")
 
     return redirect(url_for("settings.index"))

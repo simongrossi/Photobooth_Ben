@@ -119,3 +119,13 @@ class TestApplicationOverrides:
         assert config.DELAI_SECURITE == 3.0
         assert isinstance(config.DELAI_SECURITE, float)
         config.DELAI_SECURITE = original
+
+    def test_valeur_config_valide_bornes(self):
+        import config
+        assert config.valeur_config_valide("TEMPS_DECOMPTE", 5) == 5
+        assert config.valeur_config_valide("TEMPS_DECOMPTE", 0) is None
+        assert config.valeur_config_valide("TEMPS_DECOMPTE", 61) is None
+        assert config.valeur_config_valide("TEMPS_DECOMPTE", "non int") is None
+        
+        assert config.valeur_config_valide("DELAI_SECURITE", 1.5) == 1.5
+        assert config.valeur_config_valide("DELAI_SECURITE", 0.2) is None
