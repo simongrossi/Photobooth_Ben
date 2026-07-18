@@ -14,6 +14,8 @@ from __future__ import annotations
 import shutil
 import subprocess
 
+from core import ecrans
+
 SUDO_PATH = shutil.which("sudo") or "/usr/bin/sudo"
 SYSTEMCTL_PATH = shutil.which("systemctl") or "/usr/bin/systemctl"
 SERVICE_KIOSQUE = "photobooth.service"
@@ -31,6 +33,8 @@ LIBELLES = {
     "redemarrer-machine": "Redémarrage de la machine lancé — de retour dans ~1 minute.",
 }
 
+ACTIONS_BLOQUEES_PENDANT_SESSION = set(ACTIONS)
+
 
 def executer_action(action: str) -> tuple[bool, str]:
     """Exécute une action de la liste blanche. Retourne (ok, message utilisateur).
@@ -41,6 +45,14 @@ def executer_action(action: str) -> tuple[bool, str]:
     commande = ACTIONS.get(action)
     if commande is None:
         raise ValueError(f"Action système inconnue : {action!r}")
+    etat = ecrans.lire_etat_kiosque() or {}
+    if action in ACTIONS_BLOQUEES_PENDANT_SESSION and ecrans.session_kiosque_active(etat):
+        ecran = etat.get("etat", "session active")
+        return (
+            False,
+            f"Action refusée : une session est en cours sur l'écran {ecran}. "
+            "Attends le retour à l'accueil.",
+        )
     try:
         resultat = subprocess.run(
             commande, capture_output=True, text=True, timeout=TIMEOUT_S, check=False,

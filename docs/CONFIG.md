@@ -45,6 +45,7 @@ Pour les modifier en production voir [RUNBOOK.md](RUNBOOK.md).
 | `PATH_SKIPPED` | `data/skipped/` | Photos rejetées |
 | `PATH_SKIPPED_RETAKE` | `data/skipped/skipped_retake/` | Rejetées via "Reprendre" |
 | `PATH_SKIPPED_DELETED` | `data/skipped/skipped_deleted/` | Rejetées via "Supprimer" |
+| `PATH_ETAT_KIOSQUE` | `data/kiosque_etat.json` | Heartbeat atomique partagé entre le kiosque et l'administration |
 | `PATH_MISE_EN_PAGE_10X15` | `data/mise_en_page_10x15.json` | Zone photo active publiée atomiquement par l'éditeur de templates |
 | `PATH_MISE_EN_PAGE_STRIP` | `data/mise_en_page_strip.json` | Trois zones photo strip actives publiées atomiquement par l'éditeur |
 
@@ -94,6 +95,8 @@ Pour les modifier en production voir [RUNBOOK.md](RUNBOOK.md).
 | `TEMPS_DECOMPTE` | `1` | Durée d'un tick de décompte (s). `1` = décompte rapide |
 | `TOUCHE_GAUCHE/MILIEU/DROITE` | `K_g/K_m/K_d` | Bindings clavier (lettres minuscules) |
 | `DELAI_SECURITE` | `2.0` | Anti-rebond entre deux pressions (s) |
+| `INTERVALLE_HEARTBEAT_KIOSQUE_S` | `2.0` | Fréquence de publication de l'état vivant du kiosque (s) |
+| `EXPIRATION_HEARTBEAT_KIOSQUE_S` | `8.0` | Délai au-delà duquel l'admin considère le heartbeat périmé (s) |
 
 ### Arduino
 

@@ -62,6 +62,7 @@ from core.session import (  # noqa: E402
     terminer_session_et_revenir_accueil as _terminer_session_et_revenir_accueil,
 )
 from core.evenements import charger_evenement_actif  # noqa: E402
+from core.ecrans import HeartbeatKiosque, lire_etat_kiosque  # noqa: E402
 from core import quota as quota_mgr  # noqa: E402
 from core.quota import SaisieSequence  # noqa: E402
 
@@ -325,6 +326,10 @@ disk_monitor: DiskMonitor | None = None
 temp_monitor: TempMonitor | None = None
 BANDEAU_CACHE = None
 session = SessionState(last_activity_ts=0.0)
+heartbeat_kiosque: HeartbeatKiosque | None = None
+dernier_tirage_reussi_ts: float | None = None
+dernier_tirage_reussi_mode: str | None = None
+ecran_runtime_override: str | None = None
 running = True
 slideshow_images = []
 slideshow_last_refresh = 0.0
@@ -339,6 +344,29 @@ icon_10x15_norm = None
 icon_10x15_select = None
 icon_strip_norm = None
 icon_strip_select = None
+
+
+def _instantane_heartbeat() -> dict:
+    """État léger lu par le publisher sans appeler le matériel."""
+    etat_affiche = (
+        "IMPRESSION"
+        if session.impression_en_cours
+        else (ecran_runtime_override or session.etat.value)
+    )
+    return {
+        "etat": etat_affiche,
+        "session_active": session.etat is not Etat.ACCUEIL,
+        "session_id": session.id_session_timestamp or None,
+        "mode": session.mode_actuel,
+        "derniere_activite_ts": session.last_activity_ts or None,
+        "impression_en_cours": session.impression_en_cours,
+        "impressions_restantes": session.impressions_restantes,
+        "camera_connected": bool(camera_mgr and camera_mgr.is_connected),
+        "arduino_enabled": ARDUINO_ENABLED,
+        "arduino_available": bool(arduino_ctrl and arduino_ctrl.available),
+        "dernier_tirage_reussi_ts": dernier_tirage_reussi_ts,
+        "dernier_tirage_reussi_mode": dernier_tirage_reussi_mode,
+    }
 
 
 def _surface_texte_cache(font, texte: str, couleur: tuple, alpha: int = 255):
@@ -415,6 +443,7 @@ def _initialiser_runtime() -> None:
     global inserer_background, afficher_message_plein_ecran, executer_avec_spinner
     global ecran_erreur, ecran_attente_impression, splash_connexion_camera
     global arduino_ctrl, disk_monitor, temp_monitor, BANDEAU_CACHE, session, running
+    global heartbeat_kiosque, dernier_tirage_reussi_ts, dernier_tirage_reussi_mode
     global slideshow_images, slideshow_last_refresh, slideshow_cached_surface, slideshow_cached_for_idx
     global fond_accueil, icon_10x15_norm, icon_10x15_select, icon_strip_norm, icon_strip_select
 
@@ -511,6 +540,12 @@ def _initialiser_runtime() -> None:
     print("✅ Interface chargée (AccueilAssets).")
 
     session.abandon_confirm_until = 0.0
+
+    ancien_etat = lire_etat_kiosque() or {}
+    dernier_tirage_reussi_ts = ancien_etat.get("dernier_tirage_reussi_ts")
+    dernier_tirage_reussi_mode = ancien_etat.get("dernier_tirage_reussi_mode")
+    heartbeat_kiosque = HeartbeatKiosque(_instantane_heartbeat)
+    heartbeat_kiosque.start()
 
 
 def terminer_session_et_revenir_accueil(issue: str) -> None:
@@ -803,6 +838,8 @@ def traiter_impression_session(session) -> str:
     sont conservés pour permettre un nouvel essai sans dupliquer les feuilles
     déjà acceptées par CUPS.
     """
+    global dernier_tirage_reussi_ts, dernier_tirage_reussi_mode
+    session.impression_en_cours = True
     try:
         # Un retry réutilise exactement le fichier du premier essai : pas de
         # nouveau montage, pas de risque de changer d'habillage entre les deux.
@@ -881,7 +918,7 @@ def traiter_impression_session(session) -> str:
         perf_session_id = session.id_session_timestamp
         perf_mode = session.mode_actuel
         a_envoyer = session.impressions_restantes
-        resultat_envoi = {"envoyees": 0, "erreur": ""}
+        resultat_envoi = {"envoyees": 0, "erreur": "", "dernier_succes_ts": None}
 
         def boucle_envoi_dnp():
             try:
@@ -906,6 +943,7 @@ def traiter_impression_session(session) -> str:
 
                     quota_mgr.enregistrer_tirage(1)
                     resultat_envoi["envoyees"] += 1
+                    resultat_envoi["dernier_succes_ts"] = time.time()
 
                     if i < a_envoyer - 1:
                         log_info("⏳ Thread DNP : pause de 15 s avant le prochain envoi...")
@@ -922,6 +960,9 @@ def traiter_impression_session(session) -> str:
         thread_imprimante.start()
         ecran_attente_impression(thread_imprimante)
         thread_imprimante.join(timeout=1.0)
+        if resultat_envoi["dernier_succes_ts"] is not None:
+            dernier_tirage_reussi_ts = resultat_envoi["dernier_succes_ts"]
+            dernier_tirage_reussi_mode = session.mode_actuel
 
         session.impressions_restantes = max(
             0, session.impressions_restantes - resultat_envoi["envoyees"]
@@ -944,6 +985,8 @@ def traiter_impression_session(session) -> str:
     except Exception as e:
         log_critical(f"Erreur impression finale : {e}")
         return _marquer_erreur_impression(session, str(e) or TXT_ERREUR_IMPRIMANTE)
+    finally:
+        session.impression_en_cours = False
 
 
 def demander_arret(signum=None, frame=None) -> None:
@@ -1825,6 +1868,7 @@ def handle_fin_event(event: pygame.event.Event, session: SessionState,   # type:
 
 def main() -> None:
     """Point d'entrée runtime. Importer ce module ne lance plus le kiosque."""
+    global ecran_runtime_override
     signal.signal(signal.SIGTERM, demander_arret)
     signal.signal(signal.SIGINT, demander_arret)
     _initialiser_runtime()
@@ -1833,7 +1877,9 @@ def main() -> None:
         # --- Splash de connexion caméra (Sprint 2.1) ---
         # Si `camera` a été obtenue à l'init top du fichier, le splash se ferme immédiatement.
         # Sinon on montre un écran visible avec retry jusqu'à TIMEOUT_SPLASH_CAMERA.
+        ecran_runtime_override = "CONNEXION_CAMERA"
         splash_connexion_camera(camera_mgr)
+        ecran_runtime_override = None
 
         while running:
             # --------------------------------------------------------------------------------------------
@@ -1903,6 +1949,8 @@ def main() -> None:
             pygame.display.flip()
             clock.tick(30)
     finally:
+        if heartbeat_kiosque is not None:
+            heartbeat_kiosque.close()
         if arduino_ctrl is not None:
             arduino_ctrl.close()
         if camera_mgr is not None:

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import subprocess
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -62,6 +63,37 @@ class TestExecution:
         ok, msg = systeme.executer_action("redemarrer-machine")
         assert ok is False
 
+    def test_refuse_redemarrage_pendant_session(self, monkeypatch):
+        heartbeat = {
+            "online": True,
+            "heartbeat_ts": time.time(),
+            "session_active": True,
+            "etat": "DECOMPTE",
+        }
+        monkeypatch.setattr(systeme.ecrans, "lire_etat_kiosque", lambda: heartbeat)
+        appels = []
+        monkeypatch.setattr(
+            systeme.subprocess,
+            "run",
+            lambda *args, **kwargs: appels.append(args) or SimpleNamespace(returncode=0),
+        )
+
+        ok, message = systeme.executer_action("redemarrer-kiosque")
+        assert ok is False
+        assert "DECOMPTE" in message
+        assert appels == []
+
+    def test_heartbeat_perime_autorise_recuperation(self, monkeypatch):
+        heartbeat = {
+            "online": True,
+            "heartbeat_ts": 1.0,
+            "session_active": True,
+            "etat": "FIN",
+        }
+        monkeypatch.setattr(systeme.ecrans, "lire_etat_kiosque", lambda: heartbeat)
+        monkeypatch.setattr(systeme.subprocess, "run", _fake_run(0))
+        assert systeme.executer_action("redemarrer-kiosque")[0] is True
+
 
 class TestEtatKiosque:
     def test_actif(self, monkeypatch):
@@ -90,6 +122,8 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("PHOTOBOOTH_ADMIN_PASS", "test")
     import config
     monkeypatch.setattr(config, "PATH_DATA", str(data))
+    from core import ecrans
+    monkeypatch.setattr(ecrans, "ETAT_KIOSQUE_PATH", str(data / "kiosque_etat.json"))
     import web.db
     monkeypatch.setattr(web.db, "DB_PATH", str(data / "admin.db"))
     app = create_app()
@@ -121,3 +155,27 @@ class TestRoutesSysteme:
         html = client.get("/dashboard/", headers=HEADERS_OK).get_data(as_text=True)
         assert "Contrôle du kiosque" in html
         assert "/dashboard/systeme/redemarrer-machine" in html
+
+    def test_dashboard_affiche_heartbeat_et_verrouille_boutons(self, client, monkeypatch):
+        heartbeat = {
+            "online": True,
+            "heartbeat_ts": time.time(),
+            "derniere_activite_ts": time.time() - 3,
+            "session_active": True,
+            "etat": "VALIDATION",
+            "camera_connected": True,
+            "arduino_enabled": True,
+            "arduino_available": True,
+            "dernier_tirage_reussi_ts": time.time() - 20,
+            "dernier_tirage_reussi_mode": "10x15",
+        }
+        monkeypatch.setattr(systeme.ecrans, "lire_etat_kiosque", lambda: heartbeat)
+        monkeypatch.setattr(systeme.subprocess, "run", _fake_run(0, stdout="active\n"))
+
+        html = client.get("/dashboard/", headers=HEADERS_OK).get_data(as_text=True)
+        assert "Écran courant : <strong>VALIDATION</strong>" in html
+        assert "Caméra : connectée" in html
+        assert "Arduino : connecté" in html
+        assert "Dernier tirage" in html
+        assert "Session en cours" in html
+        assert html.count("disabled") >= 3

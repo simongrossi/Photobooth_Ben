@@ -61,6 +61,7 @@ class TestSessionState:
         session_vide.message_erreur_impression = "hors ligne"
         session_vide.chemin_impression = "/tmp/print.jpg"
         session_vide.impressions_restantes = 2
+        session_vide.impression_en_cours = True
 
         session_vide.reset_pour_accueil()
 
@@ -74,6 +75,7 @@ class TestSessionState:
         assert session_vide.message_erreur_impression == ""
         assert session_vide.chemin_impression == ""
         assert session_vide.impressions_restantes == 0
+        assert session_vide.impression_en_cours is False
 
     def test_reset_preserve_last_activity_ts(self, session_vide):
         session_vide.last_activity_ts = 42.0

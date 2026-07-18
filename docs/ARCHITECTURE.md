@@ -54,6 +54,10 @@ de données. Document à mettre à jour lors des refactors structurels majeurs.
      │      │  └─────────────────┘   │       (data/quota_impressions.json)
      │      │                        │
      │      │  ┌─────────────────┐   │
+     │      │  │ ecrans          │   │  ◄── registre UI + heartbeat kiosque/admin
+     │      │  └─────────────────┘   │       (data/kiosque_etat.json)
+     │      │                        │
+     │      │  ┌─────────────────┐   │
      │      │  │ arduino         │   │  ◄── pyserial + thread → injecte des KEYDOWN
      │      │  │ (3 btns + LEDs) │   │       pilote les LEDs selon Etat
      │      │  └─────────────────┘   │
@@ -80,7 +84,8 @@ de données. Document à mettre à jour lors des refactors structurels majeurs.
   séparé ; la communication avec le kiosque passe uniquement par le
   filesystem (`data/sessions.jsonl` en lecture, `assets/overlays/`,
   `data/evenement_actif.json`, `data/mise_en_page_10x15.json`,
-  `data/mise_en_page_strip.json` et `data/config_overrides.json` en écriture).
+  `data/mise_en_page_strip.json` et `data/config_overrides.json` en écriture,
+  `data/kiosque_etat.json` en lecture).
   Voir `docs/ADMIN.md`.
 - `data/quota_impressions.json` est le seul fichier écrit par **les deux**
   process (kiosque : incrément des tirages ; web : déblocage). Chaque écriture
@@ -212,6 +217,7 @@ normalement, quelle que soit la durée d'inactivité.
 | `PATH_SKIPPED_RETAKE/retake_<id>.jpg` | si recommencer | `shutil.move` |
 | `PATH_SKIPPED_DELETED/deleted_<id>.jpg` | si abandon | `shutil.move` |
 | `data/sessions.jsonl` (append, avec instantané événement) | fin de session | `ecrire_metadata_session()` |
+| `data/kiosque_etat.json` (remplacement atomique) | toutes les 2 s et à l'arrêt | `HeartbeatKiosque` |
 | `data/evenement_actif.json` (remplacement atomique) | activation/modification/fin d'événement | admin web |
 | `data/admin.db:evenement_template` | quatre choix fond/overlay 10×15/strip par événement | admin web |
 | `logs/photobooth.log` (rotation 2 Mo × 5) | continu | `core.logger` |
@@ -229,18 +235,26 @@ RAM et température sur le matériel réel.
 
 ## Threading
 
-Deux traitements peuvent utiliser un thread daemon sans jamais manipuler Pygame :
+Trois traitements peuvent utiliser un thread daemon sans jamais manipuler Pygame :
 
 - `executer_avec_spinner()` lance ponctuellement la fonction PIL
   (`MontageGenerator*.final()`) pendant que le thread principal anime le spinner ;
 - `CameraManager` maintient le flux LiveView en arrière-plan uniquement depuis
-  la sélection d'un format jusqu'à la capture.
+  la sélection d'un format jusqu'à la capture ;
+- `HeartbeatKiosque` publie toutes les deux secondes un instantané fourni par
+  le thread principal : écran courant, dernière activité, session/impression,
+  caméra, Arduino et dernier tirage accepté par CUPS.
 
 `CameraManager` acquiert et décode le LiveView dans un thread daemon dédié. Le thread
 principal récupère sans attente la dernière frame disponible et reste seul à créer les
 surfaces Pygame. Un numéro de génération évite de reconvertir et redimensionner la
 même image plusieurs fois. Un `threading.Lock` protège la caméra ; le worker est
 arrêté avant la capture HQ et redémarre à la prochaine photo.
+
+Le heartbeat est écrit par remplacement atomique. L'admin n'interprète
+`session_active` que si le signal a moins de
+`EXPIRATION_HEARTBEAT_KIOSQUE_S` secondes : un kiosque tué brutalement ne peut
+donc pas verrouiller indéfiniment les commandes de récupération.
 
 ---
 

@@ -4,7 +4,8 @@ Service séparé du kiosque pygame, activable à la demande sur le Raspberry Pi.
 Permet de piloter le photobooth depuis un navigateur (ordinateur ou mobile)
 sur le même LAN, sans toucher au code.
 
-- **Dashboard** : santé matériel en un coup d'œil (imprimantes, disque, CPU),
+- **Dashboard** : heartbeat et écran courant du kiosque, dernière activité,
+  caméra, Arduino, profondeur des files CUPS, dernier tirage réussi, disque et CPU,
   compteurs du jour avec activité par heure, totaux (taux d'impression, photos,
   durées, modes), heure locale du serveur toujours visible et historique par journée. Thème clair/sombre automatique
   (suit le réglage du navigateur/téléphone). Carte **Impressions DNP** :
@@ -68,6 +69,7 @@ sur le même LAN, sans toucher au code.
 | Mise en page strip active | `data/mise_en_page_strip.json` (remplacement atomique) | admin | kiosque à chaque rendu |
 | Surcharges config | `data/config_overrides.json` | admin | kiosque (à chaque import de `config`) |
 | Compteur/quota d'impressions | `data/quota_impressions.json` (remplacement atomique) | kiosque (tirages) + admin (déblocage) | kiosque + admin (dashboard) |
+| Heartbeat kiosque | `data/kiosque_etat.json` (remplacement atomique) | kiosque toutes les 2 s | admin (dashboard et protection des commandes) |
 
 Le kiosque n'a **pas besoin** de connaître l'admin : les overrides sont lus au
 démarrage de `config.py` via une whitelist stricte (voir
@@ -127,6 +129,12 @@ Trois boutons sur le dashboard, avec confirmation (double pour la machine) :
 
 Une pastille « Kiosque : actif / arrêté / en panne » est affichée dans le
 bandeau santé (visible aussi du viewer).
+
+Le kiosque publie également son écran courant, l'heure de dernière activité,
+l'état caméra/Arduino et le dernier tirage réellement accepté. Les boutons de
+redémarrage, arrêt et reboot sont désactivés et refusés côté serveur pendant
+une session. Si le process disparaît sans fermer son fichier d'état, le verrou
+expire après `EXPIRATION_HEARTBEAT_KIOSQUE_S` afin de permettre la récupération.
 
 **Prérequis** : le kiosque doit tourner en service systemd
 (`sudo ./deploy/install.sh`) et la règle sudoers doit être posée

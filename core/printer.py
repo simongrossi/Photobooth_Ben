@@ -30,6 +30,24 @@ class PrinterManager:
         self.last_error = message
         return message
 
+    def jobs_en_attente(self, mode: str) -> Optional[int]:
+        """Nombre de jobs CUPS visibles pour la file, ou None si inconnu."""
+        nom_file = self._noms.get(mode)
+        if not nom_file:
+            return None
+        try:
+            resultat = subprocess.run(
+                ["lpstat", "-o", nom_file],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+        except Exception:
+            return None
+        if getattr(resultat, "returncode", 0) != 0:
+            return None
+        return len([ligne for ligne in resultat.stdout.splitlines() if ligne.strip()])
+
     def is_ready(self, mode: str):
         """Retourne True si la file est prête, sinon une chaîne décrivant le problème.
         Dans les deux cas, `self.last_error` reflète l'état (None si prêt)."""

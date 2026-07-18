@@ -96,19 +96,36 @@ class TestLastError:
         assert mgr.last_error == "FILE D'ATTENTE PLEINE"
 
     def test_reset_a_none_si_pret(self, mgr, monkeypatch):
-        # D'abord en erreur (mémorise last_error)
         mgr.is_ready("inconnu")
-        assert mgr.last_error is not None
 
-        # Puis prêt : lpstat -o vide (pas de job), lpstat -p "idle"
         def _dispatch(cmd, **kw):
             if "-o" in cmd:
                 return SimpleNamespace(stdout="", stderr="", returncode=0)
             return SimpleNamespace(stdout="printer DNP_10x15 is idle. enabled", stderr="", returncode=0)
-        monkeypatch.setattr(printer.subprocess, "run", _dispatch)
 
+        monkeypatch.setattr(printer.subprocess, "run", _dispatch)
         assert mgr.is_ready("10x15") is True
         assert mgr.last_error is None
+
+
+class TestFileAttente:
+    def test_compte_les_jobs(self, mgr, monkeypatch):
+        monkeypatch.setattr(printer.subprocess, "run", _fake_run_factory(
+            "DNP_10x15-41 user 100\nDNP_10x15-42 user 200\n"
+        ))
+        assert mgr.jobs_en_attente("10x15") == 2
+
+    def test_file_vide(self, mgr, monkeypatch):
+        monkeypatch.setattr(printer.subprocess, "run", _fake_run_factory(""))
+        assert mgr.jobs_en_attente("strips") == 0
+
+    def test_etat_inconnu_si_cups_indisponible(self, mgr, monkeypatch):
+        monkeypatch.setattr(
+            printer.subprocess,
+            "run",
+            _fake_run_factory("", raises=OSError("lpstat absent")),
+        )
+        assert mgr.jobs_en_attente("10x15") is None
 
 
 # --- send ---

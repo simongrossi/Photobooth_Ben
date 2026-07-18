@@ -208,6 +208,9 @@ activation atomique, CSRF, historique et sauvegardes restent détaillés dans
 - [ ] **Compléter le tableau de santé opérateur** *(3–5 h)*
   - Ajouter caméra, Arduino, profondeur/âge de la file CUPS, dernier envoi
     réussi, dernier échec et état de synchronisation du kiosque.
+  - **Partiellement livré (2026-07-19)** : heartbeat/écran/dernière activité,
+    caméra, Arduino, profondeur de file, dernier tirage réussi et espace disque.
+    Restent l'âge de la file, le dernier échec et le suivi papier/ruban.
   - Séparer les alertes invité des diagnostics techniques et fournir une action
     de résolution sûre pour chaque état rouge.
   - Étudier un suivi papier/ruban DNP ou, à défaut, une estimation explicite à
@@ -311,6 +314,9 @@ agrège les temps de frame en mémoire et n'écrit que quelques lignes par sessi
   - Afficher cet état dans le dashboard avec la date du dernier signal reçu.
   - Refuser ou mettre en attente les redémarrages, changements d'événement et
     changements de template pendant une session photo.
+  - **Partiellement livré (2026-07-19)** : heartbeat, dashboard et refus des
+    redémarrages/arrêts/reboots pendant une session. Les changements
+    d'événement et de template restent à protéger.
 - [ ] **Activation atomique des templates** *(2–4 h)*
   - Préparer les quatre couches et la configuration de mise en page dans des
     fichiers temporaires.

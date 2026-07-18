@@ -14,6 +14,10 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
   « Appeler l'animateur ».
 - Tests de régression du flux CUPS : succès réel, échec partiel, retry des seules
   feuilles restantes et conservation de la session.
+- Heartbeat atomique du kiosque : écran courant, dernière activité, session en
+  cours, caméra, Arduino et dernier tirage réellement accepté par CUPS.
+- Dashboard enrichi avec l'âge du heartbeat, les périphériques, la profondeur
+  des files CUPS, le dernier tirage réussi et l'espace disque.
 
 ### Changed
 - Utilisation de Pillow `.draft()` et de l'interpolation `BILINEAR` pour charger instantanément l'aperçu de validation des clichés.
@@ -26,6 +30,9 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
   au lieu d'un compte à rebours fixe. `printed` et le son de succès ne sont émis
   qu'après acceptation de toutes les feuilles par `lp` ; un retry réutilise le
   même montage et ne duplique pas les feuilles déjà soumises.
+- Les commandes admin de redémarrage, arrêt du kiosque et reboot machine sont
+  refusées pendant une session active ; un heartbeat périmé libère le verrou
+  pour permettre une récupération après plantage.
 
 ---
 

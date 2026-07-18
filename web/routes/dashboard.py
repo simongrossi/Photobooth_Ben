@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import time
 from datetime import date, datetime, timedelta
 
 from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
@@ -19,7 +20,7 @@ from config import (
     SEUIL_TEMP_CRITIQUE_C,
     TEMP_PATH,
 )
-from core import quota
+from core import ecrans, quota
 from core.monitoring import DiskMonitor, TempMonitor
 from core.performance import ecrire_performance
 from core.printer import PrinterManager
@@ -91,14 +92,59 @@ def _filtrer_sessions_par_periode(
 
 
 def _pastille_imprimante(mode: str, libelle: str) -> dict:
-    """is_ready renvoie True (prête) ou une chaîne d'erreur (contrat PrinterManager)."""
+    """Résume la file CUPS avant de vérifier l'état physique."""
+    jobs = printer_mgr.jobs_en_attente(mode)
+    if jobs:
+        suffixe = "job" if jobs == 1 else "jobs"
+        return {"libelle": libelle, "etat": "warn", "detail": f"{jobs} {suffixe} en file"}
     resultat = printer_mgr.is_ready(mode)
     if resultat is True:
-        return {"libelle": libelle, "etat": "ok", "detail": "prête"}
+        detail = "prête · file vide" if jobs == 0 else "prête · file inconnue"
+        return {"libelle": libelle, "etat": "ok", "detail": detail}
     return {"libelle": libelle, "etat": "err", "detail": str(resultat)}
 
 
-def _construire_sante(disk: DiskMonitor, temp: TempMonitor) -> list[dict]:
+def _age_texte(timestamp: object, maintenant: float) -> str:
+    try:
+        age = max(0, int(maintenant - float(timestamp)))
+    except (TypeError, ValueError):
+        return "inconnue"
+    if age < 60:
+        return f"il y a {age} s"
+    if age < 3600:
+        return f"il y a {age // 60} min"
+    return datetime.fromtimestamp(float(timestamp)).strftime("%d/%m %H:%M")
+
+
+def _vue_heartbeat(etat: dict | None, maintenant: float | None = None) -> dict:
+    maintenant = maintenant or time.time()
+    frais = ecrans.heartbeat_est_frais(etat, maintenant=maintenant)
+    if not etat:
+        return {
+            "disponible": False,
+            "frais": False,
+            "session_active": False,
+            "etat": "INCONNU",
+            "heartbeat_age": "jamais reçu",
+            "activite_age": "inconnue",
+        }
+    return {
+        **etat,
+        "disponible": True,
+        "frais": frais,
+        "session_active": bool(frais and etat.get("session_active")),
+        "etat": etat.get("etat", "INCONNU"),
+        "heartbeat_age": _age_texte(etat.get("heartbeat_ts"), maintenant),
+        "activite_age": _age_texte(etat.get("derniere_activite_ts"), maintenant),
+        "dernier_tirage_age": _age_texte(etat.get("dernier_tirage_reussi_ts"), maintenant),
+    }
+
+
+def _construire_sante(
+    disk: DiskMonitor,
+    temp: TempMonitor,
+    heartbeat: dict | None = None,
+) -> list[dict]:
     etats_kiosque = {"active": ("ok", "actif"), "inactive": ("warn", "arrêté"),
                      "failed": ("err", "en panne"), "indisponible": ("na", "N/A")}
     etat_k = systeme.etat_kiosque()
@@ -108,6 +154,43 @@ def _construire_sante(disk: DiskMonitor, temp: TempMonitor) -> list[dict]:
         _pastille_imprimante("10x15", "Imprimante 10×15"),
         _pastille_imprimante("strips", "Imprimante strip"),
     ]
+    vue = _vue_heartbeat(heartbeat)
+    if vue["frais"]:
+        sante.append({
+            "libelle": "Écran",
+            "etat": "warn" if vue["session_active"] else "ok",
+            "detail": f"{vue['etat']} · signal {vue['heartbeat_age']}",
+        })
+        sante.append({
+            "libelle": "Caméra",
+            "etat": "ok" if vue.get("camera_connected") else "err",
+            "detail": "connectée" if vue.get("camera_connected") else "déconnectée",
+        })
+        if not vue.get("arduino_enabled"):
+            sante.append({"libelle": "Arduino", "etat": "na", "detail": "désactivé"})
+        else:
+            sante.append({
+                "libelle": "Arduino",
+                "etat": "ok" if vue.get("arduino_available") else "err",
+                "detail": "connecté" if vue.get("arduino_available") else "indisponible",
+            })
+    else:
+        detail = f"signal périmé · {vue['heartbeat_age']}" if vue["disponible"] else "jamais reçu"
+        sante.extend([
+            {"libelle": "Supervision", "etat": "err", "detail": detail},
+            {"libelle": "Caméra", "etat": "na", "detail": "N/A"},
+            {"libelle": "Arduino", "etat": "na", "detail": "N/A"},
+        ])
+
+    if heartbeat and heartbeat.get("dernier_tirage_reussi_ts"):
+        mode = heartbeat.get("dernier_tirage_reussi_mode") or "mode inconnu"
+        sante.append({
+            "libelle": "Dernier tirage",
+            "etat": "ok",
+            "detail": f"{vue['dernier_tirage_age']} · {mode}",
+        })
+    else:
+        sante.append({"libelle": "Dernier tirage", "etat": "na", "detail": "aucun signalé"})
     if disk.libre_mb is None:
         sante.append({"libelle": "Disque", "etat": "na", "detail": "N/A"})
     else:
@@ -157,6 +240,8 @@ def index():
     )
     temp.intervalle_s = 0
     temp.tick()
+    heartbeat_brut = ecrans.lire_etat_kiosque()
+    heartbeat = _vue_heartbeat(heartbeat_brut)
 
     jour = stats_du_jour(sessions_filtrees, date.today().strftime("%Y-%m-%d"))
     limite_hist = 100 if periode == "toutes" else 7
@@ -190,7 +275,8 @@ def index():
         quota_pct=min(100, quota_pct),
         quota_actif=config.ACTIVER_QUOTA_IMPRESSIONS,
         quota_increment=config.QUOTA_IMPRESSIONS_INCREMENT,
-        sante=_construire_sante(disk, temp),
+        sante=_construire_sante(disk, temp, heartbeat_brut),
+        heartbeat=heartbeat,
         jour=jour,
         date_affichee=date.today().strftime("%d/%m/%Y"),
         stats=stats,

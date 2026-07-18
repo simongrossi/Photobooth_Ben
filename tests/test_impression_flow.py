@@ -37,6 +37,8 @@ def _isoler_runtime_impression(monkeypatch):
     monkeypatch.setattr(app.quota_mgr, "enregistrer_tirage", tirages.append)
     monkeypatch.setattr(app.time, "sleep", lambda _duree: None)
     monkeypatch.setattr(app.printer_mgr, "is_ready", lambda _mode: True)
+    monkeypatch.setattr(app, "dernier_tirage_reussi_ts", None)
+    monkeypatch.setattr(app, "dernier_tirage_reussi_mode", None)
     return sons, messages, tirages
 
 
@@ -58,6 +60,9 @@ def test_succes_attend_le_worker_avant_declarer_printed(tmp_path, monkeypatch):
     assert messages == [app.config.TXT_IMPRESSION_ENVOYEE]
     assert session.impressions_restantes == 0
     assert session.erreur_impression is False
+    assert session.impression_en_cours is False
+    assert app.dernier_tirage_reussi_ts is not None
+    assert app.dernier_tirage_reussi_mode == "10x15"
 
 
 def test_echec_partiel_ne_rejoue_que_les_feuilles_restantes(tmp_path, monkeypatch):

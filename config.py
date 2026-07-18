@@ -28,6 +28,7 @@ PATH_SKIPPED_RETAKE  = os.path.join(PATH_SKIPPED, "skipped_retake")
 PATH_SKIPPED_DELETED = os.path.join(PATH_SKIPPED, "skipped_deleted")
 PATH_EVENEMENT_ACTIF = os.path.join(PATH_DATA, "evenement_actif.json")
 PATH_QUOTA_IMPRESSIONS = os.path.join(PATH_DATA, "quota_impressions.json")
+PATH_ETAT_KIOSQUE = os.path.join(PATH_DATA, "kiosque_etat.json")
 PATH_MISE_EN_PAGE_10X15 = os.path.join(PATH_DATA, "mise_en_page_10x15.json")
 PATH_MISE_EN_PAGE_STRIP = os.path.join(PATH_DATA, "mise_en_page_strip.json")
 
@@ -110,6 +111,12 @@ TOUCHE_DROITE = pygame.K_d if pygame else ord('d')
 
 # --- Délais et Sécurité ---
 DELAI_SECURITE = 2.0  # Temps d'attente (anti-rebond) entre deux pressions
+
+# --- Supervision kiosque ---
+# Le process Pygame publie son écran et ses périphériques dans PATH_ETAT_KIOSQUE.
+# L'admin considère le kiosque hors ligne au-delà du délai d'expiration.
+INTERVALLE_HEARTBEAT_KIOSQUE_S = 2.0
+EXPIRATION_HEARTBEAT_KIOSQUE_S = 8.0
 
 
 # --- Arduino Nano (3 boutons-poussoirs à LED intégrée) ---
@@ -767,6 +774,8 @@ def _valider_config():
     assert SPINNER_FPS > 0, f"SPINNER_FPS invalide : {SPINNER_FPS}"
     assert ANIM_NB_POINTS >= 1, f"ANIM_NB_POINTS invalide : {ANIM_NB_POINTS}"
     assert TEMPS_ATTENTE_IMP > 0, f"TEMPS_ATTENTE_IMP invalide : {TEMPS_ATTENTE_IMP}"
+    assert INTERVALLE_HEARTBEAT_KIOSQUE_S > 0
+    assert EXPIRATION_HEARTBEAT_KIOSQUE_S > INTERVALLE_HEARTBEAT_KIOSQUE_S
 
     # Alpha channels
     assert 0 <= MASQUE <= 255, f"MASQUE hors [0,255] : {MASQUE}"

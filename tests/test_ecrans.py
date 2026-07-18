@@ -379,3 +379,42 @@ class TestEtatKiosque:
         ecrans.ecrire_etat_kiosque(chemin)
         ecrans.ecrire_overrides({"TAILLE_DECOMPTE": 212}, overrides)
         assert ecrans.redemarrage_requis() is True
+
+    def test_heartbeat_frais_et_session_active(self, tmp_path, monkeypatch):
+        chemin = str(tmp_path / "heartbeat.json")
+        maintenant = 1_000.0
+        monkeypatch.setattr(ecrans.time, "time", lambda: maintenant)
+        etat = ecrans.ecrire_heartbeat_kiosque({
+            "etat": "VALIDATION",
+            "session_active": True,
+            "camera_connected": True,
+        }, chemin)
+
+        assert ecrans.heartbeat_est_frais(etat, maintenant=maintenant + 2)
+        assert ecrans.session_kiosque_active(etat) is True
+
+    def test_heartbeat_perime_ne_bloque_pas(self):
+        etat = {
+            "online": True,
+            "heartbeat_ts": 100.0,
+            "session_active": True,
+        }
+        assert not ecrans.heartbeat_est_frais(etat, maintenant=200.0)
+        assert ecrans.session_kiosque_active(etat) is False
+
+    def test_publisher_preserve_boot_et_marque_arret(self, tmp_path):
+        chemin = str(tmp_path / "heartbeat.json")
+        publisher = ecrans.HeartbeatKiosque(
+            lambda: {"etat": "FIN", "session_active": True},
+            chemin=chemin,
+            intervalle_s=60,
+        )
+        publisher.start()
+        premier = ecrans.lire_etat_kiosque(chemin)
+        publisher.close()
+        final = ecrans.lire_etat_kiosque(chemin)
+
+        assert premier["etat"] == "FIN"
+        assert final["boot_ts"] == premier["boot_ts"]
+        assert final["etat"] == "ARRETE"
+        assert final["online"] is False

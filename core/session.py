@@ -52,6 +52,7 @@ class SessionState:
     message_erreur_impression: str = ""
     chemin_impression: str = ""
     impressions_restantes: int = 0
+    impression_en_cours: bool = False
 
     def reset_pour_accueil(self) -> None:
         """Reset complet après fin de session (printed/abandoned/capture_failed/print_failed/print_disabled).
@@ -70,6 +71,7 @@ class SessionState:
         self.message_erreur_impression = ""
         self.chemin_impression = ""
         self.impressions_restantes = 0
+        self.impression_en_cours = False
 
 
 def ecrire_metadata_session(

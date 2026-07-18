@@ -48,18 +48,32 @@
 {% if role == 'admin' %}
 <section class="panel">
   <h2>Contrôle du kiosque</h2>
+  {% if heartbeat.frais %}
+  <p>
+    Écran courant : <strong>{{ heartbeat.etat }}</strong> ·
+    dernière activité {{ heartbeat.activite_age }} ·
+    heartbeat {{ heartbeat.heartbeat_age }}.
+  </p>
+  {% else %}
+  <p class="err">Heartbeat indisponible ou périmé ({{ heartbeat.heartbeat_age }}).</p>
+  {% endif %}
+  {% if heartbeat.session_active %}
+  <p class="flash flash--error">
+    Session en cours : redémarrage, arrêt et reboot sont verrouillés jusqu'au retour à l'accueil.
+  </p>
+  {% endif %}
   <div class="actions">
     <form method="post" class="inline" action="{{ url_for('dashboard.action_systeme', action='redemarrer-kiosque') }}"
-          onsubmit="return confirm('Redémarrer le kiosque ? (~10 s, coupe une éventuelle session en cours)');">
-      <button type="submit" class="btn btn--primary">Redémarrer le kiosque</button>
+          onsubmit="return confirm('Redémarrer le kiosque ? (~10 s)');">
+      <button type="submit" class="btn btn--primary" {% if heartbeat.session_active %}disabled{% endif %}>Redémarrer le kiosque</button>
     </form>
     <form method="post" class="inline" action="{{ url_for('dashboard.action_systeme', action='arreter-kiosque') }}"
           onsubmit="return confirm('Arrêter le kiosque ? (relançable via Redémarrer)');">
-      <button type="submit" class="btn">Arrêter le kiosque</button>
+      <button type="submit" class="btn" {% if heartbeat.session_active %}disabled{% endif %}>Arrêter le kiosque</button>
     </form>
     <form method="post" class="inline" action="{{ url_for('dashboard.action_systeme', action='redemarrer-machine') }}"
           onsubmit="return confirm('Redémarrer TOUTE la machine ?') && confirm('Vraiment ? ~1 minute d\'indisponibilité totale.');">
-      <button type="submit" class="btn btn--danger">Redémarrer la machine</button>
+      <button type="submit" class="btn btn--danger" {% if heartbeat.session_active %}disabled{% endif %}>Redémarrer la machine</button>
     </form>
   </div>
   <p class="muted">Nécessite le kiosque en service systemd (deploy/install.sh) et la règle sudoers (install-admin.sh).</p>

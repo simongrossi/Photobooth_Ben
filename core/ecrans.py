@@ -27,13 +27,17 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import threading
 import time
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Callable, Optional
 
 import config
 
-ETAT_KIOSQUE_PATH = os.path.join(config.PATH_DATA, "kiosque_etat.json")
+ETAT_KIOSQUE_PATH = config.PATH_ETAT_KIOSQUE
+HEARTBEAT_INTERVALLE_S = config.INTERVALLE_HEARTBEAT_KIOSQUE_S
+HEARTBEAT_EXPIRE_S = config.EXPIRATION_HEARTBEAT_KIOSQUE_S
+_etat_write_lock = threading.Lock()
 
 # Origines possibles d'un asset résolu, du plus spécifique au plus générique.
 ORIGINE_ACTIF = "actif"
@@ -382,6 +386,21 @@ def empreinte_config() -> str:
     return hashlib.sha256(canonique.encode("utf-8")).hexdigest()
 
 
+def _ecrire_etat_atomique(etat: dict, chemin: str) -> None:
+    """Écrit l'état sous verrou, sans jamais faire tomber le kiosque."""
+    try:
+        dossier = os.path.dirname(chemin)
+        if dossier:
+            os.makedirs(dossier, exist_ok=True)
+        temporaire = chemin + ".tmp"
+        with _etat_write_lock:
+            with open(temporaire, "w", encoding="utf-8") as f:
+                json.dump(etat, f, ensure_ascii=False, indent=2, sort_keys=True)
+            os.replace(temporaire, chemin)
+    except (OSError, TypeError, ValueError):
+        pass
+
+
 def ecrire_etat_kiosque(chemin: Optional[str] = None) -> dict:
     """Dépose l'empreinte de la config chargée. Appelé au boot du kiosque.
 
@@ -390,20 +409,42 @@ def ecrire_etat_kiosque(chemin: Optional[str] = None) -> dict:
     Toute erreur d'écriture est absorbée — ne jamais empêcher un démarrage.
     """
     chemin = chemin or ETAT_KIOSQUE_PATH
+    maintenant = time.time()
     etat = {
-        "version": 1,
-        "boot_ts": time.time(),
+        "version": 2,
+        "boot_ts": maintenant,
+        "heartbeat_ts": maintenant,
         "pid": os.getpid(),
         "empreinte": empreinte_config(),
+        "online": True,
+        "etat": "DEMARRAGE",
+        "session_active": False,
     }
-    try:
-        os.makedirs(os.path.dirname(chemin), exist_ok=True)
-        temporaire = chemin + ".tmp"
-        with open(temporaire, "w", encoding="utf-8") as f:
-            json.dump(etat, f, ensure_ascii=False, indent=2, sort_keys=True)
-        os.replace(temporaire, chemin)
-    except (OSError, ValueError):
-        pass
+    _ecrire_etat_atomique(etat, chemin)
+    return etat
+
+
+def ecrire_heartbeat_kiosque(
+    instantane: dict,
+    chemin: Optional[str] = None,
+    *,
+    boot_ts: Optional[float] = None,
+    empreinte: Optional[str] = None,
+) -> dict:
+    """Publie atomiquement l'état runtime fourni par le kiosque."""
+    chemin = chemin or ETAT_KIOSQUE_PATH
+    precedent = lire_etat_kiosque(chemin) or {}
+    maintenant = time.time()
+    etat = {
+        "version": 2,
+        "boot_ts": boot_ts or precedent.get("boot_ts") or maintenant,
+        "heartbeat_ts": maintenant,
+        "pid": os.getpid(),
+        "empreinte": empreinte or precedent.get("empreinte") or empreinte_config(),
+        "online": True,
+        **instantane,
+    }
+    _ecrire_etat_atomique(etat, chemin)
     return etat
 
 
@@ -418,6 +459,91 @@ def lire_etat_kiosque(chemin: Optional[str] = None) -> Optional[dict]:
     except (OSError, json.JSONDecodeError):
         return None
     return etat if isinstance(etat, dict) else None
+
+
+def heartbeat_est_frais(
+    etat: Optional[dict] = None,
+    *,
+    maintenant: Optional[float] = None,
+    expiration_s: float = HEARTBEAT_EXPIRE_S,
+) -> bool:
+    """True si l'état runtime est récent et indique un kiosque en ligne."""
+    etat = etat if etat is not None else lire_etat_kiosque()
+    if not etat or not etat.get("online"):
+        return False
+    try:
+        age = (maintenant or time.time()) - float(etat["heartbeat_ts"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    return -1.0 <= age <= expiration_s
+
+
+def session_kiosque_active(etat: Optional[dict] = None) -> bool:
+    """True uniquement pour une session confirmée par un heartbeat frais."""
+    etat = etat if etat is not None else lire_etat_kiosque()
+    return bool(heartbeat_est_frais(etat) and etat.get("session_active"))
+
+
+class HeartbeatKiosque:
+    """Publie un instantané runtime périodique depuis un thread daemon."""
+
+    def __init__(
+        self,
+        fournisseur: Callable[[], dict],
+        chemin: Optional[str] = None,
+        intervalle_s: float = HEARTBEAT_INTERVALLE_S,
+    ) -> None:
+        self.fournisseur = fournisseur
+        self.chemin = chemin or ETAT_KIOSQUE_PATH
+        self.intervalle_s = intervalle_s
+        self.boot_ts = time.time()
+        self.empreinte = empreinte_config()
+        self._stop = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+
+    def _instantane(self) -> dict:
+        try:
+            instantane = self.fournisseur()
+            return instantane if isinstance(instantane, dict) else {}
+        except Exception:
+            return {"etat": "INCONNU", "session_active": False}
+
+    def publier(self) -> dict:
+        return ecrire_heartbeat_kiosque(
+            self._instantane(),
+            self.chemin,
+            boot_ts=self.boot_ts,
+            empreinte=self.empreinte,
+        )
+
+    def start(self) -> None:
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._stop.clear()
+        self.publier()
+        self._thread = threading.Thread(
+            target=self._boucle,
+            daemon=True,
+            name="kiosque-heartbeat",
+        )
+        self._thread.start()
+
+    def _boucle(self) -> None:
+        while not self._stop.wait(self.intervalle_s):
+            self.publier()
+
+    def close(self) -> None:
+        self._stop.set()
+        if self._thread is not None and self._thread.is_alive():
+            self._thread.join(timeout=max(1.0, self.intervalle_s + 0.5))
+        final = self._instantane()
+        final.update({"online": False, "etat": "ARRETE", "session_active": False})
+        ecrire_heartbeat_kiosque(
+            final,
+            self.chemin,
+            boot_ts=self.boot_ts,
+            empreinte=self.empreinte,
+        )
 
 
 def redemarrage_requis() -> Optional[bool]:
