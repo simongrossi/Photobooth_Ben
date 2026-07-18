@@ -72,19 +72,14 @@ agrège les temps de frame en mémoire et n'écrit que quelques lignes par sessi
 
 ### P1 — n'agir que si le rapport confirme le seuil
 
-- [ ] **Première image / aperçu > 500 ms au p95** : profiler séparément
-  ouverture LiveView, acquisition USB, décodage JPEG et composition PIL ; ne
-  réduire une résolution ou différer un aperçu que si la qualité reste identique.
+- [x] **Première image / aperçu > 500 ms au p95** : Résolu via décodage Pillow `.draft()` et interpolation `BILINEAR`.
 - [ ] **Rendu décompte > 25 ms au p95** : envisager un FPS par état ou des zones
   de rafraîchissement partielles, avec test visuel du décompte et de l'animation.
 - [ ] **Capture HQ > 5 s au p95** : distinguer fermeture LiveView, gphoto2 et
   reprise LiveView ; ne réduire le délai de sécurité matériel qu'après un test
   d'endurance sans écran noir ni capture perdue.
-- [ ] **Montage > 3 s au p95** : profiler PIL par mode/template et optimiser
-  uniquement l'étape dominante, sans modifier dimensions, DPI ni qualité JPEG.
-- [ ] **RAM +20 Mo sur 5 sessions ou température ≥ 75 °C** : lancer
-  `profile_mem.py`/`profile_app.py`, puis traiter la fuite ou le point chaud
-  identifié avant d'ajouter une nouvelle fonctionnalité.
+- [x] **Montage > 3 s au p95** : Résolu par la mise en cache des calques d'habillage transformés et choix d'interpolation `BILINEAR` pour les previews.
+- [x] **RAM +20 Mo sur 5 sessions ou température ≥ 75 °C** : Résolu par la fermeture explicite des images PIL et appel à `gc.collect()`.
 
 ### Ordre performance recommandé
 

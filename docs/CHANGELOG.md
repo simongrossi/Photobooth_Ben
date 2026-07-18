@@ -3,6 +3,21 @@
 Historique des commits par sprint, du plus récent au plus ancien.
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
+## `WIP` — Optimisation Performance & Fiabilité (Sprint 2026-07-19)
+
+### Added
+- Document de référence `docs/roadmap-performance.md` détaillant les étapes d'optimisation.
+- Mode SQLite WAL (`journal_mode = WAL`) activé à l'ouverture de la base pour éviter les conflits de verrous concurrents.
+- Nettoyage des processus USB bloquants (`pkill`) désormais sécurisé (exécuté sur Linux uniquement) et protégé contre les erreurs.
+
+### Changed
+- Utilisation de Pillow `.draft()` et de l'interpolation `BILINEAR` pour charger instantanément l'aperçu de validation des clichés.
+- Scaling LiveView déporté en asynchrone (via OpenCV) dans le thread d'acquisition d'arrière-plan, soulageant le thread graphique Pygame.
+- Mise en cache des calques d'habillage (fonds et overlays) déjà mis à l'échelle et orientés dans `MontageBase`.
+- Choix intelligent d'interpolation selon le contexte : `BILINEAR` pour les previews et `LANCZOS` réservé à l'impression finale.
+- Mise en cache des textures de texte ombré dans `draw_text_shadow_soft` (évite les rendus de polices et allocations de surfaces Pygame à 30 FPS).
+- Libération de mémoire agressive via `.close()` sur les instances d'images PIL intermédiaires et appel explicite à `gc.collect()` après chaque montage final.
+
 ---
 
 ## `WIP` — Cohérence des assets d'écran (phases 0-1)
