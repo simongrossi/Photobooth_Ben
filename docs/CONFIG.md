@@ -327,6 +327,24 @@ les feuilles demandées ont été acceptées.
 | `DUREE_CONFIRM_ABANDON` | `3.0` | Fenêtre confirmation abandon (s) |
 | `TIMEOUT_SPLASH_CAMERA` | `10.0` | Timeout max connexion caméra (s) |
 
+### Libération d'une session laissée sans utilisateur
+
+Un invité qui s'en va au milieu bloquait la borne indéfiniment sur son écran :
+le suivant voyait sa photo et ne pouvait rien lancer. C'était aussi un problème
+de vie privée, le portrait restant affiché sans limite.
+
+| Constante | Défaut | Effet |
+|---|---|---|
+| `DUREE_IDLE_SESSION` | `90.0` | Inactivité (s) avant retour à l'accueil sur VALIDATION et FIN. **`0` désactive** la libération automatique (borne surveillée en permanence) |
+| `DUREE_AVERTISSEMENT_IDLE` | `15.0` | Compte à rebours affiché pendant les N dernières secondes. Prévenir plus tôt mettrait une pression inutile sur quelqu'un qui regarde simplement sa photo |
+| `DELAI_CHOIX_COPIES` | `20.0` | Timeout propre à l'écran « nombre de copies » |
+
+La décision est prise par `core/session.py` (`session_a_liberer`,
+`avertissement_liberation`) — fonctions pures, testées en CI, que la boucle
+principale se contente d'interroger. Les sessions ainsi libérées sont tracées
+`idle_timeout` dans `sessions.jsonl` et comptées séparément par `stats.py` : un
+compteur élevé signale un écran qu'on ne comprend pas, pas de la distraction.
+
 ### Watermark événement (montages finaux)
 
 Petit texte discret ajouté sur les impressions (10×15 et strip). Désactivé

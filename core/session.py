@@ -18,8 +18,13 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
+import config
 from config import PATH_DATA
 from core.logger import log_warning
+
+# États où un invité peut s'arrêter et partir. ACCUEIL en est exclu (rien à
+# libérer) et DECOMPTE aussi (non interactif, il se termine tout seul).
+ETATS_LIBERABLES = ("VALIDATION", "FIN")
 
 
 class Etat(Enum):
@@ -50,6 +55,9 @@ class SessionState:
     evenement_charge: bool = False
     erreur_impression: bool = False
     message_erreur_impression: str = ""
+    # Échec de capture récupérable : la session reste ouverte pour proposer
+    # « Réessayer » plutôt que de renvoyer l'invité à l'accueil sans recours.
+    erreur_capture: bool = False
     chemin_impression: str = ""
     impressions_restantes: int = 0
     impression_en_cours: bool = False
@@ -69,9 +77,67 @@ class SessionState:
         self.evenement_charge = False
         self.erreur_impression = False
         self.message_erreur_impression = ""
+        self.erreur_capture = False
         self.chemin_impression = ""
         self.impressions_restantes = 0
         self.impression_en_cours = False
+
+
+# ========================================================================================
+# --- Libération automatique d'une session laissée sans utilisateur ---
+# ========================================================================================
+
+def secondes_avant_liberation(
+    session: SessionState,
+    maintenant: Optional[float] = None,
+    delai: Optional[float] = None,
+) -> Optional[float]:
+    """Secondes restantes avant le retour automatique à l'accueil.
+
+    None quand la libération ne s'applique pas : état non libérable (accueil,
+    décompte), délai désactivé (`DUREE_IDLE_SESSION <= 0`) ou activité jamais
+    horodatée. Un nombre négatif ou nul signifie que le délai est écoulé.
+
+    Fonction pure, pour que la décision soit testable sans pygame — la boucle
+    principale ne fait que l'interroger.
+    """
+    delai = config.DUREE_IDLE_SESSION if delai is None else delai
+    if delai <= 0:
+        return None
+    if session.etat.value not in ETATS_LIBERABLES:
+        return None
+    if not session.last_activity_ts:
+        return None
+    return delai - ((maintenant or time.time()) - session.last_activity_ts)
+
+
+def session_a_liberer(
+    session: SessionState,
+    maintenant: Optional[float] = None,
+    delai: Optional[float] = None,
+) -> bool:
+    """True si la session doit être rendue à l'accueil pour cause d'inactivité."""
+    restant = secondes_avant_liberation(session, maintenant, delai)
+    return restant is not None and restant <= 0
+
+
+def avertissement_liberation(
+    session: SessionState,
+    maintenant: Optional[float] = None,
+    delai: Optional[float] = None,
+    fenetre: Optional[float] = None,
+) -> Optional[int]:
+    """Secondes à afficher à l'invité, ou None s'il ne faut rien afficher.
+
+    L'avertissement n'apparaît que dans les dernières secondes : prévenir trop
+    tôt mettrait une pression inutile sur quelqu'un qui regarde simplement sa
+    photo.
+    """
+    fenetre = config.DUREE_AVERTISSEMENT_IDLE if fenetre is None else fenetre
+    restant = secondes_avant_liberation(session, maintenant, delai)
+    if restant is None or restant <= 0 or restant > fenetre:
+        return None
+    return max(1, int(round(restant)))
 
 
 def ecrire_metadata_session(
@@ -85,7 +151,7 @@ def ecrire_metadata_session(
     Args:
         session: la session terminée (lit `id_session_timestamp`, `mode_actuel`).
         issue: "printed" | "abandoned" | "capture_failed" | "print_failed" |
-            "print_disabled" (consommé par stats.py).
+            "print_disabled" | "idle_timeout" (consommé par stats.py).
         nb_photos: nombre de photos effectivement capturées.
         duree_s: durée en secondes depuis `session_start_ts`.
     """
@@ -117,7 +183,7 @@ def terminer_session_et_revenir_accueil(session: SessionState, issue: str) -> No
     Args:
         session: la session à terminer (sera reset).
         issue: "printed" | "abandoned" | "capture_failed" | "print_failed" |
-            "print_disabled".
+            "print_disabled" | "idle_timeout".
     """
     duree_s = time.time() - session.session_start_ts
     ecrire_metadata_session(session, issue, len(session.photos_validees), duree_s)

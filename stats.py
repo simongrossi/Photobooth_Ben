@@ -139,6 +139,7 @@ def calculer_stats(sessions):
         "capture_failed": issues.get("capture_failed", 0),
         "print_failed": issues.get("print_failed", 0),
         "print_disabled": issues.get("print_disabled", 0),
+        "idle_timeout": issues.get("idle_timeout", 0),
         "modes": dict(modes),
         "duree_moyenne_s": round(duree_moy, 1),
         "duree_max_s": round(duree_max, 1),
@@ -173,6 +174,10 @@ def afficher_texte(stats, date_filter=None):
         print(f"  {RED}Impression KO: {stats['print_failed']}{RESET}")
     if stats.get("print_disabled"):
         print(f"  {YELLOW}Sans papier  : {stats['print_disabled']}{RESET}")
+    if stats.get("idle_timeout"):
+        # Invités partis sans terminer : un compteur élevé suggère un écran
+        # dont on ne comprend pas quoi faire, pas seulement de la distraction.
+        print(f"  {YELLOW}Parti(e)s    : {stats['idle_timeout']}{RESET}")
 
     print(f"\n{BOLD}Modes{RESET}")
     for mode, n in stats["modes"].items():

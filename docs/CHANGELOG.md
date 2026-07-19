@@ -14,6 +14,52 @@ sur `main` mais pas encore déployé.
 
 ---
 
+## `WIP` — Parcours invité : inactivité, capture ratée, archivage
+
+### Added
+- **Libération automatique d'une session laissée sans utilisateur.** Un invité
+  qui s'en allait bloquait la borne indéfiniment sur son écran : le suivant
+  voyait sa photo et ne pouvait rien lancer. C'était aussi un problème de vie
+  privée, le portrait restant affiché sans limite. Retour à l'accueil après
+  `DUREE_IDLE_SESSION` (90 s, `0` pour désactiver) sur VALIDATION et FIN, avec
+  compte à rebours pendant les dernières secondes — l'écran ne se vide plus sans
+  prévenir. Issue `idle_timeout` tracée dans `sessions.jsonl` et comptée par
+  `stats.py`, distincte d'un abandon volontaire : un compteur élevé signale un
+  écran qu'on ne comprend pas, pas seulement de la distraction.
+- **L'échec de capture devient récupérable.** Un raté ponctuel de l'appareil
+  renvoyait l'invité à l'accueil après 4 s d'écran rouge, sans explication ni
+  recours : il devait tout reprendre depuis le choix du format. La session reste
+  désormais ouverte, le bouton du milieu relance le décompte **dans la même
+  session** (l'identifiant est conservé, donc pas de second passage dans les
+  statistiques), les deux autres rentrent à l'accueil.
+- `DELAI_CHOIX_COPIES` : le timeout de l'écran « nombre de copies » existait
+  déjà mais en constante locale ; il devient configurable comme les autres.
+
+### Changed
+- **L'archivage des reprises et des abandons passe en tâche de fond.** Reprendre
+  une photo imposait d'attendre la fabrication complète d'un montage en qualité
+  d'impression — filigrane, grain et sauvegarde comprises — que l'invité ne
+  verrait jamais. Les quatre chemins concernés (reprise et abandon, sur
+  validation et sur fin) partagent maintenant `archiver_en_arriere_plan()`, qui
+  recopie ses entrées avant de lancer un thread daemon. Les dossiers `skipped_*`
+  restent alimentés : la galerie admin les expose.
+
+### Removed
+- `TXT_ARCHIVAGE_EN_COURS`, ajouté le matin même pour ces écrans d'attente.
+  L'archivage étant passé en arrière-plan, plus aucune attente n'est affichée —
+  garder le réglage aurait laissé un texte éditable depuis l'admin sans le
+  moindre effet, exactement le genre de surprise que la page Écrans combat.
+
+### Fixed
+- Deux tests passaient à vide, révélés par mutation. Celui de la recopie des
+  entrées d'archivage était une course : le faux générateur étant instantané, le
+  thread finissait avant que l'appelant ne vide la liste, donc l'absence de
+  copie n'était pas détectée. Il synchronise désormais explicitement. L'échec de
+  capture, lui, n'avait aucun test — réintroduire l'ancien comportement ne
+  faisait rien échouer.
+
+---
+
 ## `f2c6eb0` — Quota d'impressions désactivé par défaut
 
 ### Changed

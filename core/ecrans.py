@@ -265,9 +265,6 @@ REGISTRE: tuple[Ecran, ...] = (
         champs=(
             ChampEditable("TXT_PREPARATION_IMP", "Message de préparation", TEXTE,
                           "Affiché pendant la génération du montage à imprimer."),
-            ChampEditable("TXT_ARCHIVAGE_EN_COURS", "Message d'annulation", TEXTE,
-                          "Affiché pendant l'archivage d'une photo annulée ou reprise. "
-                          "Ne doit pas parler d'impression : l'invité vient d'annuler."),
             ChampEditable("TXT_ENVOI_IMPRIMANTE", "Message pendant l'envoi", TEXTE),
             ChampEditable("TXT_IMPRESSION_ENVOYEE", "Confirmation d'envoi", TEXTE),
             ChampEditable("TAILLE_TEXTE_IMP_COURANT", "Taille du message", TAILLE, unite="px"),

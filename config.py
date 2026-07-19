@@ -106,6 +106,15 @@ DELAI_DEBLOCAGE_QUOTA = 30.0  # Timeout (s) de l'écran de saisie du code de dé
 
 TEMPS_DECOMPTE = 5
 
+# --- Libération automatique d'une session laissée sans utilisateur ---
+# Un invité qui s'en va au milieu bloquait la borne indéfiniment sur son écran :
+# le suivant voyait la photo de quelqu'un d'autre et ne pouvait rien lancer.
+# S'applique à VALIDATION, FIN et au choix du nombre de copies.
+# 0 désactive complètement la libération automatique.
+DUREE_IDLE_SESSION = 90.0        # Inactivité (s) avant retour à l'accueil
+DUREE_AVERTISSEMENT_IDLE = 15.0  # Avertissement affiché pendant les N dernières s
+DELAI_CHOIX_COPIES = 20.0        # Timeout propre à l'écran « nombre de copies »
+
 # --- Contrôles Clavier ---
 # Les K_* de pygame pour les lettres minuscules correspondent à leur code ASCII.
 # Fallback ord() permet à config.py de se charger sans pygame (pour status.py).
@@ -393,10 +402,6 @@ TXT_SPLASH_CAMERA       = "Connexion à l'appareil photo..."
 TXT_SPLASH_CAMERA_OK    = "Appareil photo connecté !"
 TXT_SPLASH_CAMERA_FAIL  = "Appareil photo non détecté - mode dégradé"
 TXT_PREPARATION_IMP     = "Préparation de votre impression..."
-# Affiché pendant l'archivage d'une photo abandonnée ou reprise. Annoncer une
-# « préparation d'impression » à un invité qui vient d'annuler lui fait croire
-# que son annulation n'a pas été prise en compte.
-TXT_ARCHIVAGE_EN_COURS  = "Un instant..."
 TXT_ERREUR_CAPTURE      = "Erreur de capture - réessayez"
 TXT_ERREUR_IMPRIMANTE   = "Imprimante indisponible"
 TXT_ENVOI_IMPRIMANTE    = "Envoi à l'imprimante..."
@@ -406,8 +411,17 @@ TXT_IMPRESSION_SANS     = "Terminer sans imprimer"
 TXT_IMPRESSION_REESSAYER = "RÉESSAYER"
 TXT_IMPRESSION_AIDE     = "APPELER L'ANIMATEUR"
 TXT_IMPRESSION_AIDE_MESSAGE = "Veuillez prévenir l'animateur"
+
+# Échec de capture récupérable : l'invité choisit au lieu d'être renvoyé à
+# l'accueil sans explication. Le bouton du milieu relance le décompte dans la
+# MÊME session (l'identifiant est conservé).
+TXT_CAPTURE_REESSAYER   = "RÉESSAYER"
+TXT_CAPTURE_ABANDONNER  = "Accueil"
 TXT_CONFIRM_ABANDON_1   = "Abandonner ?"
 TXT_CONFIRM_ABANDON_2   = "Appuyez à nouveau pour confirmer"
+# Avertissement avant libération automatique. Le « {s} » est remplacé par les
+# secondes restantes.
+TXT_IDLE_AVERTISSEMENT  = "Toujours là ? Retour à l'accueil dans {s} s"
 
 DUREE_FLASH_BLANC  = 0.08  # Secondes de flash blanc pur avant la capture
 DUREE_ECRAN_ERREUR = 4.0   # Timeout auto des écrans d'erreur (secondes)
@@ -662,7 +676,6 @@ _ECRANS_OVERRIDES_WHITELIST = {
     "TXT_SPLASH_CAMERA_OK": (str, 1, _LONG_TEXTE_MAX),
     "TXT_SPLASH_CAMERA_FAIL": (str, 1, _LONG_TEXTE_MAX),
     "TXT_PREPARATION_IMP": (str, 1, _LONG_TEXTE_MAX),
-    "TXT_ARCHIVAGE_EN_COURS": (str, 1, _LONG_TEXTE_MAX),
     "TXT_ERREUR_CAPTURE": (str, 1, _LONG_TEXTE_MAX),
     "TXT_ERREUR_IMPRIMANTE": (str, 1, _LONG_TEXTE_MAX),
     "TXT_ENVOI_IMPRIMANTE": (str, 1, _LONG_TEXTE_MAX),

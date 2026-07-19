@@ -103,17 +103,21 @@ Canon, la DNP et plusieurs personnes qui ne connaissent pas l'application.
   - Auto-validation du mode rafale suspendue tant qu'une confirmation est
     armée : elle enchaînait sur la photo suivante pendant que l'invité hésitait,
     et l'annulation était perdue sans trace.
-  - Archivage sous « Un instant… » (`TXT_ARCHIVAGE_EN_COURS`) au lieu de
-    « Préparation de votre impression ».
+  - L'archivage n'annonce plus « Préparation de votre impression » : il ne
+    montre plus rien du tout, puisqu'il est passé en tâche de fond (voir
+    « Alléger les reprises et les abandons »).
   - Reste à faire : clignotement du seul bouton rouge pendant la fenêtre
     (côté LED Arduino, non couvert ici).
 
-- [ ] **Libérer automatiquement une session laissée sans utilisateur** *(2–3 h)*
-  - Ajouter une inactivité propre à `VALIDATION`, `FIN` et au choix des copies.
-  - Avertir avant expiration, puis revenir à l'accueil après un délai
-    configurable de 60–90 s.
-  - Conserver les fichiers dans les abandons récupérables et tracer la cause
-    `idle_timeout`.
+- [x] **Libérer automatiquement une session laissée sans utilisateur** *(livré le 2026-07-19)*
+  - Inactivité sur `VALIDATION` et `FIN` (`DUREE_IDLE_SESSION`, 90 s par défaut,
+    0 pour désactiver) ; le choix des copies avait déjà son délai, remonté en
+    `DELAI_CHOIX_COPIES` configurable.
+  - Compte à rebours affiché pendant les dernières secondes
+    (`DUREE_AVERTISSEMENT_IDLE`) : l'écran ne se vide plus sans prévenir.
+  - Cause tracée `idle_timeout` dans `sessions.jsonl` et comptée par `stats.py`,
+    distincte d'un abandon volontaire.
+  - Décision portée par `core/session.py` (fonctions pures, testées en CI).
 
 - [ ] **Protéger la vie privée du diaporama et de la galerie** *(2–4 h)*
   - Limiter le diaporama aux photos de l'événement actif et exclure par défaut
@@ -174,26 +178,25 @@ Canon, la DNP et plusieurs personnes qui ne connaissent pas l'application.
   - [x] Impression : `Réessayer` / `Terminer sans imprimer` / `Appeler
     l'animateur`, session et montage conservés *(livré le 2026-07-19,
     `5697e4b`)*.
-  - [ ] **Capture** : reste passif. `Photobooth_start.py` appelle
-    `ecran_erreur(TXT_ERREUR_CAPTURE)`, qui affiche un message et disparaît
-    après `DUREE_ECRAN_ERREUR` — l'invité n'a aucun choix. Ajouter
-    `Réessayer` / `Accueil` sur le modèle de l'écran d'impression.
+  - [x] **Capture** : état récupérable livré le 2026-07-19. La session reste
+    ouverte, le bouton du milieu relance le décompte dans la MÊME session
+    (identifiant conservé), les deux autres rentrent à l'accueil.
   - [ ] Quota : message neutre pour l'invité et déblocage opérateur séparé ; ne
     pas exposer un écran de saisie de code comme parcours normal.
   - [ ] Traduire les erreurs techniques en consignes simples sans perdre le
     détail dans les logs.
 
 - [ ] **Alléger les reprises et les abandons** *(2–3 h)*
-  - [ ] Ne pas générer un montage final complet lorsqu'un invité veut seulement
-    reprendre une photo. **Toujours d'actualité** : le chemin « Reprendre »
-    appelle encore `MontageGenerator*.final()` derrière un spinner, donc
-    l'invité attend la génération d'une image qu'il ne verra jamais.
-  - [ ] Déplacer ou référencer la brute immédiatement, puis effectuer les
-    archives coûteuses en arrière-plan si nécessaire.
+  - [x] Ne plus faire attendre l'invité : les quatre chemins d'archivage
+    (reprise et abandon, validation et fin) passent par
+    `archiver_en_arriere_plan()` dans un thread daemon *(livré le 2026-07-19)*.
+    Les dossiers `skipped_*` restent alimentés — la galerie admin les expose.
   - [x] Ne plus annoncer « Préparation de votre impression » pendant l'archivage
-    d'une reprise ou d'un abandon (`TXT_ARCHIVAGE_EN_COURS`) *(livré le
-    2026-07-19, `1a3fb1a`)*.
-  - [ ] Harmoniser l'archivage du 10×15 et des strips.
+    d'une reprise ou d'un abandon *(livré le 2026-07-19, `1a3fb1a`)*. Le message
+    dédié introduit alors a été supprimé le soir même : passé en tâche de fond,
+    l'archivage n'affiche plus rien, donc plus rien à formuler.
+  - [x] Harmoniser l'archivage du 10×15 et des strips : les quatre chemins
+    passent par le même helper, qui choisit le générateur selon le mode.
 
 ### P2 — qualité visuelle, accessibilité et validation terrain
 

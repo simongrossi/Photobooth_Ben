@@ -28,7 +28,7 @@ from config import (
     TEMP_PATH,
     TAILLE_TEXTE_BOUTON, TAILLE_TITRE_ACCUEIL, TEMPS_DECOMPTE, TEXTE_PHOTO_COUNT,
     TOUCHE_DROITE, TOUCHE_GAUCHE, TOUCHE_MILIEU,
-    TXT_ARCHIVAGE_EN_COURS, TXT_BURST_COUNTDOWN, TXT_ERREUR_CAPTURE,
+    TXT_BURST_COUNTDOWN,
     TXT_ERREUR_IMPRIMANTE, TXT_PREPARATION_IMP, TXT_SLIDESHOW_INVITATION, WIDTH, ZOOM_FACTOR,
     MAX_COPIES_IMPRESSION,
 )
@@ -59,6 +59,8 @@ from datetime import datetime
 from core.session import (  # noqa: E402
     Etat,
     SessionState,
+    avertissement_liberation,
+    session_a_liberer,
     terminer_session_et_revenir_accueil as _terminer_session_et_revenir_accueil,
 )
 from core.evenements import charger_evenement_actif  # noqa: E402
@@ -604,7 +606,7 @@ def demander_nombre_copies(session: SessionState) -> int:
     
     selection_validee = False
     temps_debut = time.time()
-    DELAI_CHOIX = 20.0 
+    DELAI_CHOIX = config.DELAI_CHOIX_COPIES 
 
     # --- PALETTE DE COULEURS DE L'ÉCRAN ---
     COULEUR_VERTE = config.COULEUR_TEXTE_M
@@ -1360,11 +1362,17 @@ def render_decompte(session: SessionState) -> None:
 
     if chemin_photo:
         session.photos_validees.append(chemin_photo)
+        session.erreur_capture = False
         session.etat = Etat.VALIDATION
     else:
-        log_critical("Erreur capture : retour à l'accueil")
-        ecran_erreur(TXT_ERREUR_CAPTURE)
-        terminer_session_et_revenir_accueil("capture_failed")
+        # État récupérable : la session reste ouverte et l'invité choisit entre
+        # réessayer et rentrer. Auparavant, un raté ponctuel de l'appareil le
+        # renvoyait à l'accueil après 4 s d'écran rouge, sans explication ni
+        # recours : il devait tout reprendre depuis le choix du format.
+        log_warning("Erreur capture : session conservée, choix laissé à l'invité")
+        _journaliser_action("capture_failed")
+        session.erreur_capture = True
+        session.etat = Etat.VALIDATION
 
     session.dernier_clic_time = time.time()
 
@@ -1475,7 +1483,11 @@ def render_validation(session: SessionState) -> bool:
     y_b = HEIGHT - BANDEAU_HAUTEUR
     screen.blit(BANDEAU_CACHE, (0, y_b))
 
-    if session.erreur_impression:
+    if session.erreur_capture:
+        txt_g = config.TXT_CAPTURE_ABANDONNER
+        txt_m = config.TXT_CAPTURE_REESSAYER
+        txt_d = config.TXT_CAPTURE_ABANDONNER
+    elif session.erreur_impression:
         txt_g = config.TXT_IMPRESSION_SANS
         txt_m = config.TXT_IMPRESSION_REESSAYER
         txt_d = config.TXT_IMPRESSION_AIDE
@@ -1517,9 +1529,15 @@ def render_validation(session: SessionState) -> bool:
             screen.blit(burst_bg, (bx - 20, by - 6))
             screen.blit(burst_surf, (bx, by))
     
-    # 4. État récupérable après un refus CUPS : la photo reste visible et les
-    # trois boutons deviennent terminer / réessayer / demander de l'aide.
-    if session.erreur_impression:
+    # 4. États récupérables : la session reste ouverte et les trois boutons
+    # changent de rôle. Capture ratée → réessayer / rentrer. Refus CUPS → la
+    # photo reste visible avec terminer / réessayer / demander de l'aide.
+    if session.erreur_capture:
+        _dessiner_texte_centre_avec_garde(
+            screen, config.TXT_ERREUR_CAPTURE, font_alerte,
+            config.COULEUR_ERREUR_TEXTE, HEIGHT // 2 - 60, int(WIDTH * 0.8),
+        )
+    elif session.erreur_impression:
         _dessiner_texte_centre_avec_garde(
             screen,
             config.TXT_IMPRESSION_ECHEC,
@@ -1542,7 +1560,29 @@ def render_validation(session: SessionState) -> bool:
     elif session.abandon_confirm_until:
         session.abandon_confirm_until = 0.0
 
+    _dessiner_avertissement_idle(session)
+
     return False
+
+
+def _dessiner_avertissement_idle(session: SessionState) -> None:
+    """Prévient l'invité avant la libération automatique de la borne.
+
+    Sans ce compte à rebours, l'écran se viderait sans explication au milieu de
+    ce qu'il regarde. N'apparaît que dans les dernières secondes.
+    """
+    restant = avertissement_liberation(session)
+    if restant is None:
+        return
+    texte = config.TXT_IDLE_AVERTISSEMENT.format(s=restant)
+    surf = _surface_texte_cache(font_bandeau, texte, config.COULEUR_TEXTE_REPOS)
+    fond = pygame.Surface((surf.get_width() + 40, surf.get_height() + 14), pygame.SRCALPHA)
+    fond.fill((0, 0, 0, 170))
+    x = WIDTH // 2 - surf.get_width() // 2
+    y = 24
+    screen.blit(fond, (x - 20, y - 7))
+    screen.blit(surf, (x, y))
+
 
 def render_fin(session: SessionState) -> None:
     """FIN : aperçu du montage final + bandeau 3 boutons + overlay confirmation abandon."""
@@ -1612,6 +1652,8 @@ def render_fin(session: SessionState) -> None:
     elif session.abandon_confirm_until:
         session.abandon_confirm_until = 0.0
 
+    _dessiner_avertissement_idle(session)
+
 
 # ========================================================================================================
 # --- EVENT HANDLERS (Sprint item 9) ---
@@ -1642,6 +1684,62 @@ def handle_accueil_event(event: pygame.event.Event, session: SessionState,   # t
         session.photos_validees = []
         session.dernier_clic_time = maintenant
         session.etat = Etat.DECOMPTE
+
+
+def archiver_en_arriere_plan(mode: str, photos: list, id_session: str,
+                             dossier: str, prefixe: str) -> Optional[threading.Thread]:
+    """Génère et range un montage d'archive sans faire attendre l'invité.
+
+    Les dossiers `skipped_retake` et `skipped_deleted` sont consultables depuis
+    la galerie admin : on continue donc d'y déposer un vrai montage, mais plus
+    au prix d'un spinner. Auparavant, reprendre une photo imposait d'attendre la
+    fabrication complète d'une image en qualité d'impression — filigrane, grain
+    et sauvegarde comprises — que l'invité ne verrait jamais.
+
+    Les entrées sont recopiées : l'appelant remet `photos_validees` à zéro juste
+    après, et le thread travaillerait sinon sur une liste vidée sous ses pieds.
+    """
+    photos_copie = list(photos)
+    if not photos_copie or not id_session:
+        return None
+
+    def _travail() -> None:
+        try:
+            generateur = MontageGeneratorStrip if mode == "strips" else MontageGenerator10x15
+            produit = generateur.final(photos_copie, id_session)
+            if produit and os.path.exists(produit):
+                os.makedirs(dossier, exist_ok=True)
+                shutil.move(produit, os.path.join(dossier, f"{prefixe}_{id_session}.jpg"))
+        except Exception as e:
+            # Une archive ratée ne doit jamais remonter jusqu'à l'invité : il a
+            # déjà repris la main sur l'écran suivant.
+            log_warning(f"Archivage {prefixe} en arrière-plan échoué : {e}")
+
+    fil = threading.Thread(target=_travail, daemon=True, name=f"archive-{prefixe}")
+    fil.start()
+    return fil
+
+
+def _handle_erreur_capture(event: pygame.event.Event, session: SessionState,  # type: ignore
+                           maintenant: float) -> None:
+    """Choix laissé à l'invité après un échec de capture.
+
+    Milieu = réessayer dans la MÊME session (l'identifiant est conservé, donc
+    pas de seconde ligne dans les statistiques). Gauche ou droite = rentrer.
+    """
+    if event.key == TOUCHE_MILIEU:
+        _journaliser_action("retry_capture")
+        session.erreur_capture = False
+        session.etat = Etat.DECOMPTE
+        session.dernier_clic_time = maintenant
+        pygame.event.clear()
+        return
+
+    if event.key in (TOUCHE_GAUCHE, TOUCHE_DROITE):
+        _journaliser_action("abandon_apres_echec_capture")
+        terminer_session_et_revenir_accueil("capture_failed")
+        session.dernier_clic_time = maintenant
+        pygame.event.clear()
 
 
 def _handle_erreur_impression(event: pygame.event.Event, session: SessionState,  # type: ignore
@@ -1692,15 +1790,10 @@ def _handle_validation_10x15(event: pygame.event.Event, session: SessionState,  
 
         session.img_preview_cache = None
 
-        try:
-            p = executer_avec_spinner(
-                lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
-                TXT_ARCHIVAGE_EN_COURS,
-            )
-            dest = os.path.join(PATH_SKIPPED_RETAKE, f"{PREFIXE_RETAKE}_{session.id_session_timestamp}.jpg")
-            shutil.move(p, dest)
-        except Exception as e:
-            log_critical(f"Erreur 10x15 Retake: {e}")
+        archiver_en_arriere_plan(
+            "10x15", session.photos_validees, session.id_session_timestamp,
+            PATH_SKIPPED_RETAKE, PREFIXE_RETAKE,
+        )
         session.photos_validees = []
         session.etat = Etat.DECOMPTE
         session.dernier_clic_time = maintenant
@@ -1725,15 +1818,10 @@ def _handle_validation_10x15(event: pygame.event.Event, session: SessionState,  
         if session.abandon_confirm_until and time.time() < session.abandon_confirm_until:
             _journaliser_action("abandon_confirmed")
             session.abandon_confirm_until = 0.0
-            try:
-                p = executer_avec_spinner(
-                    lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
-                    TXT_ARCHIVAGE_EN_COURS,
-                )
-                dest = os.path.join(PATH_SKIPPED_DELETED, f"{PREFIXE_DELETED}_{session.id_session_timestamp}.jpg")
-                shutil.move(p, dest)
-            except Exception as e:
-                log_critical(f"Erreur 10x15 Deleted: {e}")
+            archiver_en_arriere_plan(
+                "10x15", session.photos_validees, session.id_session_timestamp,
+                PATH_SKIPPED_DELETED, PREFIXE_DELETED,
+            )
             terminer_session_et_revenir_accueil("abandoned")
         else:
             _journaliser_action("abandon_requested")
@@ -1784,6 +1872,11 @@ def handle_validation_event(event: pygame.event.Event, session: SessionState,  #
     """VALIDATION : dispatch selon mode (10x15 vs strips). Debounce 0.5 s."""
     if ecoule < 0.5:
         return
+    # Un échec de capture prend le pas sur le parcours normal : il n'y a pas de
+    # photo à valider, seulement un choix entre réessayer et rentrer.
+    if session.erreur_capture:
+        _handle_erreur_capture(event, session, maintenant)
+        return
     if session.mode_actuel == "10x15":
         _handle_validation_10x15(event, session, maintenant)
     elif session.mode_actuel == "strips":
@@ -1807,22 +1900,10 @@ def handle_fin_event(event: pygame.event.Event, session: SessionState,   # type:
         # Recommencer : archive en RETAKE + repars au décompte (garde id_session)
         _journaliser_action("restart_session")
         session.abandon_confirm_until = 0.0
-        try:
-            if session.mode_actuel == "strips":
-                p = executer_avec_spinner(
-                    lambda: MontageGeneratorStrip.final(session.photos_validees, session.id_session_timestamp),
-                    TXT_ARCHIVAGE_EN_COURS,
-                )
-            else:
-                p = executer_avec_spinner(
-                    lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
-                    TXT_ARCHIVAGE_EN_COURS,
-                )
-            if os.path.exists(p):
-                nom_dest = f"{PREFIXE_RETAKE}_{session.id_session_timestamp}.jpg"
-                shutil.move(p, os.path.join(PATH_SKIPPED_RETAKE, nom_dest))
-        except Exception as e:
-            log_critical(f"Erreur archivage Recommencer : {e}")
+        archiver_en_arriere_plan(
+            session.mode_actuel, session.photos_validees, session.id_session_timestamp,
+            PATH_SKIPPED_RETAKE, PREFIXE_RETAKE,
+        )
 
         session.photos_validees = []
         session.img_preview_cache = None
@@ -1854,22 +1935,10 @@ def handle_fin_event(event: pygame.event.Event, session: SessionState,   # type:
             # 2e appui dans la fenêtre → abandon confirmé
             _journaliser_action("abandon_confirmed")
             session.abandon_confirm_until = 0.0
-            try:
-                if session.mode_actuel == "strips":
-                    p = executer_avec_spinner(
-                        lambda: MontageGeneratorStrip.final(session.photos_validees, session.id_session_timestamp),
-                        TXT_ARCHIVAGE_EN_COURS,
-                    )
-                else:
-                    p = executer_avec_spinner(
-                        lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
-                        TXT_ARCHIVAGE_EN_COURS,
-                    )
-                if os.path.exists(p):
-                    nom_deleted = f"{PREFIXE_DELETED}_{session.id_session_timestamp}.jpg"
-                    shutil.move(p, os.path.join(PATH_SKIPPED_DELETED, nom_deleted))
-            except Exception as e:
-                log_critical(f"Erreur archivage Supprimer : {e}")
+            archiver_en_arriere_plan(
+                session.mode_actuel, session.photos_validees, session.id_session_timestamp,
+                PATH_SKIPPED_DELETED, PREFIXE_DELETED,
+            )
             terminer_session_et_revenir_accueil("abandoned")
             session.dernier_clic_time = maintenant
         else:
@@ -1934,6 +2003,23 @@ def main() -> None:
                         handle_validation_event(event, session, maintenant, ecoule)
                     elif session.etat is Etat.FIN:
                         handle_fin_event(event, session, maintenant, ecoule)
+
+            # --- Libération d'une session laissée sans utilisateur -------------------------------------
+            # Un invité qui s'en va bloquait la borne indéfiniment sur son écran :
+            # le suivant voyait sa photo et ne pouvait rien lancer. La décision
+            # est prise par `core.session` (fonction pure, testée) ; ici on ne
+            # fait qu'appliquer.
+            if session_a_liberer(session):
+                _journaliser_action("idle_timeout")
+                log_info(
+                    f"Session libérée après inactivité : {session.id_session_timestamp} "
+                    f"(état {session.etat.value})"
+                )
+                terminer_session_et_revenir_accueil("idle_timeout")
+                session.dernier_clic_time = time.time()
+                session.last_activity_ts = time.time()
+                pygame.event.clear()
+                continue
 
             # --------------------------------------------------------------------------------------------
             # --- 2 ------ DESSIN A L'ECRAN --- ##########################################################
