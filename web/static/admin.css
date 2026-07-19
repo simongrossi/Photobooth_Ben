@@ -922,3 +922,24 @@ form.inline { display: inline; margin: 0; }
   line-height: 1;
   white-space: nowrap;
 }
+
+/* Champ couleur : pastille native + code hexa. Les deux vues d'une même
+   valeur — la pastille pour choisir a l'oeil, le code pour coller une
+   couleur de charte fournie par un client. */
+.champ-couleur { display: flex; gap: .4rem; align-items: center; }
+.champ-couleur__pastille {
+  flex: 0 0 auto;
+  width: 2.4rem;
+  height: 2.1rem;
+  padding: 2px;
+  border: 1px solid var(--bord);
+  border-radius: 8px;
+  background: var(--carte);
+  cursor: pointer;
+}
+.champ-couleur__code {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-transform: lowercase;
+}

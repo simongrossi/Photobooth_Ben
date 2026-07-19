@@ -64,7 +64,8 @@ class TestCoherenceRegistre:
             assert e.libelle and e.description, e.id
 
     def test_natures_de_champ_connues(self):
-        connues = {ecrans.TEXTE, ecrans.DUREE, ecrans.TAILLE, ecrans.POSITION, ecrans.BASCULE}
+        connues = {ecrans.TEXTE, ecrans.DUREE, ecrans.TAILLE, ecrans.POSITION,
+                   ecrans.BASCULE, ecrans.COULEUR}
         for champ in ecrans.tous_les_champs():
             assert champ.nature in connues, f"{champ.cle} : nature {champ.nature!r}"
 
@@ -100,7 +101,10 @@ class TestBornesPlusStrictesQueLesAssertions:
 
     def test_bornes_numeriques_coherentes(self):
         for cle, (type_attendu, mini, maxi) in config._ECRANS_OVERRIDES_WHITELIST.items():
-            if type_attendu is bool:
+            # Booléens et couleurs n'ont pas de bornes : les premiers n'ont pas
+            # d'ordre, les secondes sont bornées par leur conversion (0-255).
+            if type_attendu in (bool, config.Couleur):
+                assert mini is None and maxi is None, f"{cle} : bornes inutiles"
                 continue
             assert mini is not None and maxi is not None, cle
             assert mini < maxi, f"{cle} : bornes inversées ({mini} ≥ {maxi})"
@@ -118,6 +122,70 @@ class TestBornesPlusStrictesQueLesAssertions:
 # ========================================================================================
 # --- Validation des valeurs ---
 # ========================================================================================
+
+class TestTypeCouleur:
+    """Les couleurs transitent en `#rrggbb` (JSON n'a pas de tuple) et sont
+    appliquées en tuple RGB (ce dont pygame a besoin)."""
+
+    def test_aller_retour_hexa_tuple(self):
+        assert config.Couleur.vers_tuple("#ff7f00") == (255, 127, 0)
+        assert config.Couleur.vers_hexa((255, 127, 0)) == "#ff7f00"
+
+    def test_hexa_sans_diese_accepte(self):
+        assert config.Couleur.vers_tuple("ff7f00") == (255, 127, 0)
+
+    @pytest.mark.parametrize("brut", ["", "#12345", "#1234567", "rouge", "#gggggg", None, 255, []])
+    def test_valeurs_invalides_rejetees(self, brut):
+        assert config.Couleur.vers_tuple(brut) is None
+
+    @pytest.mark.parametrize("brut", [(300, 0, 0), (0, 0), "rouge", None, (0, 0, "x")])
+    def test_vers_hexa_refuse_les_non_couleurs(self, brut):
+        assert config.Couleur.vers_hexa(brut) == ""
+
+    def test_validation_convertit_en_tuple(self):
+        """Le kiosque doit recevoir un tuple, pas la chaîne du formulaire."""
+        assert config.valeur_ecran_valide("COULEUR_TEXTE_M", "#00ff00") == (0, 255, 0)
+
+    def test_validation_refuse_une_couleur_malformee(self):
+        assert config.valeur_ecran_valide("COULEUR_TEXTE_M", "#00ff0") is None
+        assert config.valeur_ecran_valide("COULEUR_TEXTE_M", "vert") is None
+
+    def test_tolere_une_liste_rgb_ecrite_a_la_main(self):
+        assert config.valeur_ecran_valide("COULEUR_TEXTE_M", [0, 255, 0]) == (0, 255, 0)
+
+    def test_refuse_une_composante_hors_plage(self):
+        assert config.valeur_ecran_valide("COULEUR_TEXTE_M", [0, 300, 0]) is None
+
+    def test_toutes_les_couleurs_par_defaut_sont_valides(self):
+        for cle, (type_attendu, _, _) in config._ECRANS_OVERRIDES_WHITELIST.items():
+            if type_attendu is not config.Couleur:
+                continue
+            defaut = getattr(config, cle)
+            assert config.Couleur.vers_hexa(defaut), f"{cle} : défaut {defaut!r} illisible"
+
+    def test_stockage_en_hexa_dans_le_fichier(self, tmp_path):
+        """Le fichier doit rester lisible et corrigeable à la main."""
+        chemin = str(tmp_path / "e.json")
+        ecrans.ecrire_overrides({"COULEUR_TEXTE_M": "#123456"}, chemin)
+        assert json.loads(open(chemin, encoding="utf-8").read()) == {"COULEUR_TEXTE_M": "#123456"}
+
+    def test_relecture_applique_un_tuple(self, tmp_path, monkeypatch):
+        chemin = tmp_path / "e.json"
+        chemin.write_text(json.dumps({"COULEUR_TEXTE_M": "#123456"}))
+        monkeypatch.setattr(config, "ECRANS_OVERRIDES_PATH", str(chemin))
+        monkeypatch.setattr(config, "COULEUR_TEXTE_M", config.COULEUR_TEXTE_M)
+        config._appliquer_overrides_ecrans()
+        assert config.COULEUR_TEXTE_M == (18, 52, 86)
+
+    def test_couleur_corrompue_ignoree_au_boot(self, tmp_path, monkeypatch):
+        avant = config.COULEUR_TEXTE_M
+        chemin = tmp_path / "e.json"
+        chemin.write_text(json.dumps({"COULEUR_TEXTE_M": "pas une couleur"}))
+        monkeypatch.setattr(config, "ECRANS_OVERRIDES_PATH", str(chemin))
+        monkeypatch.setattr(config, "COULEUR_TEXTE_M", avant)
+        config._appliquer_overrides_ecrans()
+        assert config.COULEUR_TEXTE_M == avant
+
 
 class TestValeurEcranValide:
     def test_accepte_valeur_nominale(self):

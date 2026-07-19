@@ -607,10 +607,10 @@ def demander_nombre_copies(session: SessionState) -> int:
     DELAI_CHOIX = 20.0 
 
     # --- PALETTE DE COULEURS DE L'ÉCRAN ---
-    COULEUR_VERTE = (0, 200, 0)
-    COULEUR_BLANCHE = (255, 255, 255)
-    COULEUR_ROUGE = (220, 50, 50)       
-    COULEUR_GRIS_LISIBLE = (70, 70, 70) 
+    COULEUR_VERTE = config.COULEUR_TEXTE_M
+    COULEUR_BLANCHE = config.COULEUR_TEXTE_G
+    COULEUR_ROUGE = config.COULEUR_TEXTE_D
+    COULEUR_GRIS_LISIBLE = config.COULEUR_TEXTE_INACTIF
 
     # --- CONFIGURATION ET POSITIONNEMENT DU BANDEAU ---
     HAUTEUR_BANDEAU_CHOIX = 90  
@@ -725,10 +725,10 @@ def ecran_deblocage_quota(session: SessionState) -> bool:
     flash_rouge_until = 0.0
     ANTI_REBOND_S = 0.3  # DELAI_SECURITE (2 s) rendrait la séquence insaisissable
 
-    COULEUR_BLANCHE = (255, 255, 255)
-    COULEUR_ROUGE = (220, 50, 50)
-    COULEUR_VERTE = (0, 200, 0)
-    COULEUR_GRIS = (70, 70, 70)
+    COULEUR_BLANCHE = config.COULEUR_TEXTE_G
+    COULEUR_ROUGE = config.COULEUR_TEXTE_D
+    COULEUR_VERTE = config.COULEUR_TEXTE_M
+    COULEUR_GRIS = config.COULEUR_TEXTE_INACTIF
 
     while True:
         maintenant = time.time()
@@ -1048,7 +1048,7 @@ def _render_accueil_slideshow(session: SessionState, idle_seconds: float) -> Non
 
     # 2. Rendu du texte avec pulsation
     alpha_inv = 150 + int(80 * math.sin(time.time() * 2))
-    inv_surf = _surface_texte_cache(font_bandeau, TXT_SLIDESHOW_INVITATION, (255, 255, 255))
+    inv_surf = _surface_texte_cache(font_bandeau, TXT_SLIDESHOW_INVITATION, config.COULEUR_SLIDESHOW_INVITATION)
     inv_surf.set_alpha(alpha_inv)
     
     # 3. Calcul du centrage parfait dans le bandeau
@@ -1497,7 +1497,7 @@ def render_validation(session: SessionState) -> bool:
     # Compteur PHOTO N/3 (strips)
     if session.mode_actuel == "strips":
         txt_c = f"{config.TEXTE_PHOTO_COUNT} {len(session.photos_validees)} / 3"
-        draw_text_shadow_soft(screen, txt_c, font_bandeau, (255, 215, 0),
+        draw_text_shadow_soft(screen, txt_c, font_bandeau, config.COULEUR_COMPTEUR_STRIP,
                               WIDTH // 2 - font_bandeau.size(txt_c)[0] // 2, 10)
 
     # Countdown burst "Photo suivante dans Xs" si actif
@@ -1506,7 +1506,7 @@ def render_validation(session: SessionState) -> bool:
         restant = STRIP_BURST_DELAI_S - (time.time() - session.dernier_clic_time)
         if restant > 0:
             txt_burst = f"{TXT_BURST_COUNTDOWN} {restant:.0f}s"
-            burst_surf = font_bandeau.render(txt_burst, True, (255, 255, 255))
+            burst_surf = font_bandeau.render(txt_burst, True, config.COULEUR_BURST_TEXTE)
             bx = WIDTH // 2 - burst_surf.get_width() // 2
             by = 70
             burst_bg = pygame.Surface(
@@ -1524,7 +1524,7 @@ def render_validation(session: SessionState) -> bool:
             screen,
             config.TXT_IMPRESSION_ECHEC,
             font_alerte,
-            (255, 120, 120),
+            config.COULEUR_ABANDON_TITRE,
             15,
             int(WIDTH * 0.8),
         )
@@ -1534,10 +1534,10 @@ def render_validation(session: SessionState) -> bool:
         screen.blit(_get_overlay_abandon(), (0, 0))
         
         # Message principal (Titre rouge doux)
-        _dessiner_texte_centre_avec_garde(screen, config.TXT_CONFIRM_ABANDON_1, font_alerte, (255, 120, 120), HEIGHT // 2 - 100, int(WIDTH * 0.55))
+        _dessiner_texte_centre_avec_garde(screen, config.TXT_CONFIRM_ABANDON_1, font_alerte, config.COULEUR_ABANDON_TITRE, HEIGHT // 2 - 100, int(WIDTH * 0.55))
         
         # Message d'instruction (Petit texte blanc)
-        _dessiner_texte_centre_avec_garde(screen, config.TXT_CONFIRM_ABANDON_2, font_bandeau, (255, 255, 255), HEIGHT // 2 + 40, int(WIDTH * 0.7))
+        _dessiner_texte_centre_avec_garde(screen, config.TXT_CONFIRM_ABANDON_2, font_bandeau, config.COULEUR_ABANDON_CONSIGNE, HEIGHT // 2 + 40, int(WIDTH * 0.7))
         
     elif session.abandon_confirm_until:
         session.abandon_confirm_until = 0.0
@@ -1597,7 +1597,7 @@ def render_fin(session: SessionState) -> None:
             screen,
             config.TXT_IMPRESSION_ECHEC,
             font_alerte,
-            (255, 120, 120),
+            config.COULEUR_ABANDON_TITRE,
             15,
             int(WIDTH * 0.8),
         )
@@ -1606,9 +1606,9 @@ def render_fin(session: SessionState) -> None:
     if session.abandon_confirm_until and time.time() < session.abandon_confirm_until:
         screen.blit(_get_overlay_abandon(), (0, 0))
         
-        _dessiner_texte_centre_avec_garde(screen, config.TXT_CONFIRM_ABANDON_1, font_alerte, (255, 120, 120), HEIGHT // 2 - 120, int(WIDTH * 0.55))
+        _dessiner_texte_centre_avec_garde(screen, config.TXT_CONFIRM_ABANDON_1, font_alerte, config.COULEUR_ABANDON_TITRE, HEIGHT // 2 - 120, int(WIDTH * 0.55))
         
-        _dessiner_texte_centre_avec_garde(screen, config.TXT_CONFIRM_ABANDON_2, font_bandeau, (255, 255, 255), HEIGHT // 2 + 20, int(WIDTH * 0.7))
+        _dessiner_texte_centre_avec_garde(screen, config.TXT_CONFIRM_ABANDON_2, font_bandeau, config.COULEUR_ABANDON_CONSIGNE, HEIGHT // 2 + 20, int(WIDTH * 0.7))
     elif session.abandon_confirm_until:
         session.abandon_confirm_until = 0.0
 

@@ -80,6 +80,17 @@
 
           {% if champ.est_bool %}
             <input type="checkbox" name="{{ champ.cle }}" {% if champ.valeur %}checked{% endif %}>
+          {% elif champ.est_couleur %}
+            {# Le champ texte porte le nom : c'est lui qui est envoyé. La pastille
+               ne sert qu'à le remplir, pour pouvoir aussi coller un code de charte. #}
+            <span class="champ-couleur">
+              <input type="color" class="champ-couleur__pastille"
+                     value="{{ champ.hexa }}" data-pour="{{ champ.cle }}"
+                     aria-label="Choisir {{ champ.libelle }}">
+              <input type="text" name="{{ champ.cle }}" value="{{ champ.hexa }}"
+                     class="champ-couleur__code" pattern="#[0-9a-fA-F]{6}"
+                     maxlength="7" spellcheck="false">
+            </span>
           {% elif champ.est_texte %}
             <input type="text" name="{{ champ.cle }}" value="{{ champ.valeur }}"
                    maxlength="{{ champ.maxi }}">
@@ -91,7 +102,9 @@
           {% if champ.aide %}<span class="champ__aide muted">{{ champ.aide }}</span>{% endif %}
           {% if not champ.est_bool %}
             <span class="champ__aide muted">
-              {% if champ.est_texte %}
+              {% if champ.est_couleur %}
+                Format #rrggbb. Vide = couleur par défaut.
+              {% elif champ.est_texte %}
                 {{ champ.maxi }} caractères maximum. Vide = valeur par défaut.
               {% else %}
                 Entre {{ champ.mini }} et {{ champ.maxi }}. Vide = valeur par défaut.
@@ -130,6 +143,32 @@
 {% endblock %}
 
 {% block scripts %}
+<script>
+// Pastille ↔ code hexa : deux vues d'une même valeur, sur tous les écrans.
+// Seul le champ texte porte le `name`, c'est donc lui qui fait foi à l'envoi.
+(function () {
+  "use strict";
+  document.querySelectorAll(".champ-couleur").forEach(function (bloc) {
+    var pastille = bloc.querySelector(".champ-couleur__pastille");
+    var code = bloc.querySelector(".champ-couleur__code");
+    if (!pastille || !code) { return; }
+
+    pastille.addEventListener("input", function () {
+      code.value = pastille.value;
+      // Prévenir l'aperçu, qui écoute les `input` du formulaire.
+      code.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    code.addEventListener("input", function () {
+      // Un champ vide est légitime : il rétablit la couleur par défaut. On ne
+      // touche alors pas à la pastille, qui n'a pas d'état « vide ».
+      if (/^#[0-9a-fA-F]{6}$/.test(code.value)) {
+        pastille.value = code.value;
+      }
+    });
+  });
+})();
+</script>
 {% if geometrie %}
 <style>
   /* Police du kiosque, pour que les tailles de texte de l'aperçu soient
@@ -161,6 +200,14 @@
   function texte(cle, defaut) {
     var el = champ(cle);
     return (el && el.value !== "") ? el.value : defaut;
+  }
+
+  function couleur(cle, defaut) {
+    var el = champ(cle);
+    // Une saisie en cours de frappe ("#ff") ne doit pas faire clignoter
+    // l'aperçu : on garde la dernière couleur valide.
+    if (el && /^#[0-9a-fA-F]{6}$/.test(el.value)) { return el.value; }
+    return defaut;
   }
 
   // --- Positionnement ----------------------------------------------------
@@ -210,6 +257,7 @@
     var bandeau = document.getElementById("bandeau");
     bandeau.style.height = pc(hauteur, G.hauteur);
     bandeau.style.opacity = Math.max(0, Math.min(255, alpha)) / 255;
+    bandeau.style.background = couleur("BANDEAU_COULEUR", G.bandeau_couleur);
     var txt = document.getElementById("bandeau-txt");
     txt.textContent = texte("BANDEAU_ACCUEIL", "");
     txt.style.fontSize = cqh(valeur("TAILLE_TEXTE_BANDEAU", 40));
@@ -240,7 +288,7 @@
     // 100 % = bas de l'icône, puis l'écart constant du rendu (20 px).
     el.style.top = "calc(100% + " + cqh(G.decalage_label) + ")";
     el.style.fontSize = cqh(valeur("TAILLE_TEXTE_BOUTON", 60));
-    el.style.color = G.couleur_texte_repos;
+    el.style.color = couleur("COULEUR_TEXTE_REPOS", G.couleur_texte_repos);
   }
 
   // --- Glisser-déposer ---------------------------------------------------

@@ -59,6 +59,7 @@ LIBELLES_ORIGINE = {
 
 # Natures de champ, pour le regroupement dans le formulaire d'édition.
 TEXTE, DUREE, TAILLE, POSITION, BASCULE = "texte", "duree", "taille", "position", "bascule"
+COULEUR = "couleur"
 
 
 @dataclass(frozen=True)
@@ -161,6 +162,29 @@ REGISTRE: tuple[Ecran, ...] = (
             ChampEditable("MARGE_ACCUEIL", "Écart entre les deux icônes", POSITION, unite="px"),
             ChampEditable("ZOOM_FACTOR", "Agrandissement à la sélection", TAILLE,
                           "1.0 = aucun effet, 1.15 = +15 %."),
+            ChampEditable("BANDEAU_COULEUR", "Couleur du bandeau", COULEUR),
+            ChampEditable("COULEUR_TEXTE_REPOS", "Libellé non sélectionné", COULEUR),
+            ChampEditable("COULEUR_TEXTE_OFF", "Libellé sélectionné — creux", COULEUR,
+                          "Le libellé sélectionné pulse entre cette teinte et la suivante."),
+            ChampEditable("COULEUR_TEXTE_ON", "Libellé sélectionné — crête", COULEUR),
+            ChampEditable("COULEUR_SLIDESHOW_INVITATION", "Invitation du diaporama", COULEUR),
+        ),
+    ),
+    Ecran(
+        id="boutons",
+        libelle="Boutons et actions",
+        description=(
+            "Palette commune à tous les écrans à boutons : validation, fin, choix "
+            "du nombre de copies et déblocage du quota. Modifier une couleur ici "
+            "la change partout — c'est voulu : un bouton « annuler » doit avoir "
+            "le même rouge sur tous les écrans."
+        ),
+        champs=(
+            ChampEditable("COULEUR_TEXTE_G", "Bouton gauche — reprendre / retour", COULEUR),
+            ChampEditable("COULEUR_TEXTE_M", "Bouton milieu — valider / imprimer", COULEUR),
+            ChampEditable("COULEUR_TEXTE_D", "Bouton droit — annuler / supprimer", COULEUR),
+            ChampEditable("COULEUR_TEXTE_INACTIF", "Option indisponible", COULEUR,
+                          "Par exemple « + » quand le quota restant est atteint."),
         ),
     ),
     Ecran(
@@ -177,6 +201,10 @@ REGISTRE: tuple[Ecran, ...] = (
             ChampEditable("STRIP_FILIGRANE_ALPHA", "Opacité du filigrane", POSITION,
                           "0 = invisible. 50 est déjà très discret."),
             ChampEditable("STRIP_FILIGRANE_TAILLE", "Taille du filigrane", TAILLE, unite="px"),
+            ChampEditable("COULEUR_DECOMPTE", "Chiffres du décompte", COULEUR),
+            ChampEditable("COULEUR_SOURIEZ", "Message « souriez »", COULEUR),
+            ChampEditable("COULEUR_COMPTEUR_STRIP", "Compteur photo N/3", COULEUR),
+            ChampEditable("COULEUR_BURST_TEXTE", "Décompte du mode rafale", COULEUR),
         ),
     ),
     Ecran(
@@ -202,6 +230,8 @@ REGISTRE: tuple[Ecran, ...] = (
                           "Négatif = vers le haut.", "px"),
             ChampEditable("DECALAGE_Y_PREVISU_STRIPS", "Décalage aperçu — bandelettes", POSITION,
                           "Négatif = vers le haut.", "px"),
+            ChampEditable("COULEUR_ABANDON_TITRE", "Confirmation d'abandon — titre", COULEUR),
+            ChampEditable("COULEUR_ABANDON_CONSIGNE", "Confirmation d'abandon — consigne", COULEUR),
         ),
     ),
     Ecran(
@@ -242,6 +272,9 @@ REGISTRE: tuple[Ecran, ...] = (
             ChampEditable("TXT_IMPRESSION_ENVOYEE", "Confirmation d'envoi", TEXTE),
             ChampEditable("TAILLE_TEXTE_IMP_COURANT", "Taille du message", TAILLE, unite="px"),
             ChampEditable("TAILLE_COMPTEUR_IMP", "Taille du compteur", TAILLE, unite="px"),
+            ChampEditable("COULEUR_FOND_LOADER", "Couleur de secours (sans image)", COULEUR,
+                          "Utilisée si aucun fond n'est disponible."),
+            ChampEditable("COULEUR_IMPRESSION_TEXTE", "Texte d'attente", COULEUR),
         ),
     ),
     Ecran(
@@ -253,6 +286,9 @@ REGISTRE: tuple[Ecran, ...] = (
             ChampEditable("TXT_SPLASH_CAMERA_OK", "Message de succès", TEXTE),
             ChampEditable("TXT_SPLASH_CAMERA_FAIL", "Message d'échec", TEXTE),
             ChampEditable("TIMEOUT_SPLASH_CAMERA", "Délai maximum d'attente", DUREE, unite="s"),
+            ChampEditable("COULEUR_SPLASH_ATTENTE", "Message de connexion", COULEUR),
+            ChampEditable("COULEUR_SPLASH_OK", "Message de succès", COULEUR),
+            ChampEditable("COULEUR_SPLASH_ECHEC", "Message d'échec", COULEUR),
         ),
     ),
     Ecran(
@@ -264,6 +300,9 @@ REGISTRE: tuple[Ecran, ...] = (
             ChampEditable("TXT_ERREUR_IMPRIMANTE", "Imprimante indisponible", TEXTE),
             ChampEditable("TAILLE_TEXTE_ALERTE", "Taille du message", TAILLE, unite="px"),
             ChampEditable("DUREE_ECRAN_ERREUR", "Disparition automatique", DUREE, unite="s"),
+            ChampEditable("COULEUR_ERREUR_FOND", "Fond de l'écran", COULEUR),
+            ChampEditable("COULEUR_ERREUR_TEXTE", "Texte du message", COULEUR),
+            ChampEditable("COULEUR_ERREUR_INDICE", "Consigne en bas d'écran", COULEUR),
         ),
     ),
 )
@@ -343,7 +382,15 @@ def ecrire_overrides(overrides: dict, chemin: Optional[str] = None) -> None:
     propres = {}
     for cle, valeur in overrides.items():
         validee = config.valeur_ecran_valide(cle, valeur)
-        if validee is not None:
+        if validee is None:
+            continue
+        borne = config._ECRANS_OVERRIDES_WHITELIST.get(cle)
+        if borne and borne[0] is config.Couleur:
+            # Réécrire en #rrggbb : `valeur_ecran_valide` renvoie un tuple RGB
+            # (ce dont pygame a besoin), mais JSON n'a pas de tuple et un
+            # [r, g, b] serait illisible et pénible à corriger à la main.
+            propres[cle] = config.Couleur.vers_hexa(validee)
+        else:
             propres[cle] = validee
 
     os.makedirs(os.path.dirname(chemin), exist_ok=True)

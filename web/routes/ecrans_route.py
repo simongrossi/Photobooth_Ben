@@ -45,6 +45,18 @@ APERCU_MAX = (420, 264)  # ratio proche du 1280×800 du kiosque
 # aperçu, puisqu'on réglerait des positions en se fiant à une image fausse.
 ECRANS_AVEC_APERCU = ("accueil",)
 
+# Regroupement du formulaire, dans l'ordre d'affichage. Une nature absente
+# d'ici verrait ses champs disparaître SILENCIEUSEMENT du formulaire — un test
+# vérifie donc que cette liste couvre toutes les natures du registre.
+GROUPES_PAR_NATURE = (
+    (ecrans.TEXTE, "Textes affichés"),
+    (ecrans.COULEUR, "Couleurs"),
+    (ecrans.DUREE, "Durées"),
+    (ecrans.TAILLE, "Tailles"),
+    (ecrans.POSITION, "Positions et opacités"),
+    (ecrans.BASCULE, "Options"),
+)
+
 # Images servies à l'aperçu, par clé fixe (jamais un chemin depuis la requête).
 _IMAGES_APERCU = {
     "icone-10x15": "PATH_IMG_10X15",
@@ -60,6 +72,10 @@ def _parser_valeur(valeur_brute: str, type_attendu: type):
     """
     if type_attendu is bool:
         return valeur_brute.lower() in ("true", "1", "on", "yes")
+    if type_attendu is config.Couleur:
+        # Laisser passer tel quel : `valeur_ecran_valide` rejettera ce qui n'est
+        # pas un #rrggbb, avec le même message d'erreur que les autres types.
+        return valeur_brute
     if type_attendu is int:
         return int(valeur_brute)
     if type_attendu is float:
@@ -101,6 +117,9 @@ def _vue_champ(champ: ecrans.ChampEditable, overrides: dict) -> dict:
         "maxi": maxi,
         "est_bool": type_attendu is bool,
         "est_texte": type_attendu is str,
+        "est_couleur": type_attendu is config.Couleur,
+        # Le formulaire manipule du #rrggbb ; config garde des tuples RGB.
+        "hexa": config.Couleur.vers_hexa(champ.defaut) if type_attendu is config.Couleur else "",
         # Les floats ont besoin d'un pas explicite, sinon le champ number
         # n'accepte que les entiers dans la plupart des navigateurs.
         "pas": "0.1" if type_attendu is float else "1",
@@ -201,9 +220,9 @@ def _geometrie_apercu(ecran_id: str) -> Optional[dict]:
         "axe_y_centre": (config.HEIGHT // 2) - 60,
         "decalage_label": 20,          # px sous l'icône (constante du rendu)
         "zoom_factor": config.ZOOM_FACTOR,
-        "bandeau_couleur": "#%02x%02x%02x" % tuple(config.BANDEAU_COULEUR),
-        "couleur_texte_repos": "#%02x%02x%02x" % tuple(config.COULEUR_TEXTE_REPOS),
-        "couleur_texte_on": "#%02x%02x%02x" % tuple(config.COULEUR_TEXTE_ON),
+        "bandeau_couleur": config.Couleur.vers_hexa(config.BANDEAU_COULEUR),
+        "couleur_texte_repos": config.Couleur.vers_hexa(config.COULEUR_TEXTE_REPOS),
+        "couleur_texte_on": config.Couleur.vers_hexa(config.COULEUR_TEXTE_ON),
         "alpha_texte_repos": config.ALPHA_TEXTE_REPOS,
     }
 
@@ -218,13 +237,7 @@ def editer(ecran_id: str):
     overrides = ecrans.charger_overrides()
     champs = [_vue_champ(c, overrides) for c in e.champs]
     groupes = []
-    for nature, titre in (
-        (ecrans.TEXTE, "Textes affichés"),
-        (ecrans.DUREE, "Durées"),
-        (ecrans.TAILLE, "Tailles"),
-        (ecrans.POSITION, "Positions et opacités"),
-        (ecrans.BASCULE, "Options"),
-    ):
+    for nature, titre in GROUPES_PAR_NATURE:
         du_groupe = [c for c in champs if c["nature"] == nature]
         if du_groupe:
             groupes.append({"titre": titre, "champs": du_groupe})
@@ -282,18 +295,28 @@ def enregistrer(ecran_id: str):
 
         validee = config.valeur_ecran_valide(champ.cle, valeur)
         if validee is None:
-            unite = f" {champ.unite}" if champ.unite else ""
-            attendu = ("longueur" if type_attendu is str else "valeur")
-            erreurs.append(
-                f"{champ.libelle} : {attendu} hors bornes (attendu entre {mini} et {maxi}{unite})."
-            )
+            if type_attendu is config.Couleur:
+                erreurs.append(
+                    f"{champ.libelle} : « {valeur_brute} » n'est pas une couleur "
+                    "valide (format attendu : #rrggbb, par exemple #ff0000)."
+                )
+            else:
+                unite = f" {champ.unite}" if champ.unite else ""
+                attendu = "longueur" if type_attendu is str else "valeur"
+                erreurs.append(
+                    f"{champ.libelle} : {attendu} hors bornes (attendu entre {mini} et {maxi}{unite})."
+                )
             continue
 
-        if overrides.get(champ.cle) != validee:
+        # Les couleurs sont stockées en #rrggbb : lisible dans le fichier, et
+        # directement réutilisable par le sélecteur HTML au rechargement.
+        a_stocker = config.Couleur.vers_hexa(validee) if type_attendu is config.Couleur else validee
+
+        if overrides.get(champ.cle) != a_stocker:
             # Réenregistrer le défaut du code n'a pas à créer d'override.
             if validee == getattr(config, champ.cle, object()) and champ.cle not in overrides:
                 continue
-            overrides[champ.cle] = validee
+            overrides[champ.cle] = a_stocker
             n_modifs += 1
 
     for erreur in erreurs:

@@ -28,6 +28,9 @@ from config import (
     ANIM_V_BASE, ANIM_V_MAX_ADD, ANIM_FREQ,
     ANIM_NB_POINTS, ANIM_RAYON_POINT, ANIM_V_ELASTIQUE,
     COULEUR_FOND_LOADER,
+    COULEUR_ERREUR_FOND, COULEUR_ERREUR_TEXTE, COULEUR_ERREUR_INDICE,
+    COULEUR_IMPRESSION_TEXTE,
+    COULEUR_SPLASH_ATTENTE, COULEUR_SPLASH_OK, COULEUR_SPLASH_ECHEC,
     POLICE_FICHIER, TAILLE_TEXTE_ALERTE,
     TXT_SPLASH_CAMERA, TXT_SPLASH_CAMERA_OK, TXT_SPLASH_CAMERA_FAIL,
     TXT_ENVOI_IMPRIMANTE,
@@ -382,7 +385,7 @@ class LoaderAnimation:
 # --- Écrans de transition ---
 # ========================================================================================================
 
-def afficher_message_plein_ecran(message, couleur=(255, 215, 0), fond=COULEUR_FOND_LOADER):
+def afficher_message_plein_ecran(message, couleur=COULEUR_SPLASH_ATTENTE, fond=COULEUR_FOND_LOADER):
     """Message centré plein écran + flip. Pour transitions courtes."""
     ctx = UIContext
     ctx.screen.fill(fond)
@@ -416,7 +419,7 @@ def executer_avec_spinner(fonction_longue, message):
         _global_spinner = LoaderAnimation()
 
     try:
-        txt_message = ctx.font_bandeau.render(message, True, (255, 255, 255))
+        txt_message = ctx.font_bandeau.render(message, True, COULEUR_IMPRESSION_TEXTE)
     except Exception as e:
         log_warning(f"Rendu spinner : {e}")
         txt_message = None
@@ -466,11 +469,11 @@ def ecran_erreur(message, timeout=None):
         font_inter = pygame.font.Font(POLICE_FICHIER, TAILLE_TEXTE_ALERTE)
 
     t_start = time.time()
-    couleur_alerte = (255, 100, 100)
+    couleur_alerte = COULEUR_ERREUR_TEXTE
     titre = ctx.font_titre.render("ERREUR", True, couleur_alerte)
     msg = font_inter.render(message, True, couleur_alerte)
     hint = ctx.font_bandeau.render(
-        "Appuyez sur une touche ou patientez...", True, (170, 170, 170)
+        "Appuyez sur une touche ou patientez...", True, COULEUR_ERREUR_INDICE
     )
     while time.time() - t_start < timeout:
         # ... (le reste de ta boucle d'événements reste identique)
@@ -481,7 +484,7 @@ def ecran_erreur(message, timeout=None):
             if event.type == pygame.KEYDOWN:
                 return
         
-        ctx.screen.fill((40, 10, 10))
+        ctx.screen.fill(COULEUR_ERREUR_FOND)
         ctx.screen.blit(titre, (WIDTH // 2 - titre.get_width() // 2, HEIGHT // 2 - 220))
         ctx.screen.blit(msg, (WIDTH // 2 - msg.get_width() // 2, HEIGHT // 2 - 20))
         ctx.screen.blit(hint, (WIDTH // 2 - hint.get_width() // 2, HEIGHT - 100))
@@ -522,7 +525,7 @@ def ecran_attente_impression(tache=None):
     # 4. BOUCLE D'ANIMATION
     temps_debut = time.time()
     message = TXT_ENVOI_IMPRIMANTE if tache is not None else "Impression en cours..."
-    surf_txt = ctx.font_imp_texte.render(message, True, (255, 255, 255))
+    surf_txt = ctx.font_imp_texte.render(message, True, COULEUR_IMPRESSION_TEXTE)
     compteurs = {}
     while tache.is_alive() if tache is not None else time.time() - temps_debut < TEMPS_ATTENTE_IMP:
         for event in pygame.event.get():
@@ -544,7 +547,7 @@ def ecran_attente_impression(tache=None):
                 restant = max(0, int(TEMPS_ATTENTE_IMP - (time.time() - temps_debut)))
                 surf_num = compteurs.get(restant)
                 if surf_num is None:
-                    surf_num = ctx.font_imp_compteur.render(f"{restant}s", True, (255, 255, 255))
+                    surf_num = ctx.font_imp_compteur.render(f"{restant}s", True, COULEUR_IMPRESSION_TEXTE)
                     compteurs[restant] = surf_num
                 pos_y_num = HEIGHT - 10 - surf_num.get_height()
                 pos_y_txt = pos_y_num - surf_txt.get_height() - 10
@@ -584,12 +587,12 @@ def splash_connexion_camera(camera_mgr, timeout=None):
                 sys.exit()
 
         if camera_mgr.is_connected:
-            afficher_message_plein_ecran(TXT_SPLASH_CAMERA_OK, couleur=(100, 255, 100))
+            afficher_message_plein_ecran(TXT_SPLASH_CAMERA_OK, couleur=COULEUR_SPLASH_OK)
             time.sleep(0.6)
             return True
 
         dots = "." * (1 + (frame_count // 15) % 3)
-        afficher_message_plein_ecran(f"{TXT_SPLASH_CAMERA}{dots}", couleur=(255, 215, 0))
+        afficher_message_plein_ecran(f"{TXT_SPLASH_CAMERA}{dots}", couleur=COULEUR_SPLASH_ATTENTE)
 
         maintenant = time.time()
         if maintenant >= prochaine_tentative and (tentative is None or not tentative.is_alive()):
@@ -600,6 +603,6 @@ def splash_connexion_camera(camera_mgr, timeout=None):
         ctx.clock.tick(30)
         frame_count += 1
 
-    afficher_message_plein_ecran(TXT_SPLASH_CAMERA_FAIL, couleur=(255, 150, 150))
+    afficher_message_plein_ecran(TXT_SPLASH_CAMERA_FAIL, couleur=COULEUR_SPLASH_ECHEC)
     time.sleep(1.5)
     return False

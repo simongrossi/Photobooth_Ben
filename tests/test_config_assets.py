@@ -89,6 +89,74 @@ class TestCheminsAbsolus:
             assert os.path.isabs(valeur), f"{nom} n'est pas un chemin absolu : {valeur!r}"
 
 
+class TestPasDeCouleurCodeeEnDur:
+    """Garde-fou anti-récidive sur les couleurs des écrans.
+
+    `Photobooth_start.py` et `ui/helpers.py` ne sont pas couverts par les tests
+    (pas de pygame en CI) : sans ce contrôle, une couleur réintroduite en dur
+    échapperait à l'éditeur d'écrans sans que rien ne le signale, et l'admin
+    modifierait un réglage qui ne s'applique pas.
+
+    La liste d'exemptions ci-dessous couvre les cas où une couleur littérale est
+    légitime : elle doit rester courte et justifiée.
+    """
+
+    MOTIF = re.compile(r"\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)")
+
+    # (fichier, fragment de ligne) → pourquoi cette couleur reste en dur.
+    EXEMPTIONS = {
+        # Ombre portée du texte : noir pur, purement technique.
+        ("ui/helpers.py", "shadow_surf = font.render"),
+        # Fond de secours quand aucun asset ne charge : ne doit dépendre
+        # d'aucun réglage, sinon un réglage cassé rendrait l'écran illisible.
+        ("ui/helpers.py", "screen.fill((155, 211, 242))"),
+        # Aplats noirs structurels (voiles, surfaces de composition).
+        ("Photobooth_start.py", "bandeau_bas.fill"),
+        ("Photobooth_start.py", "surf.fill((0, 0, 0))"),
+        ("Photobooth_start.py", "screen.fill((0, 0, 0))"),
+        ("Photobooth_start.py", "screen.fill((10, 10, 10))"),
+        ("Photobooth_start.py", "pygame.draw.rect(screen, (255, 255, 255)"),
+        # Alertes d'exploitation (disque plein, CPU chaud) : destinées à
+        # l'exploitant, pas à l'invité, et ne doivent jamais être masquables.
+        ("Photobooth_start.py", "alerte.fill("),
+        ("Photobooth_start.py", "True, (255, 255, 255),"),
+        # Message ponctuel hors parcours nominal.
+        ("Photobooth_start.py", "Impression desactivee"),
+        ("Photobooth_start.py", "couleur=(100, 255, 100),"),
+        ("Photobooth_start.py", "couleur=(255, 150, 150),"),
+    }
+
+    def _exempte(self, rel: str, ligne: str) -> bool:
+        return any(f == rel and frag in ligne for f, frag in self.EXEMPTIONS)
+
+    def test_aucune_couleur_litterale_non_exemptee(self):
+        fautifs = []
+        for rel in ("Photobooth_start.py", "ui/helpers.py"):
+            chemin = os.path.join(BASE_DIR, rel)
+            with open(chemin, encoding="utf-8") as f:
+                for num, ligne in enumerate(f, 1):
+                    sans_commentaire = ligne.split("#", 1)[0]
+                    if not self.MOTIF.search(sans_commentaire):
+                        continue
+                    if self._exempte(rel, ligne):
+                        continue
+                    fautifs.append(f"{rel}:{num} → {ligne.strip()[:90]}")
+        assert not fautifs, (
+            "Couleur(s) codée(s) en dur dans le rendu — les rendre éditables via "
+            "config + core/ecrans.py, ou les exempter explicitement dans ce test :\n  "
+            + "\n  ".join(fautifs)
+        )
+
+    def test_les_exemptions_sont_toutes_utilisees(self):
+        """Une exemption obsolète masquerait une vraie régression plus tard."""
+        contenus = {
+            rel: open(os.path.join(BASE_DIR, rel), encoding="utf-8").read()
+            for rel in ("Photobooth_start.py", "ui/helpers.py")
+        }
+        mortes = [f"{f} → {frag}" for f, frag in self.EXEMPTIONS if frag not in contenus[f]]
+        assert not mortes, f"exemptions qui ne correspondent plus à rien : {mortes}"
+
+
 class TestPasDeCheminRelatifCodeEnDur:
     """Garde-fou anti-récidive : les assets doivent passer par `config.PATH_*`.
 

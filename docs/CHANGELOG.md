@@ -3,6 +3,46 @@
 Historique des commits par sprint, du plus récent au plus ancien.
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
+## `WIP` — Couleurs éditables par écran
+
+### Added
+- **Toutes les couleurs des écrans sont réglables depuis la page Écrans** :
+  sélecteur natif pour choisir à l'œil, doublé du code `#rrggbb` pour coller une
+  couleur de charte fournie par un client. L'aperçu de l'accueil suit en direct.
+- Nouveau type `config.Couleur` : stocké en `#rrggbb` dans
+  `data/ecrans_overrides.json` (lisible et corrigeable à la main), converti en
+  tuple RGB au chargement pour pygame. Un `[r, g, b]` écrit à la main reste
+  toléré en lecture.
+- Écran **« Boutons et actions »** : la palette des trois boutons est partagée
+  par la validation, la fin, le choix des copies et le déblocage du quota. Elle
+  a son propre écran plutôt que d'être rangée sous l'un d'eux — la modifier
+  change les quatre, et il fallait que ce soit visible.
+- Couleurs promues en constantes depuis des littéraux du code de rendu :
+  confirmation d'abandon, écran d'erreur, messages de connexion caméra, textes
+  d'attente d'impression, compteur strip, rafale et invitation du diaporama.
+- Garde-fou : un test échoue si une couleur littérale est réintroduite dans
+  `Photobooth_start.py` ou `ui/helpers.py` sans exemption justifiée. Ces
+  fichiers n'étant pas couverts en CI, une couleur codée en dur échapperait
+  sinon à l'éditeur sans que rien ne le signale — l'admin réglerait une valeur
+  sans effet. Un second test détecte les exemptions devenues obsolètes.
+
+### Changed
+- **Les écrans « nombre de copies » et « déblocage quota » changent légèrement
+  d'aspect** : ils définissaient leur propre palette locale (vert `(0,200,0)`,
+  rouge `(220,50,50)`) et utilisent désormais celle des autres écrans (vert
+  `(0,255,0)`, rouge `(255,0,0)`). Cette divergence n'était pas documentée et
+  ressemblait à un copier-coller ; les couleurs étant maintenant éditables, les
+  teintes d'origine se rétablissent en deux saisies si besoin.
+
+### Fixed
+- Une nature de champ absente du regroupement du formulaire faisait disparaître
+  ses champs **sans aucun message** — l'écran « Boutons » s'affichait vide à sa
+  création. Le regroupement est devenu une constante, et deux tests vérifient
+  désormais que toute nature du registre a un groupe et que chaque écran affiche
+  bien l'intégralité de ses champs.
+
+---
+
 ## `WIP` — Parcours invité : abandon et identité de session (P0)
 
 ### Fixed

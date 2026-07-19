@@ -269,6 +269,86 @@ class TestRedemarrageRequis:
         assert "Redémarrage requis" in html
 
 
+class TestCouleurs:
+    """Parcours complet d'une couleur : formulaire → fichier → config kiosque."""
+
+    def test_selecteur_et_code_presents(self, ctx):
+        html = ctx[0].get("/ecrans/boutons", headers=HEADERS).get_data(as_text=True)
+        assert 'type="color"' in html, "il faut pouvoir choisir la couleur à l'œil"
+        assert 'name="COULEUR_TEXTE_M"' in html, "et pouvoir coller un code de charte"
+
+    def test_valeur_courante_prerenseignee(self, ctx):
+        """Le champ doit partir de la couleur en vigueur, pas d'un blanc par défaut."""
+        import config
+        html = ctx[0].get("/ecrans/boutons", headers=HEADERS).get_data(as_text=True)
+        assert config.Couleur.vers_hexa(config.COULEUR_TEXTE_M) in html
+
+    def test_enregistrement_stocke_en_hexa(self, ctx):
+        c, ecrans_path, _ = ctx
+        c.post("/ecrans/boutons", headers=HEADERS,
+               data={"COULEUR_TEXTE_M": "#123456"}, follow_redirects=True)
+        assert json.load(open(ecrans_path))["COULEUR_TEXTE_M"] == "#123456"
+
+    def test_valeur_relue_par_config_est_un_tuple(self, ctx, monkeypatch):
+        """pygame a besoin d'un tuple RGB, pas de la chaîne du formulaire."""
+        c, _, _ = ctx
+        c.post("/ecrans/boutons", headers=HEADERS,
+               data={"COULEUR_TEXTE_M": "#123456"}, follow_redirects=True)
+        import config
+        monkeypatch.setattr(config, "COULEUR_TEXTE_M", config.COULEUR_TEXTE_M)
+        config._appliquer_overrides_ecrans()
+        assert config.COULEUR_TEXTE_M == (18, 52, 86)
+
+    def test_couleur_invalide_refusee_avec_message_clair(self, ctx):
+        c, ecrans_path, _ = ctx
+        r = c.post("/ecrans/boutons", headers=HEADERS,
+                   data={"COULEUR_TEXTE_M": "rouge vif"}, follow_redirects=True)
+        texte = unescape(r.get_data(as_text=True))
+        assert "#rrggbb" in texte, "le message doit rappeler le format attendu"
+        assert "bornes" not in texte, "une couleur n'a pas de bornes numériques"
+        assert not os.path.exists(ecrans_path)
+
+    def test_champ_vide_retablit_la_couleur_par_defaut(self, ctx):
+        c, ecrans_path, _ = ctx
+        _ecrire(ecrans_path, {"COULEUR_TEXTE_M": "#123456"})
+        c.post("/ecrans/boutons", headers=HEADERS,
+               data={"COULEUR_TEXTE_M": ""}, follow_redirects=True)
+        assert "COULEUR_TEXTE_M" not in json.load(open(ecrans_path))
+
+    def test_palette_dactions_sur_son_propre_ecran(self, ctx):
+        """Elle vaut pour quatre écrans : la ranger sous « Validation »
+        laisserait croire qu'on ne change que celui-là."""
+        from core import ecrans
+        boutons = ecrans.ecran("boutons")
+        assert boutons is not None
+        cles = {c.cle for c in boutons.champs}
+        assert {"COULEUR_TEXTE_G", "COULEUR_TEXTE_M", "COULEUR_TEXTE_D"} <= cles
+
+    def test_toutes_les_natures_sont_affichables(self):
+        """Une nature absente du regroupement fait disparaître ses champs du
+        formulaire sans le moindre message — c'est arrivé en ajoutant COULEUR."""
+        from core import ecrans
+        import web.routes.ecrans_route as er
+        groupees = {nature for nature, _ in er.GROUPES_PAR_NATURE}
+        utilisees = {c.nature for c in ecrans.tous_les_champs()}
+        assert utilisees <= groupees, (
+            f"natures sans groupe dans le formulaire : {sorted(utilisees - groupees)}"
+        )
+
+    def test_chaque_ecran_affiche_tous_ses_champs(self, ctx):
+        """Contrôle bout en bout : aucun champ du registre ne doit être perdu."""
+        from core import ecrans
+        for e in ecrans.REGISTRE:
+            html = ctx[0].get(f"/ecrans/{e.id}", headers=HEADERS).get_data(as_text=True)
+            for champ in e.champs:
+                assert f'name="{champ.cle}"' in html, f"{e.id} : {champ.cle} absent du formulaire"
+
+    def test_apercu_recoit_les_couleurs(self, ctx):
+        html = ctx[0].get("/ecrans/accueil", headers=HEADERS).get_data(as_text=True)
+        assert '"bandeau_couleur":' in html
+        assert '"couleur_texte_repos":' in html
+
+
 class TestApercuPositionne:
     """Aperçu à l'échelle 1280×800 de la page d'édition."""
 

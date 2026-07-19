@@ -461,3 +461,63 @@ Fonction `_valider_config()` en fin de fichier — appelée à l'import. Vérifi
 
 **Un `AssertionError` au démarrage = bug de config, pas de code**. Lire le
 message pour savoir quelle assertion a sauté.
+
+---
+
+## 10. Éditeur d'écrans (`data/ecrans_overrides.json`)
+
+Second fichier de surcharges, **distinct** de `config_overrides.json` : la page
+Réglages réécrit ce dernier intégralement à chaque sauvegarde et écraserait les
+clés d'écran. Les deux périmètres sont disjoints — un test vérifie que leur
+intersection est vide — et se réinitialisent indépendamment.
+
+Alimenté par la page **Écrans** de l'admin web (voir `docs/ADMIN.md`), qui génère
+son formulaire depuis `core/ecrans.py`. Appliqué par
+`config._appliquer_overrides_ecrans()`, juste après les réglages généraux et
+**avant** `_valider_config()`.
+
+### Whitelist bornée
+
+`_ECRANS_OVERRIDES_WHITELIST` associe à chaque clé un triplet
+`(type, mini, maxi)`. Pour les `str`, les bornes portent sur la **longueur** : un
+texte trop long ne fait pas planter le kiosque mais déborde de l'écran.
+
+Les bornes sont volontairement **plus strictes** que les assertions de
+`_valider_config()`, de sorte qu'aucune valeur saisie depuis l'admin ne puisse
+rendre le kiosque non bootable — l'erreur n'apparaîtrait qu'au redémarrage,
+typiquement en plein événement. Un test verrouille cette relation.
+
+Toute valeur invalide (type, bornes, JSON corrompu, clé inconnue) est **ignorée
+silencieusement** au chargement : un fichier bidouillé à la main ne peut jamais
+empêcher un démarrage.
+
+### Type `couleur`
+
+Les couleurs sont des tuples RGB côté kiosque (ce dont pygame a besoin), mais
+JSON n'a pas de tuple et un `[r, g, b]` serait pénible à saisir et à relire. Le
+fichier stocke donc la notation **`#rrggbb`** — celle des sélecteurs HTML et des
+chartes graphiques — convertie en tuple au chargement par `config.Couleur`. Un
+`[r, g, b]` écrit à la main reste toléré en lecture.
+
+### Couleurs par écran
+
+| Écran | Constantes |
+|---|---|
+| Boutons (partagé) | `COULEUR_TEXTE_G` / `_M` / `_D` / `_INACTIF` |
+| Accueil | `BANDEAU_COULEUR`, `COULEUR_TEXTE_REPOS`, `COULEUR_TEXTE_ON` / `_OFF`, `COULEUR_SLIDESHOW_INVITATION` |
+| Décompte | `COULEUR_DECOMPTE`, `COULEUR_SOURIEZ`, `COULEUR_COMPTEUR_STRIP`, `COULEUR_BURST_TEXTE` |
+| Validation | `COULEUR_ABANDON_TITRE`, `COULEUR_ABANDON_CONSIGNE` |
+| Transition / impression | `COULEUR_FOND_LOADER`, `COULEUR_IMPRESSION_TEXTE` |
+| Connexion caméra | `COULEUR_SPLASH_ATTENTE` / `_OK` / `_ECHEC` |
+| Erreur | `COULEUR_ERREUR_FOND` / `_TEXTE` / `_INDICE` |
+
+La palette **Boutons** est partagée par tous les écrans à boutons (validation,
+fin, choix des copies, déblocage quota) : un bouton « annuler » doit avoir le
+même rouge partout. Les écrans copies et quota définissaient auparavant leur
+propre palette localement, d'où des nuances légèrement différentes sans raison
+documentée.
+
+Un test (`tests/test_config_assets.py`) échoue si une couleur littérale est
+réintroduite dans `Photobooth_start.py` ou `ui/helpers.py` sans exemption
+justifiée — ces fichiers ne sont pas couverts en CI, et une couleur codée en dur
+échapperait silencieusement à l'éditeur.

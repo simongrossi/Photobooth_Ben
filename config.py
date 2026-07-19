@@ -169,10 +169,40 @@ ALPHA_TEXTE_REPOS = 100  # Transparence texte repos Entre 0 (invisible) et 255 (
 COULEUR_TEXTE_OFF = (207, 136, 6)   
 COULEUR_TEXTE_ON  = (242, 183, 5)  
 
-# Couleurs des textes de navigation
+# Couleurs des textes de navigation. Palette d'ACTIONS, partagée par tous les
+# écrans à boutons (validation, fin, choix des copies, déblocage quota) : un
+# bouton « annuler » doit avoir le même rouge partout. Les écrans copies/quota
+# définissaient auparavant leur propre palette localement, d'où des nuances
+# légèrement différentes d'un écran à l'autre sans raison documentée.
 COULEUR_TEXTE_G = (255, 255, 255) # Blanc (Reprendre / Accueil)
 COULEUR_TEXTE_M = (0, 255, 0)     # Vert (Valider / Imprimer)
 COULEUR_TEXTE_D = (255, 0, 0)     # Rouge (Accueil / Supprimer)
+COULEUR_TEXTE_INACTIF = (70, 70, 70)  # Gris : option indisponible (quota atteint)
+
+# --- Couleurs par écran (promues depuis des littéraux du code de rendu) ---
+# Confirmation d'abandon (validation et fin)
+COULEUR_ABANDON_TITRE    = (255, 120, 120)
+COULEUR_ABANDON_CONSIGNE = (255, 255, 255)
+
+# Écran d'erreur
+COULEUR_ERREUR_FOND   = (40, 10, 10)
+COULEUR_ERREUR_TEXTE  = (255, 100, 100)
+COULEUR_ERREUR_INDICE = (170, 170, 170)
+
+# Splash de connexion à l'appareil photo
+COULEUR_SPLASH_ATTENTE = (255, 215, 0)
+COULEUR_SPLASH_OK      = (100, 255, 100)
+COULEUR_SPLASH_ECHEC   = (255, 150, 150)
+
+# Écrans d'attente et d'impression
+COULEUR_IMPRESSION_TEXTE = (255, 255, 255)
+
+# Compteur de photos et rafale (mode bandelettes)
+COULEUR_COMPTEUR_STRIP = (255, 215, 0)
+COULEUR_BURST_TEXTE    = (255, 255, 255)
+
+# Invitation affichée par-dessus le diaporama d'attente
+COULEUR_SLIDESHOW_INVITATION = (255, 255, 255)
 
 
 # --- Polices ---
@@ -568,6 +598,42 @@ CONFIG_OVERRIDES_PATH = os.path.join(PATH_DATA, "config_overrides.json")
 # un fichier, un propriétaire (test d'intersection vide).
 _LONG_TEXTE_MAX = 64
 
+
+class Couleur:
+    """Marqueur de type pour une couleur RGB dans la whitelist des écrans.
+
+    Le kiosque a besoin d'un tuple `(r, g, b)` pour pygame, mais JSON n'a pas de
+    tuple et un tableau `[r, g, b]` serait pénible à saisir et à valider. Les
+    overrides stockent donc la notation `#rrggbb` — celle des sélecteurs de
+    couleur HTML et des chartes graphiques — convertie en tuple au chargement.
+    """
+
+    __name__ = "couleur"
+
+    @staticmethod
+    def vers_tuple(hexa: str):
+        """'#rrggbb' → (r, g, b). None si la chaîne n'est pas une couleur valide."""
+        if not isinstance(hexa, str):
+            return None
+        s = hexa.strip().lstrip("#")
+        if len(s) != 6:
+            return None
+        try:
+            return tuple(int(s[i:i + 2], 16) for i in (0, 2, 4))
+        except ValueError:
+            return None
+
+    @staticmethod
+    def vers_hexa(rgb) -> str:
+        """(r, g, b) → '#rrggbb'. Chaîne vide si la valeur n'est pas un RGB."""
+        try:
+            r, g, b = (int(c) for c in rgb)
+        except (TypeError, ValueError):
+            return ""
+        if not all(0 <= c <= 255 for c in (r, g, b)):
+            return ""
+        return "#%02x%02x%02x" % (r, g, b)
+
 _ECRANS_OVERRIDES_WHITELIST = {
     # --- Textes : bandeaux de l'accueil ---
     "BANDEAU_ACCUEIL": (str, 1, _LONG_TEXTE_MAX),
@@ -632,6 +698,37 @@ _ECRANS_OVERRIDES_WHITELIST = {
     "LARGEUR_ICONE_10X15": (int, 80, WIDTH),
     "LARGEUR_ICONE_STRIP": (int, 40, WIDTH),
     "ZOOM_FACTOR": (float, 1.0, 2.0),
+    # --- Couleurs (stockées en #rrggbb, appliquées en tuple RGB) ---
+    # Palette d'actions, partagée par tous les écrans à boutons.
+    "COULEUR_TEXTE_G": (Couleur, None, None),
+    "COULEUR_TEXTE_M": (Couleur, None, None),
+    "COULEUR_TEXTE_D": (Couleur, None, None),
+    "COULEUR_TEXTE_INACTIF": (Couleur, None, None),
+    # Accueil
+    "BANDEAU_COULEUR": (Couleur, None, None),
+    "COULEUR_TEXTE_REPOS": (Couleur, None, None),
+    "COULEUR_TEXTE_ON": (Couleur, None, None),
+    "COULEUR_TEXTE_OFF": (Couleur, None, None),
+    "COULEUR_SLIDESHOW_INVITATION": (Couleur, None, None),
+    # Décompte
+    "COULEUR_DECOMPTE": (Couleur, None, None),
+    "COULEUR_SOURIEZ": (Couleur, None, None),
+    "COULEUR_COMPTEUR_STRIP": (Couleur, None, None),
+    "COULEUR_BURST_TEXTE": (Couleur, None, None),
+    # Confirmation d'abandon (validation et fin)
+    "COULEUR_ABANDON_TITRE": (Couleur, None, None),
+    "COULEUR_ABANDON_CONSIGNE": (Couleur, None, None),
+    # Transition et impression
+    "COULEUR_FOND_LOADER": (Couleur, None, None),
+    "COULEUR_IMPRESSION_TEXTE": (Couleur, None, None),
+    # Connexion appareil photo
+    "COULEUR_SPLASH_ATTENTE": (Couleur, None, None),
+    "COULEUR_SPLASH_OK": (Couleur, None, None),
+    "COULEUR_SPLASH_ECHEC": (Couleur, None, None),
+    # Erreur
+    "COULEUR_ERREUR_FOND": (Couleur, None, None),
+    "COULEUR_ERREUR_TEXTE": (Couleur, None, None),
+    "COULEUR_ERREUR_INDICE": (Couleur, None, None),
     # --- Filigrane du décompte en mode bandelettes ---
     "STRIP_FILIGRANE_ENABLED": (bool, None, None),
     "STRIP_FILIGRANE_ALPHA": (int, 0, 255),
@@ -649,6 +746,17 @@ def _convertir(valeur, type_attendu):
     # bool est un sous-type de int en Python : à tester en premier.
     if type_attendu is bool:
         return valeur if isinstance(valeur, bool) else None
+    if type_attendu is Couleur:
+        # Tolère aussi un [r, g, b] relu depuis un JSON écrit à la main.
+        if isinstance(valeur, (list, tuple)):
+            if len(valeur) != 3:
+                return None
+            try:
+                composantes = tuple(int(c) for c in valeur)
+            except (TypeError, ValueError):
+                return None
+            return composantes if all(0 <= c <= 255 for c in composantes) else None
+        return Couleur.vers_tuple(valeur)
     if type_attendu is float:
         # tolérer int pour float
         if not isinstance(valeur, (int, float)) or isinstance(valeur, bool):
@@ -732,13 +840,16 @@ def valeur_ecran_valide(cle, valeur):
     convertie = _convertir(valeur, type_attendu)
     if convertie is None:
         return None
+    # Les couleurs sont déjà bornées par la conversion (composantes 0-255) et
+    # les booléens n'ont pas d'ordre : ni les uns ni les autres n'ont de bornes.
+    if type_attendu in (bool, Couleur):
+        return convertie
     # Pour les chaînes, les bornes portent sur la longueur.
     mesure = len(convertie) if type_attendu is str else convertie
-    if type_attendu is not bool:
-        if mini is not None and mesure < mini:
-            return None
-        if maxi is not None and mesure > maxi:
-            return None
+    if mini is not None and mesure < mini:
+        return None
+    if maxi is not None and mesure > maxi:
+        return None
     return convertie
 
 
