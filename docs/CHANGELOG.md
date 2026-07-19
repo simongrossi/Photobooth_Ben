@@ -3,7 +3,36 @@
 Historique des commits par sprint, du plus récent au plus ancien.
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
-## `WIP` — Couleurs éditables par écran
+Chaque section porte le SHA du commit qui l'a livrée. `WIP` désigne ce qui est
+sur `main` mais pas encore déployé.
+
+> **Déployé en production le 2026-07-19 — `f2c6eb0`.**
+> Tout ce qui suit tourne sur la machine (`photobooth.service` sous systemd,
+> vérifié actif après redémarrage). Les sections restées `WIP` jusqu'ici
+> l'étaient par oubli : l'admin web, la gestion d'événements et les éditeurs
+> visuels sont en production depuis plusieurs semaines.
+
+---
+
+## `f2c6eb0` — Quota d'impressions désactivé par défaut
+
+### Changed
+- `ACTIVER_QUOTA_IMPRESSIONS` passe à `False`. Le quota dépend du stock de
+  feuilles d'un événement donné, pas d'un réglage universel : livré actif à 100
+  feuilles, il faisait qu'une installation neuve bloquait l'impression sans que
+  personne ne l'ait demandé — typiquement découvert en pleine prestation. Le
+  mécanisme reste entier et s'active depuis la page Réglages ; les feuilles
+  continuent d'être comptées même désactivé.
+
+### Fixed
+- Fuite d'isolation dans `test_overrides_quota` : il restaurait la config en
+  réaffectant des littéraux au lieu de capturer les valeurs d'origine, ce qui
+  laissait une config fausse aux tests suivants dès que le défaut du dépôt
+  changeait. Passé par `monkeypatch`.
+
+---
+
+## `20fbea4` — Couleurs éditables par écran
 
 ### Added
 - **Toutes les couleurs des écrans sont réglables depuis la page Écrans** :
@@ -43,7 +72,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
 ---
 
-## `WIP` — Parcours invité : abandon et identité de session (P0)
+## `1a3fb1a` — Parcours invité : abandon et identité de session (P0)
 
 ### Fixed
 - **Une reprise ouvrait une seconde session.** L'identifiant était généré quand
@@ -75,7 +104,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
 ---
 
-## `WIP` — Page Écrans : inventaire et éditeur
+## `28729f4` — Page Écrans : inventaire et éditeur
 
 ### Added
 - Page admin **Écrans** (`/ecrans`) : pour chaque écran du kiosque, la vignette
@@ -118,7 +147,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
 ---
 
-## `WIP` — Optimisation Performance & Fiabilité (Sprint 2026-07-19)
+## `03cad60`…`c0e3b9f` — Optimisation Performance & Fiabilité (Sprint 2026-07-19)
 
 ### Added
 - Document de référence `docs/roadmap-performance.md` détaillant les étapes d'optimisation.
@@ -159,7 +188,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
 ---
 
-## `WIP` — Cohérence des assets d'écran (phases 0-1)
+## `a3ba543` — Cohérence des assets d'écran (phases 0-1)
 
 ### Added
 - Catégorie d'asset **« fond de transition »** dans la page Kiosque : le fond des
@@ -203,7 +232,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
 ---
 
-## `WIP` — Quota d'impressions (idée de Benjamin)
+## `d2a54b0` — Quota d'impressions (idée de Benjamin)
 
 ### Added
 - `core/quota.py` : compteur persistant de feuilles DNP dans
@@ -224,7 +253,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
 ---
 
-## `WIP` — Optimisation globale des performances
+## `livré` — Optimisation globale des performances
 
 ### Changed
 - Acquisition LiveView limitée aux sélections/décomptes, avec génération de
@@ -259,7 +288,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 - Sur macOS, coût de l'instrumentation mesuré à ≈ 8 µs pour résumer 150 frames
   et ≈ 0,06 ms par écriture JSONL ; la validation sur carte SD du Pi reste à faire.
 
-## `WIP` — Éditeur visuel de mise en page 10×15 et strip
+## `livré` — Éditeur visuel de mise en page 10×15 et strip
 
 ### Added
 - Association de quatre templates par événement (fond/overlay 10×15 et strip,
@@ -294,7 +323,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 - L'aperçu strip réutilise la composition finale (fond orienté, trois photos et
   overlay), au lieu d'une prévisualisation simplifiée distincte.
 
-## `WIP` — Rangement de la suite de tests
+## `livré` — Rangement de la suite de tests
 
 ### Changed
 - Les fichiers `test_*.py` sont regroupés dans `tests/` ; Pytest, la couverture,
@@ -313,7 +342,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 - Le message d'accueil de Pygame est masqué afin de préserver une sortie JSON
   valide pour `stats.py --json` sur les Raspberry Pi où Pygame est installé.
 
-## `WIP` — Gestion complète des événements
+## `livré` — Gestion complète des événements
 
 ### Added
 - Registre SQLite des événements et tags avec statuts brouillon/actif/terminé/archive,
@@ -335,7 +364,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
   déjà présent dans les noms et affiche événement/tags sur chaque vignette.
 - `core/session.SessionState` transporte puis réinitialise l'instantané événement.
 
-## `WIP` — Interface admin web optionnelle (v1)
+## `livré` — Interface admin web optionnelle (v1)
 
 ### Added
 - Module `web/` autonome : app Flask + Jinja2 + HTMX, service systemd séparé
@@ -388,7 +417,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
 ---
 
-## `WIP` — Perf court terme : décompte + spinner + profiling Pi
+## `livré` — Perf court terme : décompte + spinner + profiling Pi
 
 ### Added
 - `Photobooth_start.py::_get_masque_decompte(bande_w, alpha)` + cache module
@@ -417,7 +446,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
 ---
 
-## `WIP` — Priorités stabilité exploitation
+## `livré` — Priorités stabilité exploitation
 
 ### Added
 - `Photobooth_start.py::main()` : le module est importable sans lancer pygame,
@@ -441,7 +470,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
 ---
 
-## `WIP` — Grain de pellicule sur montages finaux
+## `livré` — Grain de pellicule sur montages finaux
 
 ### Added
 - `core/montage.py::MontageBase._appliquer_grain()` : bruit gaussien superposé
@@ -469,7 +498,7 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
 ---
 
-## `WIP` — Watchdog systemd + mode kiosque
+## `livré` — Watchdog systemd + mode kiosque
 
 ### Added
 - `deploy/photobooth.service` : unit systemd templatisé (`@USER@`, `@HOME@`)

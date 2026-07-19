@@ -4,7 +4,13 @@
 > effets exotiques, hardware, brainstorm), voir [IDEAS.md](IDEAS.md).
 > Pour l'historique de ce qui a été fait, voir [CHANGELOG.md](CHANGELOG.md).
 
-Dernière mise à jour : 2026-07-19 (audit du parcours invité et de l'exploitation)
+Dernière mise à jour : 2026-07-19 (audit du parcours invité, puis relecture du
+suivi en fin de journée)
+
+**Issues GitHub fermées le 2026-07-19** : #19 (décalage +12 h — horloge système,
+pas le code), #20 (ralentissement — résorbé par le sprint performance, 142 Mo
+après 5 h en production), #21 (quota d'impressions — livré, désactivé par
+défaut). Reste ouverte : #15 (nouveau format 3 ou 4 photos en 10×15).
 
 ---
 
@@ -164,20 +170,30 @@ Canon, la DNP et plusieurs personnes qui ne connaissent pas l'application.
   - Éviter le calcul bloquant sans spinner lors de la génération de la preview
     finale strip.
 
-- [ ] **Rendre tous les écrans d'erreur actionnables** *(2–4 h)*
-  - Capture : `Réessayer` / `Accueil`.
-  - Impression : `Réessayer` / `Sans impression` / `Accueil`.
-  - Quota : message neutre pour l'invité et déblocage opérateur séparé ; ne pas
-    exposer un écran de saisie de code comme parcours normal.
-  - Traduire les erreurs techniques en consignes simples sans perdre le détail
-    dans les logs.
+- [ ] **Rendre l'écran d'erreur de capture actionnable** *(~1 h — le reste est livré)*
+  - [x] Impression : `Réessayer` / `Terminer sans imprimer` / `Appeler
+    l'animateur`, session et montage conservés *(livré le 2026-07-19,
+    `5697e4b`)*.
+  - [ ] **Capture** : reste passif. `Photobooth_start.py` appelle
+    `ecran_erreur(TXT_ERREUR_CAPTURE)`, qui affiche un message et disparaît
+    après `DUREE_ECRAN_ERREUR` — l'invité n'a aucun choix. Ajouter
+    `Réessayer` / `Accueil` sur le modèle de l'écran d'impression.
+  - [ ] Quota : message neutre pour l'invité et déblocage opérateur séparé ; ne
+    pas exposer un écran de saisie de code comme parcours normal.
+  - [ ] Traduire les erreurs techniques en consignes simples sans perdre le
+    détail dans les logs.
 
 - [ ] **Alléger les reprises et les abandons** *(2–3 h)*
-  - Ne pas générer un montage final complet lorsqu'un invité veut seulement
-    reprendre une photo.
-  - Déplacer ou référencer la brute immédiatement, puis effectuer les archives
-    coûteuses en arrière-plan si nécessaire.
-  - Harmoniser l'archivage du 10×15 et des strips.
+  - [ ] Ne pas générer un montage final complet lorsqu'un invité veut seulement
+    reprendre une photo. **Toujours d'actualité** : le chemin « Reprendre »
+    appelle encore `MontageGenerator*.final()` derrière un spinner, donc
+    l'invité attend la génération d'une image qu'il ne verra jamais.
+  - [ ] Déplacer ou référencer la brute immédiatement, puis effectuer les
+    archives coûteuses en arrière-plan si nécessaire.
+  - [x] Ne plus annoncer « Préparation de votre impression » pendant l'archivage
+    d'une reprise ou d'un abandon (`TXT_ARCHIVAGE_EN_COURS`) *(livré le
+    2026-07-19, `1a3fb1a`)*.
+  - [ ] Harmoniser l'archivage du 10×15 et des strips.
 
 ### P2 — qualité visuelle, accessibilité et validation terrain
 
