@@ -89,13 +89,17 @@ class TestApplicationOverrides:
             }, f)
         import config
         monkeypatch.setattr(config, "CONFIG_OVERRIDES_PATH", str(path))
+        # Restauration par monkeypatch plutôt qu'en réaffectant des littéraux :
+        # `_appliquer_overrides` écrit dans les globals du module, et remettre
+        # des valeurs codées en dur laissait une config fausse aux tests
+        # suivants dès que le défaut du dépôt changeait.
+        for cle in ("ACTIVER_QUOTA_IMPRESSIONS", "QUOTA_IMPRESSIONS_INITIAL",
+                    "QUOTA_IMPRESSIONS_INCREMENT"):
+            monkeypatch.setattr(config, cle, getattr(config, cle))
         config._appliquer_overrides()
         assert config.ACTIVER_QUOTA_IMPRESSIONS is False
         assert config.QUOTA_IMPRESSIONS_INITIAL == 200
         assert config.QUOTA_IMPRESSIONS_INCREMENT == 50
-        config.ACTIVER_QUOTA_IMPRESSIONS = True
-        config.QUOTA_IMPRESSIONS_INITIAL = 100
-        config.QUOTA_IMPRESSIONS_INCREMENT = 100
 
     def test_quota_bool_strict(self, tmp_path, monkeypatch):
         path = tmp_path / "config_overrides.json"

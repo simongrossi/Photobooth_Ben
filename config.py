@@ -95,7 +95,11 @@ MAX_COPIES_IMPRESSION = 3
 # QUOTA_IMPRESSIONS_INITIAL ne sert qu'à la création du fichier ; ensuite le
 # quota courant vit dans le JSON et grandit par paliers de
 # QUOTA_IMPRESSIONS_INCREMENT (code 3 boutons sur le kiosque ou admin web).
-ACTIVER_QUOTA_IMPRESSIONS = True
+# Désactivé par défaut : le quota est une contrainte propre à un événement (un
+# stock de feuilles DNP donné), pas un réglage universel. Une installation neuve
+# qui bloquerait l'impression au bout de N tirages sans qu'on l'ait demandé
+# poserait problème en pleine prestation. À activer depuis la page Réglages.
+ACTIVER_QUOTA_IMPRESSIONS = False
 QUOTA_IMPRESSIONS_INITIAL = 100
 QUOTA_IMPRESSIONS_INCREMENT = 100
 DELAI_DEBLOCAGE_QUOTA = 30.0  # Timeout (s) de l'écran de saisie du code de déblocage

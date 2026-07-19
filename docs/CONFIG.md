@@ -425,7 +425,7 @@ gauche→droite→milieu, puis la ressaisir pour confirmer.
 
 | Constante | Défaut | Effet |
 |---|---|---|
-| `ACTIVER_QUOTA_IMPRESSIONS` | `True` | `False` désactive le bridage (les feuilles restent comptées) |
+| `ACTIVER_QUOTA_IMPRESSIONS` | `False` | `True` active le bridage. Désactivé par défaut : le quota dépend du stock de feuilles d'un événement donné, une installation neuve ne doit pas bloquer l'impression sans qu'on l'ait demandé. Les feuilles restent comptées même désactivé. |
 | `QUOTA_IMPRESSIONS_INITIAL` | `100` | Quota posé **à la création du fichier uniquement** ; ensuite le quota courant vit dans le JSON |
 | `QUOTA_IMPRESSIONS_INCREMENT` | `100` | Feuilles ajoutées à chaque déblocage (code kiosque ou bouton admin) |
 | `DELAI_DEBLOCAGE_QUOTA` | `30.0` | Inactivité (s) avant abandon de l'écran de saisie du code |
