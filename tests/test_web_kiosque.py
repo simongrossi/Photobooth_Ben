@@ -201,6 +201,18 @@ class TestPageEtThumb:
         for txt in ("Fond d'accueil", "Fond de transition", "Police", "Slides"):
             assert txt in html
 
+    def test_page_utilise_la_mise_en_page_compacte(self, client):
+        c, base = client
+        _uploader(c, "Western", "police", _ttf_bytes(), "w.ttf")
+
+        html = c.get("/kiosque/", headers=HEADERS).get_data(as_text=True)
+
+        assert 'class="kiosk-tabs"' in html
+        assert 'class="panel kiosk-upload"' in html
+        assert 'class="kiosk-asset__preview"' in html
+        assert 'id="kiosque-police"' in html
+        assert 'loading="lazy"' in html
+
     def test_thumb_police_rendue(self, client):
         c, base = client
         tid = _uploader(c, "Western", "police", _ttf_bytes(), "w.ttf")

@@ -7,37 +7,41 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
 </head>
 <body>
-  <header class="topbar">
-    <a class="logo" href="{{ url_for('dashboard.index') }}">Photobooth · Admin</a>
-    {% block topbar_extra %}{% endblock %}
-    <nav class="nav">
-      <a href="{{ url_for('dashboard.index') }}">Dashboard</a>
-      <a href="{{ url_for('gallery.index') }}">Galerie</a>
-      {% if role == 'admin' %}
-        <a href="{{ url_for('evenements.index') }}">Événements</a>
-        <a href="{{ url_for('templates.index') }}">Templates</a>
-        <a href="{{ url_for('kiosque.index') }}">Kiosque</a>
-        <a href="{{ url_for('ecrans.index') }}">Écrans</a>
-        <a href="{{ url_for('settings.index') }}">Réglages</a>
-      {% else %}
-        <a href="{{ url_for('connexion') }}">Connexion admin</a>
-      {% endif %}
-    </nav>
-  </header>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar__header">
+        <a class="logo" href="{{ url_for('dashboard.index') }}">Photobooth <span>Admin</span></a>
+        {% block topbar_extra %}{% endblock %}
+      </div>
+      <nav class="nav" aria-label="Navigation principale">
+        <a href="{{ url_for('dashboard.index') }}"{% if request.blueprint == 'dashboard' %} class="active" aria-current="page"{% endif %}>Dashboard</a>
+        <a href="{{ url_for('gallery.index') }}"{% if request.blueprint == 'gallery' %} class="active" aria-current="page"{% endif %}>Galerie</a>
+        {% if role == 'admin' %}
+          <a href="{{ url_for('evenements.index') }}"{% if request.blueprint == 'evenements' %} class="active" aria-current="page"{% endif %}>Événements</a>
+          <a href="{{ url_for('templates.index') }}"{% if request.blueprint == 'templates' %} class="active" aria-current="page"{% endif %}>Templates</a>
+          <a href="{{ url_for('kiosque.index') }}"{% if request.blueprint == 'kiosque' %} class="active" aria-current="page"{% endif %}>Kiosque</a>
+          <a href="{{ url_for('ecrans.index') }}"{% if request.blueprint == 'ecrans' %} class="active" aria-current="page"{% endif %}>Écrans</a>
+          <a href="{{ url_for('settings.index') }}"{% if request.blueprint == 'settings' %} class="active" aria-current="page"{% endif %}>Réglages</a>
+        {% else %}
+          <a href="{{ url_for('connexion') }}">Connexion admin</a>
+        {% endif %}
+      </nav>
+    </aside>
 
-  <main class="content">
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        <ul class="flashes">
-          {% for category, msg in messages %}
-            <li class="flash flash--{{ category }}">{{ msg }}</li>
-          {% endfor %}
-        </ul>
-      {% endif %}
-    {% endwith %}
+    <main class="content">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <ul class="flashes">
+            {% for category, msg in messages %}
+              <li class="flash flash--{{ category }}">{{ msg }}</li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      {% endwith %}
 
-    {% block contenu %}{% endblock %}
-  </main>
+      {% block contenu %}{% endblock %}
+    </main>
+  </div>
   {% block scripts %}{% endblock %}
 </body>
 </html>

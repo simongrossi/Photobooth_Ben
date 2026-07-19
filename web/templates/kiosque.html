@@ -1,14 +1,36 @@
 {% extends "base.html" %}
 {% block titre %}Kiosque · Photobooth{% endblock %}
 {% block contenu %}
-<h1>Kiosque</h1>
+<header class="kiosk-header">
+  <div>
+    <span class="templates-eyebrow">Personnalisation de la borne</span>
+    <h1>Kiosque</h1>
+    <p class="muted">Gérez les fonds, la police et les visuels du diaporama depuis une seule page.</p>
+    <div class="templates-stats">
+      <span><strong>{{ assets | length }}</strong> fichier{% if assets | length != 1 %}s{% endif %}</span>
+      <span><strong>{{ actifs | length }}</strong> réglage{% if actifs | length != 1 %}s{% endif %} personnalisé{% if actifs | length != 1 %}s{% endif %}</span>
+    </div>
+  </div>
+  <a class="btn btn--primary" href="#ajouter-asset">Ajouter un fichier</a>
+</header>
 
-<section class="panel">
-  <h2>Uploader un asset</h2>
-  <form class="form" method="post" action="{{ url_for('kiosque.upload') }}" enctype="multipart/form-data">
+<nav class="kiosk-tabs" aria-label="Sections du kiosque">
+  {% for categorie in categories %}
+    <a href="#kiosque-{{ categorie }}">{{ libelles[categorie] }}</a>
+  {% endfor %}
+</nav>
+
+<details class="panel kiosk-upload" id="ajouter-asset">
+  <summary>
+    <span>
+      <strong>Ajouter un fichier</strong>
+      <small>PNG, JPG, TTF ou OTF</small>
+    </span>
+  </summary>
+  <form class="kiosk-upload__form" method="post" action="{{ url_for('kiosque.upload') }}" enctype="multipart/form-data">
     <label>
       Nom affiché
-      <input type="text" name="nom" maxlength="80" placeholder="ex : Fond plage, Police manuscrite…">
+      <input type="text" name="nom" maxlength="80" placeholder="Ex. Fond cérémonie">
     </label>
     <label>
       Catégorie
@@ -24,71 +46,85 @@
       Fichier
       <input type="file" name="fichier" accept="image/png,image/jpeg,.ttf,.otf" required>
     </label>
-    <button type="submit">Uploader</button>
+    <button type="submit" class="btn btn--primary">Ajouter à la bibliothèque</button>
   </form>
-  <p class="muted">
-    Fonds et police : effet au <strong>prochain redémarrage du kiosque</strong>.
-    Slides : pris en compte <strong>à chaud</strong> (≤ 30 s), ajoutés à la rotation
-    du diaporama d'attente avec les photos de l'événement.
+  <p class="kiosk-upload__help muted">
+    Les fonds et la police sont appliqués au prochain redémarrage. Les slides rejoignent le diaporama en moins de 30 secondes.
   </p>
-</section>
+</details>
 
-{% for categorie in categories %}
-<section class="panel">
-  <h2>{{ libelles[categorie] }}</h2>
-  <p class="muted">{{ aides[categorie] }}</p>
-
-  {% if categorie in categories_avec_actif %}
-    <ul class="etats">
-      <li>
-        {% set nom_actif = actifs.get(categorie) %}
-        {% if nom_actif %}
-          <span class="badge badge--actif">Actif : {{ nom_actif }}</span>
-        {% else %}
-          <span class="badge">Défaut</span>
-        {% endif %}
-        <form method="post" class="inline"
-              action="{{ url_for('kiosque.defaut', categorie=categorie) }}"
-              onsubmit="return confirm('Revenir au réglage par défaut pour « {{ libelles[categorie] }} » ?');">
-          <button type="submit" class="btn">Revenir au défaut</button>
-        </form>
-      </li>
-    </ul>
-  {% endif %}
-
-  {% set liste = assets | selectattr("categorie", "equalto", categorie) | list %}
-  {% if liste %}
-    <ul class="templates">
-      {% for a in liste %}
-        <li class="templates__item {% if a.actif %}templates__item--actif{% endif %}">
-          <img src="{{ url_for('kiosque.thumb', asset_id=a.id) }}" alt="{{ a.nom }}">
-          <div class="templates__info">
-            <h3>{{ a.nom }}</h3>
-            <p>
-              {% if a.actif %}<span class="badge badge--actif">Actif</span>{% endif %}
-              <span class="muted">{{ a.taille_ko }} Ko — {{ a.uploaded_at }}</span>
-            </p>
-            <div class="actions">
-              {% if categorie in categories_avec_actif and not a.actif %}
-                <form method="post" action="{{ url_for('kiosque.activer', asset_id=a.id) }}">
-                  <button type="submit" class="btn btn--primary">Activer</button>
-                </form>
-              {% endif %}
-              {% if not a.actif %}
-                <form method="post" action="{{ url_for('kiosque.supprimer', asset_id=a.id) }}" onsubmit="return confirm('Supprimer cet asset ?');">
-                  <button type="submit" class="btn btn--danger">Supprimer</button>
-                </form>
-              {% else %}
-                <span class="muted">Utilisé par le kiosque au prochain démarrage.</span>
-              {% endif %}
-            </div>
+<div class="kiosk-categories">
+  {% for categorie in categories %}
+    {% set liste = assets | selectattr("categorie", "equalto", categorie) | list %}
+    <section class="panel kiosk-category" id="kiosque-{{ categorie }}">
+      <header class="kiosk-category__header">
+        <div>
+          <div class="kiosk-category__title">
+            <h2>{{ libelles[categorie] }}</h2>
+            <span class="badge">{{ liste | length }}</span>
           </div>
-        </li>
-      {% endfor %}
-    </ul>
-  {% else %}
-    <p class="muted">Aucun asset {{ categorie }} enregistré.</p>
-  {% endif %}
-</section>
-{% endfor %}
+          <p class="muted">{{ aides[categorie] }}</p>
+        </div>
+
+        {% if categorie in categories_avec_actif %}
+          {% set nom_actif = actifs.get(categorie) %}
+          <div class="kiosk-category__state">
+            {% if nom_actif %}
+              <span class="badge badge--actif">Actif : {{ nom_actif }}</span>
+              <form method="post" class="inline"
+                    action="{{ url_for('kiosque.defaut', categorie=categorie) }}"
+                    onsubmit="return confirm('Revenir au réglage par défaut pour « {{ libelles[categorie] }} » ?');">
+                <button type="submit" class="btn">Utiliser le défaut</button>
+              </form>
+            {% else %}
+              <span class="badge">Réglage par défaut</span>
+            {% endif %}
+          </div>
+        {% endif %}
+      </header>
+
+      {% if liste %}
+        <ul class="kiosk-assets">
+          {% for a in liste %}
+            <li class="kiosk-asset {% if a.actif %}kiosk-asset--active{% endif %}">
+              <div class="kiosk-asset__preview">
+                <img src="{{ url_for('kiosque.thumb', asset_id=a.id) }}" alt="Aperçu de {{ a.nom }}" loading="lazy">
+              </div>
+              <div class="kiosk-asset__body">
+                <header>
+                  <h3>{{ a.nom }}</h3>
+                  {% if a.actif %}
+                    <span class="badge badge--actif">Actif</span>
+                  {% elif categorie == 'slide' %}
+                    <span class="badge badge--actif">Dans la rotation</span>
+                  {% endif %}
+                </header>
+                <p class="kiosk-asset__meta">{{ a.taille_ko }} Ko <span aria-hidden="true">·</span> {{ a.uploaded_at }}</p>
+                <div class="kiosk-asset__actions">
+                  {% if categorie in categories_avec_actif and not a.actif %}
+                    <form method="post" action="{{ url_for('kiosque.activer', asset_id=a.id) }}">
+                      <button type="submit" class="btn btn--primary">Activer</button>
+                    </form>
+                  {% endif %}
+                  {% if not a.actif %}
+                    <form method="post" action="{{ url_for('kiosque.supprimer', asset_id=a.id) }}" onsubmit="return confirm('Supprimer cet asset ?');">
+                      <button type="submit" class="btn btn--danger">Supprimer</button>
+                    </form>
+                  {% else %}
+                    <span class="muted">Appliqué au prochain redémarrage</span>
+                  {% endif %}
+                </div>
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="kiosk-empty">
+          <p>Aucun fichier dans cette catégorie.</p>
+          <a href="#ajouter-asset">Ajouter le premier</a>
+        </div>
+      {% endif %}
+    </section>
+  {% endfor %}
+</div>
 {% endblock %}

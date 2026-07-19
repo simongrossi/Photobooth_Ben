@@ -101,6 +101,13 @@ class TestIndex:
 
 
 class TestDashboard:
+    def test_navigation_est_dans_une_barre_laterale(self, client):
+        page = client.get("/dashboard/", headers=HEADERS_OK).get_data(as_text=True)
+
+        assert '<aside class="sidebar">' in page
+        assert 'class="active" aria-current="page">Dashboard</a>' in page
+        assert 'aria-label="Navigation principale"' in page
+
     def test_sans_sessions_affiche_zero(self, client):
         r = client.get("/dashboard/", headers=HEADERS_OK)
         assert r.status_code == 200
