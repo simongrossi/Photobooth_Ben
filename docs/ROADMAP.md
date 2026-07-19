@@ -85,19 +85,22 @@ Canon, la DNP et plusieurs personnes qui ne connaissent pas l'application.
     retour accueil et diagnostic visible par l'exploitant.
   - Ne jamais lancer un décompte sur un écran noir.
 
-- [ ] **Conserver un identifiant unique pendant toutes les reprises** *(1–2 h)*
+- [x] **Conserver un identifiant unique pendant toutes les reprises** *(livré le 2026-07-19)*
   - Initialiser une session selon l'absence de `id_session_timestamp`, pas selon
     `len(photos_validees) == 0`.
-  - Vérifier la reprise de la première photo, `Recommencer`, les trois photos
-    strip, les événements et les métriques de durée.
-  - Ajouter un test d'intégration garantissant un seul `session_start` et une
-    seule ligne de fin par parcours utilisateur.
+  - Couvre la reprise 10×15, `Recommencer` depuis FIN et le dépilement strip.
+  - `tests/test_parcours_session.py` verrouille la condition et les trois
+    chemins de reprise.
 
-- [ ] **Uniformiser la confirmation d'abandon** *(1–2 h)*
-  - Appliquer la double confirmation au strip comme au 10×15 et à l'écran final.
-  - Afficher clairement l'action armée et faire clignoter uniquement le bouton
-    rouge pendant la fenêtre de confirmation.
-  - Archiver les fichiers sans afficher « Préparation de votre impression ».
+- [x] **Uniformiser la confirmation d'abandon** *(livré le 2026-07-19)*
+  - Double confirmation appliquée au strip, comme au 10×15 et à l'écran final.
+  - Auto-validation du mode rafale suspendue tant qu'une confirmation est
+    armée : elle enchaînait sur la photo suivante pendant que l'invité hésitait,
+    et l'annulation était perdue sans trace.
+  - Archivage sous « Un instant… » (`TXT_ARCHIVAGE_EN_COURS`) au lieu de
+    « Préparation de votre impression ».
+  - Reste à faire : clignotement du seul bouton rouge pendant la fenêtre
+    (côté LED Arduino, non couvert ici).
 
 - [ ] **Libérer automatiquement une session laissée sans utilisateur** *(2–3 h)*
   - Ajouter une inactivité propre à `VALIDATION`, `FIN` et au choix des copies.

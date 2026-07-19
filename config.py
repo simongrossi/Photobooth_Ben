@@ -359,6 +359,10 @@ TXT_SPLASH_CAMERA       = "Connexion à l'appareil photo..."
 TXT_SPLASH_CAMERA_OK    = "Appareil photo connecté !"
 TXT_SPLASH_CAMERA_FAIL  = "Appareil photo non détecté - mode dégradé"
 TXT_PREPARATION_IMP     = "Préparation de votre impression..."
+# Affiché pendant l'archivage d'une photo abandonnée ou reprise. Annoncer une
+# « préparation d'impression » à un invité qui vient d'annuler lui fait croire
+# que son annulation n'a pas été prise en compte.
+TXT_ARCHIVAGE_EN_COURS  = "Un instant..."
 TXT_ERREUR_CAPTURE      = "Erreur de capture - réessayez"
 TXT_ERREUR_IMPRIMANTE   = "Imprimante indisponible"
 TXT_ENVOI_IMPRIMANTE    = "Envoi à l'imprimante..."
@@ -588,6 +592,7 @@ _ECRANS_OVERRIDES_WHITELIST = {
     "TXT_SPLASH_CAMERA_OK": (str, 1, _LONG_TEXTE_MAX),
     "TXT_SPLASH_CAMERA_FAIL": (str, 1, _LONG_TEXTE_MAX),
     "TXT_PREPARATION_IMP": (str, 1, _LONG_TEXTE_MAX),
+    "TXT_ARCHIVAGE_EN_COURS": (str, 1, _LONG_TEXTE_MAX),
     "TXT_ERREUR_CAPTURE": (str, 1, _LONG_TEXTE_MAX),
     "TXT_ERREUR_IMPRIMANTE": (str, 1, _LONG_TEXTE_MAX),
     "TXT_ENVOI_IMPRIMANTE": (str, 1, _LONG_TEXTE_MAX),

@@ -3,6 +3,38 @@
 Historique des commits par sprint, du plus récent au plus ancien.
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
+## `WIP` — Parcours invité : abandon et identité de session (P0)
+
+### Fixed
+- **Une reprise ouvrait une seconde session.** L'identifiant était généré quand
+  `photos_validees` était vide — or une reprise vide cette liste sans terminer
+  la session (retake 10×15, « Recommencer » depuis FIN, dépilement strip). Un
+  seul invité produisait donc deux `session_start` et deux horodatages, faussant
+  les statistiques et dispersant ses fichiers. La condition porte désormais sur
+  l'absence d'identifiant. Le commentaire de `handle_fin_event` annonçait déjà
+  « garde id_session » : le code ne le faisait pas.
+- **L'abandon en mode bandelettes se déclenchait au premier appui**, contrairement
+  au 10×15 et à l'écran de fin. C'est le bouton voisin de « valider », et le mode
+  où l'invité a le plus à perdre — jusqu'à trois photos effacées sans recours.
+  Double confirmation appliquée, avec la même fenêtre `DUREE_CONFIRM_ABANDON`.
+- **Le mode rafale annulait l'abandon en cours.** L'auto-validation partait au
+  bout de `STRIP_BURST_DELAI_S` même avec une confirmation armée : l'invité
+  appuyait sur annuler, hésitait, et la borne enchaînait sur la photo suivante.
+  L'auto-validation est suspendue tant qu'une confirmation est armée.
+- **Les écrans d'abandon et de reprise annonçaient « Préparation de votre
+  impression »**, laissant croire que l'annulation n'avait pas été prise en
+  compte. Nouveau `TXT_ARCHIVAGE_EN_COURS` (« Un instant… »), éditable depuis la
+  page Écrans. La vraie impression garde son message.
+
+### Added
+- `tests/test_parcours_session.py` : les handlers d'événements sont testables en
+  CI (`Photobooth_start` s'importe sans pygame, les codes de touches sont des
+  entiers). Couvre la parité d'abandon entre les trois écrans, la survie de
+  l'identifiant à travers les trois chemins de reprise, et des gardes de
+  non-régression sur les conditions elles-mêmes.
+
+---
+
 ## `WIP` — Page Écrans : inventaire et éditeur
 
 ### Added

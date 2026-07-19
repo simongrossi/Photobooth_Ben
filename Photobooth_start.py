@@ -28,7 +28,7 @@ from config import (
     TEMP_PATH,
     TAILLE_TEXTE_BOUTON, TAILLE_TITRE_ACCUEIL, TEMPS_DECOMPTE, TEXTE_PHOTO_COUNT,
     TOUCHE_DROITE, TOUCHE_GAUCHE, TOUCHE_MILIEU,
-    TXT_BURST_COUNTDOWN, TXT_ERREUR_CAPTURE,
+    TXT_ARCHIVAGE_EN_COURS, TXT_BURST_COUNTDOWN, TXT_ERREUR_CAPTURE,
     TXT_ERREUR_IMPRIMANTE, TXT_PREPARATION_IMP, TXT_SLIDESHOW_INVITATION, WIDTH, ZOOM_FACTOR,
     MAX_COPIES_IMPRESSION,
 )
@@ -1225,8 +1225,13 @@ def render_decompte(session: SessionState) -> None:
         if bande_w > 0:
             masque_surf = _get_masque_decompte(bande_w, alpha_masque)
 
-    # Init id session si première photo
-    if len(session.photos_validees) == 0:
+    # Init id session à la première capture du parcours.
+    # Se fier à l'absence d'identifiant, et NON à `photos_validees` vide : une
+    # reprise vide la liste (retake 10x15, « Recommencer », pop du strip) sans
+    # terminer la session. Sur ce critère, chaque reprise ouvrait une seconde
+    # session — deux `session_start` et deux identifiants pour un seul invité.
+    # `reset_pour_accueil()` remet l'identifiant à "" en fin de parcours.
+    if not session.id_session_timestamp:
         session.id_session_timestamp = datetime.now().strftime(FORMAT_TIMESTAMP)
         session.session_start_ts = time.time()
         if not session.evenement_charge:
@@ -1405,9 +1410,15 @@ def render_validation(session: SessionState) -> bool:
     """
     inserer_background(screen, fond_accueil)
 
-    # Mode burst strip : auto-validation après STRIP_BURST_DELAI_S
+    # Mode burst strip : auto-validation après STRIP_BURST_DELAI_S.
+    # Suspendue tant qu'une confirmation d'abandon est armée : on vient de poser
+    # une question à l'invité, enchaîner sur la photo suivante pendant qu'il
+    # hésite revient à répondre à sa place — et son annulation est perdue.
+    abandon_arme = bool(session.abandon_confirm_until
+                        and time.time() < session.abandon_confirm_until)
     if (STRIP_MODE_BURST and session.mode_actuel == "strips"
-            and len(session.photos_validees) < 3):
+            and len(session.photos_validees) < 3
+            and not abandon_arme):
         ecoule_valid = time.time() - session.dernier_clic_time
         if ecoule_valid >= STRIP_BURST_DELAI_S:
             session.img_preview_cache = None
@@ -1684,7 +1695,7 @@ def _handle_validation_10x15(event: pygame.event.Event, session: SessionState,  
         try:
             p = executer_avec_spinner(
                 lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
-                TXT_PREPARATION_IMP,
+                TXT_ARCHIVAGE_EN_COURS,
             )
             dest = os.path.join(PATH_SKIPPED_RETAKE, f"{PREFIXE_RETAKE}_{session.id_session_timestamp}.jpg")
             shutil.move(p, dest)
@@ -1717,7 +1728,7 @@ def _handle_validation_10x15(event: pygame.event.Event, session: SessionState,  
             try:
                 p = executer_avec_spinner(
                     lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
-                    TXT_PREPARATION_IMP,
+                    TXT_ARCHIVAGE_EN_COURS,
                 )
                 dest = os.path.join(PATH_SKIPPED_DELETED, f"{PREFIXE_DELETED}_{session.id_session_timestamp}.jpg")
                 shutil.move(p, dest)
@@ -1754,8 +1765,17 @@ def _handle_validation_strips(event: pygame.event.Event, session: SessionState, 
         session.dernier_clic_time = maintenant
 
     elif event.key == TOUCHE_DROITE:
-        _journaliser_action("abandon")
-        terminer_session_et_revenir_accueil("abandoned")
+        # Abandon avec confirmation double-press, comme le 10x15 et l'écran FIN.
+        # Un appui unique perdait les photos déjà prises sans recours : c'est le
+        # bouton voisin de « valider », et le strip est le mode où l'invité en a
+        # le plus à perdre (jusqu'à trois photos).
+        if session.abandon_confirm_until and time.time() < session.abandon_confirm_until:
+            _journaliser_action("abandon_confirmed")
+            session.abandon_confirm_until = 0.0
+            terminer_session_et_revenir_accueil("abandoned")
+        else:
+            _journaliser_action("abandon_requested")
+            session.abandon_confirm_until = time.time() + DUREE_CONFIRM_ABANDON
         session.dernier_clic_time = maintenant
 
 
@@ -1791,12 +1811,12 @@ def handle_fin_event(event: pygame.event.Event, session: SessionState,   # type:
             if session.mode_actuel == "strips":
                 p = executer_avec_spinner(
                     lambda: MontageGeneratorStrip.final(session.photos_validees, session.id_session_timestamp),
-                    TXT_PREPARATION_IMP,
+                    TXT_ARCHIVAGE_EN_COURS,
                 )
             else:
                 p = executer_avec_spinner(
                     lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
-                    TXT_PREPARATION_IMP,
+                    TXT_ARCHIVAGE_EN_COURS,
                 )
             if os.path.exists(p):
                 nom_dest = f"{PREFIXE_RETAKE}_{session.id_session_timestamp}.jpg"
@@ -1838,12 +1858,12 @@ def handle_fin_event(event: pygame.event.Event, session: SessionState,   # type:
                 if session.mode_actuel == "strips":
                     p = executer_avec_spinner(
                         lambda: MontageGeneratorStrip.final(session.photos_validees, session.id_session_timestamp),
-                        TXT_PREPARATION_IMP,
+                        TXT_ARCHIVAGE_EN_COURS,
                     )
                 else:
                     p = executer_avec_spinner(
                         lambda: MontageGenerator10x15.final(session.photos_validees, session.id_session_timestamp),
-                        TXT_PREPARATION_IMP,
+                        TXT_ARCHIVAGE_EN_COURS,
                     )
                 if os.path.exists(p):
                     nom_deleted = f"{PREFIXE_DELETED}_{session.id_session_timestamp}.jpg"
