@@ -20,11 +20,12 @@ import hmac
 import os
 from functools import wraps
 
-from flask import Response, request
+from flask import Response, request, session
 
 ADMIN_USER = "admin"
 ENV_VAR = "PHOTOBOOTH_ADMIN_PASS"
 ENV_ACCES_LIBRE = "PHOTOBOOTH_ACCES_LIBRE"
+SESSION_ADMIN_QUITTE = "admin_quitte"
 
 
 def _mot_de_passe_attendu() -> str | None:
@@ -46,6 +47,8 @@ def role_courant() -> str | None:
     attendu = _mot_de_passe_attendu()
     if not attendu:
         return None
+    if session.get(SESSION_ADMIN_QUITTE):
+        return "viewer" if _acces_libre_actif() else None
     auth = request.authorization
     if auth is not None:
         if auth.username == ADMIN_USER and hmac.compare_digest(auth.password or "", attendu):
@@ -92,6 +95,8 @@ def require_auth(f):
                 f"{ENV_VAR} non configurée.",
                 status=503,
             )
+        if session.get(SESSION_ADMIN_QUITTE):
+            return _unauthorized()
         auth = request.authorization
         if not auth or auth.username != ADMIN_USER:
             return _unauthorized()

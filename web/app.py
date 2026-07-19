@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 
-from flask import Flask, redirect, url_for
+from flask import Flask, redirect, session, url_for
 
 from web.db import init_db
 from web.evenements import synchroniser_evenement_actif
@@ -55,7 +55,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     app.register_blueprint(settings_route.bp)
     app.register_blueprint(evenements_route.bp)
 
-    from web.auth import require_auth, role_courant
+    from web.auth import SESSION_ADMIN_QUITTE, require_auth, role_courant
 
     @app.context_processor
     def _injecter_role():
@@ -70,10 +70,24 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         return redirect(url_for("dashboard.index"))
 
     @app.route("/connexion")
-    @require_auth
     def connexion():
-        # Sous require_auth : un anonyme reçoit le challenge Basic du navigateur,
-        # puis atterrit sur le dashboard en admin.
+        # Autorise une nouvelle connexion après une déconnexion volontaire. Le
+        # décorateur est appliqué après avoir retiré le verrou de session afin
+        # que le navigateur puisse réutiliser (ou demander) les identifiants.
+        session.pop(SESSION_ADMIN_QUITTE, None)
+
+        @require_auth
+        def _rediriger_apres_connexion():
+            return redirect(url_for("dashboard.index"))
+
+        return _rediriger_apres_connexion()
+
+    @app.post("/deconnexion")
+    @require_auth
+    def deconnexion():
+        # Basic Auth reste mémorisé par certains navigateurs. Ce marqueur signé
+        # force néanmoins l'application à repasser en mode viewer.
+        session[SESSION_ADMIN_QUITTE] = True
         return redirect(url_for("dashboard.index"))
 
     return app

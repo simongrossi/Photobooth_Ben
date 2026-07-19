@@ -22,8 +22,11 @@
           <a href="{{ url_for('kiosque.index') }}"{% if request.blueprint == 'kiosque' %} class="active" aria-current="page"{% endif %}>Kiosque</a>
           <a href="{{ url_for('ecrans.index') }}"{% if request.blueprint == 'ecrans' %} class="active" aria-current="page"{% endif %}>Écrans</a>
           <a href="{{ url_for('settings.index') }}"{% if request.blueprint == 'settings' %} class="active" aria-current="page"{% endif %}>Réglages</a>
+          <form class="nav__session" method="post" action="{{ url_for('deconnexion') }}">
+            <button type="submit">Se déconnecter</button>
+          </form>
         {% else %}
-          <a href="{{ url_for('connexion') }}">Connexion admin</a>
+          <a class="nav__login" href="{{ url_for('connexion') }}">Connexion admin</a>
         {% endif %}
       </nav>
     </aside>

@@ -92,6 +92,7 @@ class TestAdmin:
     def test_admin_voit_tout(self, client):
         dash = client.get("/dashboard/", headers=HEADERS_OK).get_data(as_text=True)
         assert "Réglages" in dash
+        assert "Se déconnecter" in dash
         galerie = client.get("/galerie/", headers=HEADERS_OK).get_data(as_text=True)
         assert "Retirer" in galerie
 
@@ -99,3 +100,18 @@ class TestAdmin:
         assert client.get("/connexion").status_code == 401
         r = client.get("/connexion", headers=HEADERS_OK)
         assert r.status_code == 302
+
+    def test_deconnexion_repasse_en_viewer_jusqua_reconnexion(self, client):
+        r = client.post("/deconnexion", headers=HEADERS_OK, follow_redirects=True)
+        html = r.get_data(as_text=True)
+
+        assert r.status_code == 200
+        assert "Connexion admin" in html
+        assert "Réglages" not in html
+
+        # Même si le navigateur renvoie encore le header Basic, la session
+        # reste volontairement en consultation.
+        assert client.get("/settings/", headers=HEADERS_OK).status_code == 401
+
+        client.get("/connexion", headers=HEADERS_OK)
+        assert client.get("/settings/", headers=HEADERS_OK).status_code == 200

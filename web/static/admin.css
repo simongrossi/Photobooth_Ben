@@ -88,7 +88,7 @@ code {
   border-radius: 999px;
   text-align: center;
 }
-.nav { display: flex; flex-direction: column; gap: .25rem; }
+.nav { display: flex; flex: 1; flex-direction: column; gap: .25rem; }
 .nav a {
   color: var(--texte2); padding: .55rem .7rem; border-radius: 8px;
   font-size: .92rem; font-weight: 550;
@@ -97,6 +97,15 @@ code {
 .nav a.active {
   color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent);
   font-weight: 700;
+}
+.nav__session { margin: auto 0 0; padding-top: .8rem; border-top: 1px solid var(--bord); }
+.nav__session button {
+  width: 100%; padding: .55rem .7rem; border: 0; background: transparent;
+  color: var(--err); font-size: .88rem; font-weight: 650; text-align: left;
+}
+.nav__session button:hover { background: var(--err-bg); filter: none; }
+.nav .nav__login {
+  margin-top: auto; border: 1px solid var(--bord); color: var(--accent); text-align: center;
 }
 
 .content { width: 100%; min-width: 0; max-width: 1040px; margin: 0 auto; padding: 1.5rem; }
@@ -111,10 +120,13 @@ code {
   .logo span { display: inline; margin: 0 0 0 .25rem; }
   .server-clock { padding: .22rem .55rem; }
   .nav {
-    flex-direction: row; gap: .15rem; overflow-x: auto;
+    flex: initial; flex-direction: row; gap: .15rem; overflow-x: auto;
     margin: 0 -.25rem; padding: 0 .25rem .1rem; scrollbar-width: thin;
   }
   .nav a { flex: 0 0 auto; padding: .4rem .65rem; }
+  .nav__session { flex: 0 0 auto; margin: 0; padding: 0 0 0 .2rem; border: 0; }
+  .nav__session button { padding: .4rem .65rem; white-space: nowrap; }
+  .nav .nav__login { margin-top: 0; }
   .content { padding: 1rem; }
 }
 

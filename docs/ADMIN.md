@@ -177,8 +177,9 @@ Deux rôles, gérés par `web/auth.py` :
 
 - **admin** — Basic Auth (`admin` + `PHOTOBOOTH_ADMIN_PASS`) : accès complet,
   toutes les actions. Bouton « Connexion admin » dans la nav pour déclencher la
-  fenêtre de mot de passe du navigateur. Déconnexion = fermer le navigateur
-  (limite du Basic Auth).
+  fenêtre de mot de passe du navigateur. Le bouton **Se déconnecter** repasse
+  l'interface en consultation ; **Connexion admin** réactive ensuite l'accès
+  complet (les identifiants Basic peuvent rester mémorisés par le navigateur).
 - **viewer** — anonyme, **consultation seule** : dashboard (sans chemins système
   ni bouton de déblocage quota) et galerie (sans « Retirer » ni corbeille).
   Aucune action possible, aucune page de gestion accessible.
