@@ -3,6 +3,49 @@
 Historique des commits par sprint, du plus récent au plus ancien.
 Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr).
 
+## `WIP` — Page Écrans : inventaire et éditeur
+
+### Added
+- Page admin **Écrans** (`/ecrans`) : pour chaque écran du kiosque, la vignette
+  du fond *réellement résolu* avec son origine explicite — activé depuis
+  l'admin, hérité du fond d'accueil, défaut versionné, introuvable, ou aucun
+  fond par conception. Répond au problème d'origine : rien ne permettait de
+  savoir quelle image un écran afficherait, et l'annulation d'une photo montrait
+  un fond que l'admin croyait avoir remplacé.
+- Éditeur par écran : textes, durées, tailles de police, positions et opacités,
+  groupés par nature. Le formulaire est généré depuis `core/ecrans.py` — chaque
+  champ porte son libellé, son aide et ses bornes, donc aucune table de
+  métadonnées à maintenir en parallèle (contrairement à `_META_REGLAGES`).
+- Bandeau **« redémarrage requis »** quand la config sur disque a divergé de
+  celle chargée par le kiosque, avec bouton d'application. Le redémarrage est
+  refusé si une session est en cours (garde de `web/systeme.py`).
+- Écrit `data/ecrans_overrides.json`, distinct de `config_overrides.json` : les
+  deux éditeurs ont des périmètres disjoints et se réinitialisent
+  indépendamment (tests de non-régression dans les deux sens).
+- `tests/test_web_ecrans.py` : inventaire, aperçus, validation des bornes,
+  atomicité du formulaire, isolation des deux fichiers d'overrides et
+  protection du rôle viewer.
+
+- **Aperçu positionné** sur l'écran Accueil : rendu HTML à l'échelle du 1280×800
+  avec le fond réel, les deux icônes et le bandeau. Les icônes se déplacent au
+  glisser-déposer et le lien avec les champs est bilatéral. Les tailles de texte
+  utilisent la police active du kiosque, servie en `@font-face`, et les unités
+  `cqh` gardent tout à l'échelle quelle que soit la largeur d'affichage.
+  Réservé aux écrans dont la géométrie est reproductible : un aperçu
+  approximatif serait pire qu'aucun aperçu, puisqu'on réglerait des positions
+  en se fiant à une image fausse.
+- Tests de synchronisation entre l'aperçu et `_render_accueil_normal` : ils
+  échouent si les formules de position du kiosque changent sans que l'aperçu
+  suive (duplication assumée, mais qui ne peut plus diverger en silence).
+
+### Security
+- Une saisie hors bornes ou de mauvais type est refusée **avant** écriture, et
+  une seule erreur annule tout le formulaire : le fichier sur disque reste
+  toujours applicable tel quel, et une valeur ne peut pas rendre le kiosque non
+  bootable en plein événement.
+
+---
+
 ## `WIP` — Optimisation Performance & Fiabilité (Sprint 2026-07-19)
 
 ### Added

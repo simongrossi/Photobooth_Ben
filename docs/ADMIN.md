@@ -38,6 +38,18 @@ sur le même LAN, sans toucher au code.
   ≤ 30 s). Le fond de transition couvre les écrans d'attente (annulation d'une
   photo, reprise, impression) ; laissé au défaut, il reprend automatiquement le
   fond d'accueil, pour qu'aucun écran n'affiche une image inattendue.
+- **Écrans** : inventaire de tous les écrans du kiosque — pour chacun, la
+  vignette du fond **réellement résolu** (avec son origine : activé depuis
+  l'admin, hérité du fond d'accueil, défaut versionné, introuvable, ou aucun
+  fond par conception) et les textes, durées, tailles et positions en vigueur,
+  les valeurs personnalisées étant signalées. Chaque écran est éditable via un
+  formulaire généré depuis `core/ecrans.py`. Un bandeau « redémarrage requis »
+  apparaît quand la config sur disque a divergé de celle que le kiosque a
+  chargée. Écrit `data/ecrans_overrides.json`, indépendant des Réglages.
+  L'écran Accueil dispose en plus d'un **aperçu positionné** : les icônes se
+  déplacent au glisser-déposer, l'aperçu et les champs se répondent dans les
+  deux sens. Le rendu HTML reste approximatif (le rendu final est celui de
+  pygame), mais les positions et les tailles de police sont fidèles.
 - **Réglages** : édition d'un sous-ensemble de `config.py` via
   `data/config_overrides.json` (timings, imprimantes, slideshow, watermark…).
 
@@ -67,7 +79,8 @@ sur le même LAN, sans toucher au code.
 | Métadonnées templates & assets | `data/admin.db` (SQLite) | admin | admin |
 | Mise en page 10×15 active | `data/mise_en_page_10x15.json` (remplacement atomique) | admin | kiosque à chaque rendu |
 | Mise en page strip active | `data/mise_en_page_strip.json` (remplacement atomique) | admin | kiosque à chaque rendu |
-| Surcharges config | `data/config_overrides.json` | admin | kiosque (à chaque import de `config`) |
+| Surcharges config | `data/config_overrides.json` | admin (page Réglages) | kiosque (à chaque import de `config`) |
+| Surcharges d'écran | `data/ecrans_overrides.json` (textes, durées, tailles, positions) | admin (page Écrans) | kiosque (à chaque import de `config`) |
 | Compteur/quota d'impressions | `data/quota_impressions.json` (remplacement atomique) | kiosque (tirages) + admin (déblocage) | kiosque + admin (dashboard) |
 | Heartbeat kiosque | `data/kiosque_etat.json` (remplacement atomique) | kiosque toutes les 2 s | admin (dashboard et protection des commandes) |
 

@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block titre %}Écrans · Photobooth{% endblock %}
+{% block contenu %}
+<h1>Écrans</h1>
+
+<p class="muted">
+  Ce que le kiosque affiche <strong>réellement</strong> sur chaque écran : le fond
+  effectivement résolu et les réglages en vigueur. Les modifications prennent
+  effet au prochain redémarrage du kiosque.
+</p>
+
+{% if kiosque.redemarrage_requis %}
+  <section class="panel panel--alerte">
+    <h2>Redémarrage requis</h2>
+    <p>
+      Des réglages ou des images ont changé depuis le démarrage du kiosque :
+      ce qu'il affiche en ce moment ne correspond plus à ce que montre cette page.
+    </p>
+    {% if kiosque.session_active %}
+      <p class="muted">Une session est en cours — le redémarrage sera refusé tant qu'un invité n'a pas terminé.</p>
+    {% endif %}
+    <form method="post" action="{{ url_for('ecrans.redemarrer') }}"
+          onsubmit="return confirm('Redémarrer le kiosque maintenant ?');">
+      <button type="submit" class="btn btn--primary">Redémarrer le kiosque</button>
+    </form>
+  </section>
+{% elif kiosque.redemarrage_requis is none %}
+  <p class="muted">
+    État du kiosque inconnu (il n'a pas encore publié son état depuis cette version).
+    Impossible de dire si un redémarrage est nécessaire.
+  </p>
+{% endif %}
+
+<section class="panel">
+  <h2>Réglages personnalisés</h2>
+  {% if nb_overrides %}
+    <p>{{ nb_overrides }} réglage(s) personnalisé(s), enregistré(s) dans <code>{{ overrides_path }}</code>.</p>
+    <form method="post" action="{{ url_for('ecrans.reset') }}"
+          onsubmit="return confirm('Revenir aux réglages d\'écran par défaut ? Les Réglages généraux ne sont pas touchés.');">
+      <button type="submit" class="btn btn--danger">Tout remettre par défaut</button>
+    </form>
+  {% else %}
+    <p class="muted">Aucun réglage personnalisé : tous les écrans utilisent les valeurs du code.</p>
+  {% endif %}
+</section>
+
+{% for carte in cartes %}
+<section class="panel">
+  <h2>
+    {{ carte.libelle }}
+    {% if carte.nb_personnalises %}
+      <span class="badge badge--actif">{{ carte.nb_personnalises }} personnalisé(s)</span>
+    {% endif %}
+  </h2>
+  <p class="muted">{{ carte.description }}</p>
+
+  <div class="ecran-carte">
+    <div class="ecran-carte__visuel">
+      {% if carte.asset.existe %}
+        <img src="{{ url_for('ecrans.apercu', ecran_id=carte.id) }}" alt="Fond de l'écran {{ carte.libelle }}">
+      {% else %}
+        <div class="ecran-carte__vide">Pas d'image</div>
+      {% endif %}
+      <p class="muted">
+        <span class="badge">{{ carte.asset.libelle_origine }}</span>
+        {% if carte.asset.nom_fichier %}<br><code>{{ carte.asset.nom_fichier }}</code>{% endif %}
+      </p>
+    </div>
+
+    <div class="ecran-carte__reglages">
+      {% if carte.champs %}
+        <table class="histo-table">
+          <thead><tr><th>Réglage</th><th>Valeur</th></tr></thead>
+          <tbody>
+            {% for champ in carte.champs %}
+              <tr>
+                <td>
+                  {{ champ.libelle }}
+                  {% if champ.personnalise %}<span class="badge badge--actif">modifié</span>{% endif %}
+                </td>
+                <td><code>{{ champ.valeur }}</code>{% if champ.unite %} {{ champ.unite }}{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p class="muted">Aucun réglage éditable pour cet écran.</p>
+      {% endif %}
+      <a class="btn btn--primary" href="{{ url_for('ecrans.editer', ecran_id=carte.id) }}">Modifier</a>
+    </div>
+  </div>
+</section>
+{% endfor %}
+{% endblock %}

@@ -654,3 +654,115 @@ form.inline { display: inline; margin: 0; }
   background: var(--accent);
   color: var(--accent-tx);
 }
+
+/* --- Page Écrans : inventaire et éditeur ------------------------------- */
+
+/* Bandeau « redémarrage requis » : ce que le kiosque affiche ne correspond
+   plus à ce que montre la page. Doit sauter aux yeux sans crier à l'erreur. */
+.panel--alerte {
+  border-left: 4px solid var(--warn);
+  background: var(--warn-bg);
+}
+.panel--alerte h2 { color: var(--warn-tx); }
+
+.ecran-carte {
+  display: flex;
+  gap: 1.2rem;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.ecran-carte__visuel { flex: 0 0 260px; }
+.ecran-carte__visuel img {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--bord);
+  display: block;
+}
+.ecran-carte__vide {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border: 1px dashed var(--bord);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--texte2);
+  font-size: .9rem;
+}
+.ecran-carte__reglages { flex: 1 1 320px; min-width: 0; }
+
+.form-grille {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+}
+.champ { display: flex; flex-direction: column; gap: .3rem; }
+.champ__libelle { font-weight: 500; font-size: .95rem; }
+.champ__aide { font-size: .8rem; }
+/* Repère visuel des valeurs qui diffèrent du code : l'admin doit voir d'un
+   coup d'œil ce qu'il a touché, sans comparer à une doc. */
+.champ--modifie { border-left: 3px solid var(--accent); padding-left: .6rem; }
+
+@media (max-width: 640px) {
+  .ecran-carte__visuel { flex-basis: 100%; }
+}
+
+/* --- Aperçu positionné (éditeur d'écran) ------------------------------- */
+
+/* Canvas à l'échelle du kiosque : tout est positionné en % du 1280×800, donc
+   l'aperçu reste juste quelle que soit la largeur disponible. */
+.apercu {
+  width: 100%;
+  max-width: 760px;
+  margin-bottom: .8rem;
+}
+.apercu__scene {
+  position: relative;
+  width: 100%;
+  aspect-ratio: var(--canvas-w) / var(--canvas-h);
+  background: #1a1d28;
+  border-radius: 10px;
+  border: 1px solid var(--bord);
+  overflow: hidden;
+  /* Conteneur de requête : les unités cqh/cqw des enfants se résolvent contre
+     cette scène, ce qui garde textes et écarts à l'échelle du 1280×800 quelle
+     que soit la largeur réelle. */
+  container-type: size;
+  font-family: "KiosquePolice", system-ui, sans-serif;
+  touch-action: none; /* sinon le drag scrolle la page sur mobile */
+}
+.apercu__fond {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.apercu__icone {
+  position: absolute;
+  cursor: grab;
+  user-select: none;
+}
+.apercu__icone img { display: block; width: 100%; height: 100%; }
+.apercu__icone--drag { cursor: grabbing; outline: 2px dashed var(--accent); }
+.apercu__label {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  line-height: 1;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .6);
+}
+.apercu__bandeau {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  line-height: 1;
+  white-space: nowrap;
+}

@@ -1,0 +1,310 @@
+{% extends "base.html" %}
+{% block titre %}{{ ecran.libelle }} · Écrans · Photobooth{% endblock %}
+{% block contenu %}
+<h1>{{ ecran.libelle }}</h1>
+<p class="muted">{{ ecran.description }}</p>
+<p><a href="{{ url_for('ecrans.index') }}">← Tous les écrans</a></p>
+
+<section class="panel">
+  <h2>Fond utilisé</h2>
+  <div class="ecran-carte">
+    <div class="ecran-carte__visuel">
+      {% if asset.existe %}
+        <img src="{{ url_for('ecrans.apercu', ecran_id=ecran.id) }}" alt="Fond de l'écran {{ ecran.libelle }}">
+      {% else %}
+        <div class="ecran-carte__vide">Pas d'image</div>
+      {% endif %}
+    </div>
+    <div class="ecran-carte__reglages">
+      <p><span class="badge">{{ asset.libelle_origine }}</span></p>
+      {% if asset.chemin %}<p class="muted"><code>{{ asset.chemin }}</code></p>{% endif %}
+      <p class="muted">
+        Les images se changent depuis la page
+        <a href="{{ url_for('kiosque.index') }}">Kiosque</a>.
+      </p>
+    </div>
+  </div>
+</section>
+
+{% if groupes %}
+<form method="post" action="{{ url_for('ecrans.enregistrer', ecran_id=ecran.id) }}">
+
+  {% if geometrie %}
+  <section class="panel">
+    <h2>Aperçu</h2>
+    <p class="muted">
+      Glissez les icônes pour les positionner. L'aperçu suit les champs ci-dessous
+      en temps réel — et inversement.
+    </p>
+
+    <div class="apercu" id="apercu"
+         style="--canvas-w: {{ geometrie.largeur }}; --canvas-h: {{ geometrie.hauteur }};">
+      <div class="apercu__scene" id="scene">
+        {% if asset.existe %}
+          <img class="apercu__fond" src="{{ url_for('ecrans.apercu', ecran_id=ecran.id) }}" alt="">
+        {% endif %}
+
+        <div class="apercu__icone" id="ic-10x15" data-champ-x="OFFSET_DROITE_10X15">
+          <img src="{{ url_for('ecrans.image', cle='icone-10x15') }}" alt="Grand format">
+          <span class="apercu__label" id="lb-10x15"></span>
+        </div>
+
+        <div class="apercu__icone" id="ic-strip" data-champ-x="OFFSET_DROITE_STRIP">
+          <img src="{{ url_for('ecrans.image', cle='icone-strip') }}" alt="Bandelettes">
+          <span class="apercu__label" id="lb-strip"></span>
+        </div>
+
+        <div class="apercu__bandeau" id="bandeau"><span id="bandeau-txt"></span></div>
+      </div>
+    </div>
+
+    <p class="muted">
+      Aperçu approximatif (rendu HTML) : le rendu final est celui du kiosque.
+      Les tailles de texte sont fidèles à la police active, mais l'espacement
+      des lettres peut varier de quelques pixels.
+    </p>
+  </section>
+  {% endif %}
+
+  {% for groupe in groupes %}
+  <section class="panel">
+    <h2>{{ groupe.titre }}</h2>
+    <div class="form-grille">
+      {% for champ in groupe.champs %}
+        <label class="champ {% if champ.personnalise %}champ--modifie{% endif %}">
+          <span class="champ__libelle">
+            {{ champ.libelle }}
+            {% if champ.unite %}<span class="muted">({{ champ.unite }})</span>{% endif %}
+            {% if champ.personnalise %}<span class="badge badge--actif">modifié</span>{% endif %}
+          </span>
+
+          {% if champ.est_bool %}
+            <input type="checkbox" name="{{ champ.cle }}" {% if champ.valeur %}checked{% endif %}>
+          {% elif champ.est_texte %}
+            <input type="text" name="{{ champ.cle }}" value="{{ champ.valeur }}"
+                   maxlength="{{ champ.maxi }}">
+          {% else %}
+            <input type="number" name="{{ champ.cle }}" value="{{ champ.valeur }}"
+                   min="{{ champ.mini }}" max="{{ champ.maxi }}" step="{{ champ.pas }}">
+          {% endif %}
+
+          {% if champ.aide %}<span class="champ__aide muted">{{ champ.aide }}</span>{% endif %}
+          {% if not champ.est_bool %}
+            <span class="champ__aide muted">
+              {% if champ.est_texte %}
+                {{ champ.maxi }} caractères maximum. Vide = valeur par défaut.
+              {% else %}
+                Entre {{ champ.mini }} et {{ champ.maxi }}. Vide = valeur par défaut.
+              {% endif %}
+            </span>
+          {% endif %}
+        </label>
+      {% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+
+  <section class="panel">
+    <div class="actions">
+      <button type="submit" name="action" value="save" class="btn btn--primary">Enregistrer</button>
+      <button type="submit" name="action" value="apply" class="btn"
+              onsubmit="return confirm('Enregistrer et redémarrer le kiosque ?');">
+        Enregistrer et redémarrer le kiosque
+      </button>
+    </div>
+    <p class="muted">
+      « Enregistrer » écrit les réglages ; le kiosque les prendra à son prochain
+      démarrage. « Enregistrer et redémarrer » applique tout de suite — refusé si
+      une session est en cours.
+    </p>
+    {% if nb_personnalises %}
+      <p class="muted">{{ nb_personnalises }} réglage(s) de cet écran diffèrent des valeurs par défaut.</p>
+    {% endif %}
+  </section>
+</form>
+{% else %}
+<section class="panel">
+  <p class="muted">Aucun réglage éditable pour cet écran.</p>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if geometrie %}
+<style>
+  /* Police du kiosque, pour que les tailles de texte de l'aperçu soient
+     mesurées avec les mêmes glyphes que le rendu final. */
+  @font-face {
+    font-family: "KiosquePolice";
+    src: url("{{ url_for('ecrans.police') }}") format("truetype");
+    font-display: swap;
+  }
+</style>
+<script>
+(function () {
+  "use strict";
+
+  var G = {{ geometrie | tojson }};
+  var scene = document.getElementById("scene");
+  if (!scene) { return; }
+
+  // --- Accès aux champs du formulaire -----------------------------------
+  function champ(cle) { return document.querySelector('[name="' + cle + '"]'); }
+
+  function valeur(cle, defaut) {
+    var el = champ(cle);
+    if (!el || el.value === "") { return defaut; }
+    var n = parseFloat(el.value);
+    return isNaN(n) ? defaut : n;
+  }
+
+  function texte(cle, defaut) {
+    var el = champ(cle);
+    return (el && el.value !== "") ? el.value : defaut;
+  }
+
+  // --- Positionnement ----------------------------------------------------
+  // Reproduit _render_accueil_normal (Photobooth_start.py) :
+  //   x_10 = W/2 - largeur_icone - MARGE/2 + OFFSET_10X15
+  //   x_s  = W/2 + MARGE/2 + OFFSET_STRIP
+  //   y    = axe_y_centre - hauteur_icone/2
+  // Tout est exprimé en pixels du canvas 1280x800 ; la mise à l'échelle est
+  // faite en CSS, donc le JS raisonne toujours dans les coordonnées du kiosque.
+  var ic10 = document.getElementById("ic-10x15");
+  var icSt = document.getElementById("ic-strip");
+  var img10 = ic10.querySelector("img");
+  var imgSt = icSt.querySelector("img");
+
+  function dimensions(img, largeurVoulue) {
+    // Le kiosque redimensionne sur la largeur en conservant le ratio.
+    var ratio = (img.naturalHeight && img.naturalWidth)
+      ? img.naturalHeight / img.naturalWidth : 1;
+    return { w: largeurVoulue, h: Math.round(largeurVoulue * ratio) };
+  }
+
+  function redessiner() {
+    var marge = valeur("MARGE_ACCUEIL", 200);
+    var l10 = valeur("LARGEUR_ICONE_10X15", 400);
+    var lSt = valeur("LARGEUR_ICONE_STRIP", 200);
+    var off10 = valeur("OFFSET_DROITE_10X15", 0);
+    var offSt = valeur("OFFSET_DROITE_STRIP", 0);
+
+    var d10 = dimensions(img10, l10);
+    var dSt = dimensions(imgSt, lSt);
+
+    var x10 = G.largeur / 2 - d10.w - marge / 2 + off10;
+    var y10 = G.axe_y_centre - d10.h / 2;
+    var xSt = G.largeur / 2 + marge / 2 + offSt;
+    var ySt = G.axe_y_centre - dSt.h / 2;
+
+    placer(ic10, img10, x10, y10, d10);
+    placer(icSt, imgSt, xSt, ySt, dSt);
+
+    // Libellés sous les icônes, centrés (offset constant de 20 px).
+    majLabel("lb-10x15", texte("MODE_10x15", "Grand Format"), d10);
+    majLabel("lb-strip", texte("MODE_STRIP", "Bandelettes"), dSt);
+
+    // Bandeau bas.
+    var hauteur = valeur("BANDEAU_HAUTEUR", 60);
+    var alpha = valeur("BANDEAU_ALPHA", 150);
+    var bandeau = document.getElementById("bandeau");
+    bandeau.style.height = pc(hauteur, G.hauteur);
+    bandeau.style.opacity = Math.max(0, Math.min(255, alpha)) / 255;
+    var txt = document.getElementById("bandeau-txt");
+    txt.textContent = texte("BANDEAU_ACCUEIL", "");
+    txt.style.fontSize = cqh(valeur("TAILLE_TEXTE_BANDEAU", 40));
+  }
+
+  function pc(px, base) { return (px / base * 100) + "%"; }
+
+  function placer(bloc, img, x, y, d) {
+    bloc.style.left = pc(x, G.largeur);
+    bloc.style.top = pc(y, G.hauteur);
+    // Les dimensions vont sur le bloc, pas sur l'image : le bloc est
+    // absolument positionné dans la scène, donc ses pourcentages se résolvent
+    // contre elle. Sur l'image ils se résoudraient contre le bloc, qui se
+    // dimensionne lui-même sur l'image — circulaire, donc faux.
+    bloc.style.width = pc(d.w, G.largeur);
+    bloc.style.height = pc(d.h, G.hauteur);
+  }
+
+  // Unité liée à la SCÈNE et non au parent : `cqh` vaut 1 % de la hauteur du
+  // conteneur de requête (.apercu__scene). Indispensable pour les tailles de
+  // police — une font-size en % se résout contre la police héritée, pas contre
+  // une dimension — et pour tout ce qui doit rester à l'échelle du 1280×800.
+  function cqh(px) { return (px / G.hauteur * 100) + "cqh"; }
+
+  function majLabel(id, contenu, d) {
+    var el = document.getElementById(id);
+    el.textContent = contenu;
+    // 100 % = bas de l'icône, puis l'écart constant du rendu (20 px).
+    el.style.top = "calc(100% + " + cqh(G.decalage_label) + ")";
+    el.style.fontSize = cqh(valeur("TAILLE_TEXTE_BOUTON", 60));
+    el.style.color = G.couleur_texte_repos;
+  }
+
+  // --- Glisser-déposer ---------------------------------------------------
+  // Les champs pilotés sont des DÉCALAGES, pas des coordonnées absolues : on
+  // ajoute donc le déplacement à la valeur courante plutôt que de la remplacer.
+  function rendreDeplacable(bloc) {
+    var cle = bloc.dataset.champX;
+    bloc.addEventListener("pointerdown", function (ev) {
+      var el = champ(cle);
+      if (!el) { return; }
+      ev.preventDefault();
+      bloc.setPointerCapture(ev.pointerId);
+      bloc.classList.add("apercu__icone--drag");
+
+      var departX = ev.clientX;
+      var depart = valeur(cle, 0);
+      // Rapport pixels écran → pixels kiosque.
+      var facteur = G.largeur / scene.getBoundingClientRect().width;
+      var mini = el.min !== "" ? parseFloat(el.min) : -Infinity;
+      var maxi = el.max !== "" ? parseFloat(el.max) : Infinity;
+
+      function bouger(e) {
+        var delta = (e.clientX - departX) * facteur;
+        var v = Math.round(depart + delta);
+        el.value = Math.max(mini, Math.min(maxi, v));
+        redessiner();
+      }
+
+      function relacher(e) {
+        bloc.releasePointerCapture(e.pointerId);
+        bloc.classList.remove("apercu__icone--drag");
+        bloc.removeEventListener("pointermove", bouger);
+        bloc.removeEventListener("pointerup", relacher);
+        bloc.removeEventListener("pointercancel", relacher);
+      }
+
+      bloc.addEventListener("pointermove", bouger);
+      bloc.addEventListener("pointerup", relacher);
+      bloc.addEventListener("pointercancel", relacher);
+    });
+  }
+
+  rendreDeplacable(ic10);
+  rendreDeplacable(icSt);
+
+  // Les champs pilotent l'aperçu, et le drag pilote les champs : lien bilatéral.
+  document.querySelectorAll(".form-grille input").forEach(function (el) {
+    el.addEventListener("input", redessiner);
+  });
+
+  // Le ratio des icônes vient de leurs dimensions naturelles : redessiner
+  // quand chaque image arrive (et aussi en cas d'erreur, pour au moins placer
+  // le reste plutôt que de laisser l'aperçu vide).
+  [img10, imgSt].forEach(function (im) {
+    if (!im.complete) {
+      im.addEventListener("load", redessiner);
+      im.addEventListener("error", redessiner);
+    }
+  });
+  redessiner();
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(redessiner);
+  }
+})();
+</script>
+{% endif %}
+{% endblock %}
