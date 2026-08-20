@@ -349,3 +349,82 @@ class TestCoherenceConfig:
             assert image.getpixel((310, 560))[1] > 240
             assert image.getpixel((480, 1255))[2] > 240
             assert min(image.getpixel((300, 300))) > 240
+
+
+class TestComposerApercu:
+    """Rendu paramétré pour l'aperçu admin (Sprint aperçu du rendu final).
+
+    Le kiosque compose toujours avec les chemins actifs ; l'admin doit pouvoir
+    composer avec des calques arbitraires sans rien activer.
+    """
+
+    @pytest.fixture
+    def calques(self, tmp_path_str):
+        """Un fond vert et un overlay rouge opaque en bas, distincts des actifs."""
+        bg = os.path.join(tmp_path_str, "bg_choisi.jpg")
+        Image.new("RGB", (1800, 1200), (0, 200, 0)).save(bg, "JPEG", quality=95)
+        overlay = os.path.join(tmp_path_str, "ov_choisi.png")
+        ov = Image.new("RGBA", (1800, 1200), (0, 0, 0, 0))
+        for x in range(1800):
+            for y in range(1150, 1200):
+                ov.putpixel((x, y), (255, 0, 0, 255))
+        ov.save(overlay, "PNG")
+        return bg, overlay
+
+    def test_10x15_utilise_le_fond_fourni(self, photo_factice, isoler_paths, calques):
+        bg, _ = calques
+        image = MontageGenerator10x15.composer_apercu(
+            [photo_factice], bg_path=bg, overlay_path="", mise_en_page=None,
+        )
+        assert image.size == montage.MONTAGE_10X15_SIZE
+        # (10, 10) est hors de la zone photo par défaut (offset 250,175)
+        assert image.getpixel((10, 10))[1] > 150
+
+    def test_10x15_utilise_l_overlay_fourni(self, photo_factice, isoler_paths, calques):
+        bg, overlay = calques
+        image = MontageGenerator10x15.composer_apercu(
+            [photo_factice], bg_path=bg, overlay_path=overlay, mise_en_page=None,
+        )
+        r, g, _ = image.getpixel((900, 1180))[:3]
+        assert r > 200 and g < 80
+
+    def test_10x15_respecte_la_mise_en_page_fournie(self, photo_factice, isoler_paths, calques):
+        from core.mise_en_page import MiseEnPage10x15
+
+        bg, _ = calques
+        zone = MiseEnPage10x15(x=0, y=0, largeur=200, hauteur=200)
+        image = MontageGenerator10x15.composer_apercu(
+            [photo_factice], bg_path=bg, overlay_path="", mise_en_page=zone,
+        )
+        # Dans la zone : la photo (bleu clair). Hors zone : le fond vert.
+        assert image.getpixel((100, 100))[2] > 200
+        assert image.getpixel((400, 400))[1] > 150
+
+    def test_strip_taille_de_bandelette(self, trois_photos, isoler_paths):
+        image = MontageGeneratorStrip.composer_apercu(
+            trois_photos, bg_path="", overlay_path="", mise_en_page=None,
+        )
+        assert image.size == montage.MONTAGE_STRIP_SIZE
+
+    def test_ne_pollue_pas_le_cache_d_assets(self, photo_factice, isoler_paths, calques):
+        bg, overlay = calques
+        MontageBase._transformed_asset_cache.clear()
+        MontageGenerator10x15.composer_apercu(
+            [photo_factice], bg_path=bg, overlay_path=overlay, mise_en_page=None,
+        )
+        assert MontageBase._transformed_asset_cache == {}
+
+    def test_composer_sans_parametres_garde_les_chemins_actifs(
+        self, photo_factice, isoler_paths, tmp_path_str, calques,
+    ):
+        """Non-régression kiosque : les défauts restent les fichiers actifs."""
+        bg_actif = os.path.join(tmp_path_str, "bg_actif.jpg")
+        Image.new("RGB", (1800, 1200), (0, 0, 255)).save(bg_actif, "JPEG", quality=95)
+        monkeypatched_bg, _ = calques
+        montage.BG_10X15_FILE = bg_actif
+        try:
+            image = MontageGenerator10x15._composer(photo_factice)
+            # Le fond actif (bleu) est utilisé, pas celui de `calques` (vert).
+            assert image.getpixel((10, 10))[2] > 200
+        finally:
+            montage.BG_10X15_FILE = "/inexistant/bg10x15.jpg"

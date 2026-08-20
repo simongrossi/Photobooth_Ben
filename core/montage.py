@@ -73,11 +73,17 @@ class MontageBase:
         size: tuple[int, int],
         rotation: float,
         redresser_si_horizontal: bool,
+        utiliser_cache: bool = True,
     ) -> Image.Image:
-        """Charge, oriente et redimensionne un asset, et le met en cache."""
+        """Charge, oriente et redimensionne un asset, et le met en cache.
+
+        `utiliser_cache=False` court-circuite le cache de classe. Celui-ci n'a
+        pas d'éviction : il reste borné côté kiosque parce que seuls les quatre
+        chemins actifs y entrent, mais l'aperçu admin composerait avec autant de
+        calques que de templates essayés."""
         stat = os.stat(chemin)
         key = (chemin, mode, size, rotation, redresser_si_horizontal)
-        cache = cls._transformed_asset_cache.get(key)
+        cache = cls._transformed_asset_cache.get(key) if utiliser_cache else None
         signature = (stat.st_mtime_ns, stat.st_size)
         if cache is not None and cache[:2] == signature:
             return cache[2].copy()
@@ -90,6 +96,8 @@ class MontageBase:
             img = img.rotate(rotation)
         img = img.resize(size)
 
+        if not utiliser_cache:
+            return img
         if cache is not None:
             cache[2].close()
         cls._transformed_asset_cache[key] = (*signature, img)
@@ -102,13 +110,15 @@ class MontageBase:
         size: tuple,
         rotation: float = 0,
         redresser_si_horizontal: bool = False,
+        utiliser_cache: bool = True,
     ) -> Image.Image:
         """Charge le fond ou retourne une toile blanche.
         `redresser_si_horizontal` : si le fond source est paysage, le met debout
         (rotation 90° expand) avant d'appliquer `rotation` et le resize final."""
         if bg_path and os.path.exists(bg_path) and os.path.isfile(bg_path):
             return cls._charger_asset_transforme(
-                bg_path, "RGB", size, rotation, redresser_si_horizontal
+                bg_path, "RGB", size, rotation, redresser_si_horizontal,
+                utiliser_cache=utiliser_cache,
             )
         return Image.new("RGB", size, "white")
 
@@ -120,12 +130,14 @@ class MontageBase:
         size: tuple,
         rotation: float = 0,
         redresser_si_horizontal: bool = False,
+        utiliser_cache: bool = True,
     ) -> None:
         """Applique l'overlay RGBA si le fichier existe."""
         if not (overlay_path and os.path.exists(overlay_path)):
             return
         ov = cls._charger_asset_transforme(
-            overlay_path, "RGBA", size, rotation, redresser_si_horizontal
+            overlay_path, "RGBA", size, rotation, redresser_si_horizontal,
+            utiliser_cache=utiliser_cache,
         )
         canvas.paste(ov, (0, 0), ov)
 
@@ -213,11 +225,25 @@ class MontageGenerator10x15(MontageBase):
         chemin_photo: str,
         taille_sortie: tuple[int, int] | None = None,
         resampling: Image.Resampling = Image.Resampling.LANCZOS,
+        bg_path: str | None = None,
+        overlay_path: str | None = None,
+        mise_en_page: MiseEnPage10x15 | None = None,
+        utiliser_cache: bool = True,
     ) -> Image.Image:
-        """Compose fond → photo → overlay avec la géométrie active."""
+        """Compose fond → photo → overlay.
+
+        Sans les trois derniers paramètres, utilise les calques et la géométrie
+        actifs — c'est le chemin du kiosque. L'aperçu admin les fournit pour
+        composer avec un template non activé ; `""` signifie « aucun calque »."""
         taille_sortie = taille_sortie or cls.FINAL_SIZE
-        canvas = cls._canvas_depuis_bg_ou_blanc(BG_10X15_FILE, taille_sortie)
-        mise_en_page = cls._mise_en_page_active()
+        if bg_path is None:
+            bg_path = BG_10X15_FILE
+        if overlay_path is None:
+            overlay_path = OVERLAY_10X15
+        canvas = cls._canvas_depuis_bg_ou_blanc(
+            bg_path, taille_sortie, utiliser_cache=utiliser_cache,
+        )
+        mise_en_page = mise_en_page or cls._mise_en_page_active()
         echelle_x = taille_sortie[0] / cls.FINAL_SIZE[0]
         echelle_y = taille_sortie[1] / cls.FINAL_SIZE[1]
         zone = (
@@ -235,7 +261,35 @@ class MontageGenerator10x15(MontageBase):
             resampling,
         )
         canvas.paste(photo_fit, position)
-        cls._coller_overlay(canvas, OVERLAY_10X15, taille_sortie)
+        cls._coller_overlay(
+            canvas, overlay_path, taille_sortie, utiliser_cache=utiliser_cache,
+        )
+        return canvas
+
+    @classmethod
+    def composer_apercu(
+        cls,
+        photos: list,
+        *,
+        bg_path: str | None = None,
+        overlay_path: str | None = None,
+        mise_en_page: MiseEnPage10x15 | None = None,
+    ) -> Image.Image:
+        """Rendu final en mémoire, sans écriture disque (aperçu admin).
+
+        Identique à `final()` — mêmes calques, même géométrie, même filigrane et
+        même grain — mais l'image est retournée au lieu d'être écrite dans
+        PATH_TEMP, pour qu'aucun fichier d'aperçu ne puisse être ramassé par le
+        pipeline d'impression."""
+        canvas = cls._composer(
+            photos[0],
+            bg_path=bg_path,
+            overlay_path=overlay_path,
+            mise_en_page=mise_en_page,
+            utiliser_cache=False,
+        )
+        cls._appliquer_watermark(canvas, WATERMARK_TAILLE_10X15, WATERMARK_POSITION_10X15)
+        cls._appliquer_grain(canvas)
         return canvas
 
     @classmethod
@@ -300,14 +354,28 @@ class MontageGeneratorStrip(MontageBase):
         photos: list,
         taille_sortie: tuple[int, int] | None = None,
         resampling: Image.Resampling = Image.Resampling.LANCZOS,
+        bg_path: str | None = None,
+        overlay_path: str | None = None,
+        mise_en_page: MiseEnPageStrip | None = None,
+        utiliser_cache: bool = True,
     ) -> Image.Image:
-        """Compose fond → trois photos → overlay avec la géométrie active."""
+        """Compose fond → trois photos → overlay.
+
+        Sans les trois derniers paramètres, utilise les calques et la géométrie
+        actifs — c'est le chemin du kiosque. `""` signifie « aucun calque ».
+        Les calques sont tournés de `FINAL_ROTATION` (imprimante tête-bêche),
+        quelle que soit leur provenance."""
         taille_sortie = taille_sortie or cls.FINAL_SIZE
+        if bg_path is None:
+            bg_path = BG_STRIPS_FILE
+        if overlay_path is None:
+            overlay_path = OVERLAY_STRIPS
         canvas = cls._canvas_depuis_bg_ou_blanc(
-            os.path.abspath(BG_STRIPS_FILE), taille_sortie,
+            os.path.abspath(bg_path) if bg_path else "", taille_sortie,
             rotation=cls.FINAL_ROTATION, redresser_si_horizontal=True,
+            utiliser_cache=utiliser_cache,
         )
-        mise_en_page = cls._mise_en_page_active()
+        mise_en_page = mise_en_page or cls._mise_en_page_active()
         echelle_x = taille_sortie[0] / cls.FINAL_SIZE[0]
         echelle_y = taille_sortie[1] / cls.FINAL_SIZE[1]
         for chemin, zone in zip(photos[:3], mise_en_page.photos):
@@ -322,9 +390,35 @@ class MontageGeneratorStrip(MontageBase):
             )
             canvas.paste(img_fit, position)
         cls._coller_overlay(
-            canvas, OVERLAY_STRIPS, taille_sortie,
+            canvas, overlay_path, taille_sortie,
             rotation=cls.FINAL_ROTATION, redresser_si_horizontal=True,
+            utiliser_cache=utiliser_cache,
         )
+        return canvas
+
+    @classmethod
+    def composer_apercu(
+        cls,
+        photos: list,
+        *,
+        bg_path: str | None = None,
+        overlay_path: str | None = None,
+        mise_en_page: MiseEnPageStrip | None = None,
+    ) -> Image.Image:
+        """Bandelette finale en mémoire, sans écriture disque (aperçu admin).
+
+        Rend la bandelette « CLEAN » 600×1800, pas la planche READY_TO_PRINT :
+        la duplication et les offsets de calibration DNP ne servent qu'à
+        l'imprimante et rendraient l'aperçu illisible."""
+        canvas = cls._composer(
+            photos,
+            bg_path=bg_path,
+            overlay_path=overlay_path,
+            mise_en_page=mise_en_page,
+            utiliser_cache=False,
+        )
+        cls._appliquer_watermark(canvas, WATERMARK_TAILLE_STRIP, WATERMARK_POSITION_STRIP)
+        cls._appliquer_grain(canvas)
         return canvas
 
     @classmethod
