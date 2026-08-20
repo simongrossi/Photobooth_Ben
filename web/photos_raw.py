@@ -9,9 +9,14 @@ final (choix des photos de test).
 """
 from __future__ import annotations
 
+import contextlib
 import os
 import re
+import tempfile
 from dataclasses import dataclass
+from typing import Iterator
+
+from PIL import Image, ImageDraw
 
 from config import PATH_RAW
 
@@ -76,3 +81,37 @@ def session_par_id(id_session: str, minimum_photos: int = 1) -> SessionRaw | Non
         if session.id_session == id_session:
             return session
     return None
+
+
+TAILLE_SUBSTITUTION = (1200, 800)
+
+
+def image_substitution() -> Image.Image:
+    """Visuel neutre servant de photo quand `data/raw/` est vide."""
+    image = Image.new("RGB", TAILLE_SUBSTITUTION, "#d9dde5")
+    largeur, hauteur = TAILLE_SUBSTITUTION
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((40, 40, largeur - 40, hauteur - 40), outline="#7b8497", width=8)
+    draw.line((40, 40, largeur - 40, hauteur - 40), fill="#a0a8b7", width=5)
+    draw.line((largeur - 40, 40, 40, hauteur - 40), fill="#a0a8b7", width=5)
+    draw.text((largeur // 2 - 130, hauteur // 2 - 20), "PHOTO EXEMPLE", fill="#303747")
+    return image
+
+
+@contextlib.contextmanager
+def photo_substitution() -> Iterator[str]:
+    """Écrit le visuel neutre dans un fichier temporaire, supprimé à la sortie.
+
+    Le moteur de montage compose à partir de chemins ; le fichier vit dans le
+    temp du système, jamais dans `data/`, pour qu'aucun aperçu ne puisse être
+    ramassé par le pipeline d'impression.
+    """
+    fichier = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
+    try:
+        image_substitution().save(fichier, "JPEG", quality=88)
+        fichier.close()
+        yield fichier.name
+    finally:
+        fichier.close()
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(fichier.name)

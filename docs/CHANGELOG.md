@@ -14,6 +14,42 @@ sur `main` mais pas encore déployé.
 
 ---
 
+## `WIP` — Aperçu du rendu final depuis l'admin
+
+### Added
+- **Voir le montage avant d'imprimer.** Vérifier un calage de template imposait
+  jusqu'ici de l'activer puis d'imprimer une feuille pour de vrai. Nouvelle page
+  `/templates/apercu` : on choisit un format, un fond, un overlay et une photo
+  déjà prise, et on obtient le montage **produit par le moteur du kiosque** —
+  mêmes calques, même recadrage, même filigrane, même grain. Rien n'est activé,
+  rien n'est imprimé, aucun fichier n'est écrit dans `data/`. Les combinaisons
+  fond + overlay non activées sont testables, ce qui rend l'essai sans risque en
+  plein événement.
+- `core.montage` expose `composer_apercu()` sur les deux générateurs : rendu
+  complet retourné **en mémoire** au lieu d'être écrit dans `PATH_TEMP`, pour
+  qu'aucun aperçu ne puisse être ramassé par le pipeline d'impression.
+- `web/photos_raw.py` : lecture et regroupement des photos brutes par session
+  (`lister_sessions`, `session_par_id`), partagés par la galerie et l'aperçu.
+
+### Changed
+- `MontageGenerator*._composer()` accepte `bg_path`, `overlay_path` et
+  `mise_en_page` en optionnels. **Les défauts sont les calques et la géométrie
+  actifs : le kiosque se comporte exactement comme avant.**
+- Le cache d'assets transformés devient court-circuitable
+  (`utiliser_cache=False`). Il n'a pas d'éviction — borné côté kiosque parce que
+  seuls quatre chemins fixes y entrent, il aurait grossi d'une entrée par
+  template essayé côté admin, dans un service plafonné à `MemoryMax=256M`.
+- La regex d'identifiant de session et le visuel « photo exemple », jusque-là
+  dupliqués ou privés dans `gallery.py` et `templates_route.py`, vivent
+  désormais dans `web/photos_raw.py`.
+
+### Notes
+- L'aperçu est refusé (409) pendant une session kiosque : un rendu 1800×1200 n'a
+  rien à faire sur la machine pendant une capture.
+- L'aperçu strip montre la bandelette 600×1800, pas la planche
+  `READY_TO_PRINT` — la duplication et les offsets de calibration DNP ne servent
+  qu'à l'imprimante.
+
 ## `WIP` — Parcours invité : inactivité, capture ratée, archivage
 
 ### Added

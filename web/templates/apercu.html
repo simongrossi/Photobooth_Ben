@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block titre %}Aperçu du rendu · Photobooth{% endblock %}
+{% block contenu %}
+<h1>Aperçu du rendu final</h1>
+
+<p class="muted">
+  Le montage tel que le kiosque le produirait, filigrane et grain compris, à
+  partir d'une photo déjà prise. Rien n'est activé et rien n'est imprimé :
+  c'est un essai à blanc pour vérifier un calage sans brûler de papier.
+</p>
+
+{% if verrou_actif %}
+  <section class="panel panel--alerte">
+    <h2>Session en cours</h2>
+    <p>
+      Un invité est en train d'utiliser le photobooth. L'aperçu est suspendu le
+      temps de la session pour ne pas prendre de CPU pendant une capture.
+    </p>
+  </section>
+{% endif %}
+
+{% if substitution %}
+  <p class="muted">
+    Aucune photo dans <code>data/raw/</code> : l'aperçu utilise une image de
+    <strong>substitution</strong>. Le cadrage sera fidèle, pas le contenu.
+  </p>
+{% endif %}
+
+<section class="panel">
+  <form id="form-apercu" method="get" action="{{ url_for('apercu.index') }}">
+    <div class="grille-champs">
+      <label>Format
+        <select name="format" data-champ="format">
+          <option value="10x15">10×15 (photo simple)</option>
+          <option value="strip">Strip (3 photos)</option>
+        </select>
+      </label>
+
+      <label>Fond
+        <select name="fond" data-champ="fond"></select>
+      </label>
+
+      <label>Overlay
+        <select name="overlay" data-champ="overlay"></select>
+      </label>
+
+      <label>Photo(s) de test
+        <select name="session" data-champ="session"></select>
+      </label>
+    </div>
+    <noscript>
+      <p class="muted">
+        Sans JavaScript, valide le formulaire puis ouvre le lien de rendu ci-dessous.
+      </p>
+      <button type="submit" class="btn btn--primary">Appliquer</button>
+    </noscript>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>Rendu</h2>
+  {% if verrou_actif %}
+    <p class="muted">Indisponible pendant une session.</p>
+  {% else %}
+    <p class="apercu-rendu">
+      <img id="apercu-image" alt="Aperçu du montage final"
+           src="{{ url_for('apercu.rendu') }}?format=10x15">
+    </p>
+    <p class="muted" id="apercu-erreur" hidden></p>
+  {% endif %}
+</section>
+
+<p><a href="{{ url_for('templates.index') }}">← Retour aux templates</a></p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const form = document.getElementById('form-apercu');
+  const image = document.getElementById('apercu-image');
+  if (!form || !image) return;
+
+  const erreur = document.getElementById('apercu-erreur');
+  const base = "{{ url_for('apercu.rendu') }}";
+  const champ = (nom) => form.querySelector(`[data-champ="${nom}"]`);
+
+  // Les listes dépendent du format : un template strip n'a rien à faire dans
+  // un rendu 10×15, et un strip exige une session de trois photos.
+  const options = {
+    fond: {
+      '10x15': {{ options['fond_10x15'] | map(attribute='id') | list | tojson }},
+      'strip': {{ options['fond_strip'] | map(attribute='id') | list | tojson }}
+    },
+    overlay: {
+      '10x15': {{ options['overlay_10x15'] | map(attribute='id') | list | tojson }},
+      'strip': {{ options['overlay_strip'] | map(attribute='id') | list | tojson }}
+    }
+  };
+  const libelles = {
+    {% for cle, liste in options.items() %}
+    '{{ cle }}': { {% for o in liste %}'{{ o['id'] }}': {{ (o['nom'] ~ (' (actif)' if o['actif'] else '')) | tojson }}{{ ',' if not loop.last }}{% endfor %} }{{ ',' if not loop.last }}
+    {% endfor %}
+  };
+  const sessions = {
+    '10x15': {{ sessions_10x15 | map(attribute='id_session') | list | tojson }},
+    'strip': {{ sessions_strip | map(attribute='id_session') | list | tojson }}
+  };
+
+  function remplir(select, valeurs, etiquettes, vide) {
+    const choisi = select.value;
+    select.innerHTML = '';
+    for (const [valeur, texte] of vide) {
+      select.add(new Option(texte, valeur));
+    }
+    valeurs.forEach((v) => select.add(new Option(etiquettes[v] || v, v)));
+    if ([...select.options].some((o) => o.value === choisi)) select.value = choisi;
+  }
+
+  function rafraichir() {
+    const format = champ('format').value;
+    remplir(champ('fond'), options.fond[format],
+            libelles['fond_' + format], [['', 'Fond actif'], ['aucun', 'Aucun']]);
+    remplir(champ('overlay'), options.overlay[format],
+            libelles['overlay_' + format], [['', 'Overlay actif'], ['aucun', 'Aucun']]);
+    remplir(champ('session'), sessions[format], {},
+            [['', 'Photo(s) la/les plus récente(s)']]);
+
+    const params = new URLSearchParams();
+    ['format', 'fond', 'overlay', 'session'].forEach((nom) => {
+      const valeur = champ(nom).value;
+      if (valeur) params.set(nom, valeur);
+    });
+    if (erreur) erreur.hidden = true;
+    image.src = base + '?' + params.toString();
+  }
+
+  image.addEventListener('error', () => {
+    if (!erreur) return;
+    erreur.textContent = "Rendu impossible avec cette combinaison "
+      + "(session incomplète, ou session kiosque en cours).";
+    erreur.hidden = false;
+  });
+
+  form.addEventListener('change', rafraichir);
+  rafraichir();
+})();
+</script>
+{% endblock %}

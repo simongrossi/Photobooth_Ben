@@ -15,6 +15,7 @@ from flask import Flask, redirect, session, url_for
 from web.db import init_db
 from web.evenements import synchroniser_evenement_actif
 from web.routes import (
+    apercu_route,
     dashboard,
     ecrans_route,
     evenements_route,
@@ -50,6 +51,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     app.register_blueprint(dashboard.bp)
     app.register_blueprint(gallery.bp)
     app.register_blueprint(templates_route.bp)
+    app.register_blueprint(apercu_route.bp)
     app.register_blueprint(kiosque_route.bp)
     app.register_blueprint(ecrans_route.bp)
     app.register_blueprint(settings_route.bp)

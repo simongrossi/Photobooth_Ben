@@ -89,3 +89,18 @@ class TestSessionParId:
         assert photos_raw.session_par_id(
             "2026-08-20_14h32_07", minimum_photos=3
         ) is None
+
+
+class TestImageSubstitution:
+    def test_dimensions_et_mode(self):
+        image = photos_raw.image_substitution()
+        assert image.mode == "RGB"
+        assert image.size == (1200, 800)
+
+    def test_chemin_temporaire_utilisable_puis_nettoye(self):
+        with photos_raw.photo_substitution() as chemin:
+            assert photos_raw.os.path.isfile(chemin)
+            ouverte = Image.open(chemin)
+            assert ouverte.size == (1200, 800)
+            ouverte.close()
+        assert not photos_raw.os.path.isfile(chemin)

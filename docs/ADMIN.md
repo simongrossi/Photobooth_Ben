@@ -211,6 +211,41 @@ Le script :
 Récupère le mot de passe dans `/etc/photobooth-admin.env`, puis ouvre
 `http://<ip-du-pi>:8080` dans un navigateur.
 
+## Aperçu du rendu final
+
+`/templates/apercu` (lien « Aperçu du rendu » en haut de la page Templates)
+montre le montage tel que le kiosque le produirait, à partir d'une photo déjà
+présente dans `data/raw/`. L'objectif est de valider un calage sans imprimer.
+
+On choisit quatre choses :
+
+| Champ | Valeurs |
+|---|---|
+| Format | `10×15` (une photo) ou `strip` (une session de trois photos) |
+| Fond | un template `fond`, le template actif, ou « Aucun » (toile blanche) |
+| Overlay | un template `overlay`, le template actif, ou « Aucun » (photo nue) |
+| Photo(s) | une session de `data/raw/`, la plus récente par défaut |
+
+Le rendu passe par `core.montage` — le moteur du kiosque — donc il inclut le
+recadrage `ImageOps.fit`, le filigrane, le grain et la rotation à 180° des
+calques strip. C'est ce qui le distingue de l'aperçu de l'éditeur de mise en
+page, qui empile des images dans le navigateur et reste une approximation utile
+pour le calage interactif, pas pour la validation finale.
+
+À savoir :
+
+- **Rien n'est activé.** Une combinaison fond + overlay peut être essayée sans
+  toucher à ce que le kiosque utilise — c'est sans risque en plein événement.
+- **Rien n'est écrit** dans `data/temp/` ni `data/print/` : l'image est produite
+  en mémoire et envoyée telle quelle au navigateur.
+- **Refusé pendant une session** (HTTP 409) : un rendu 1800×1200 n'a rien à
+  faire sur la machine pendant une capture.
+- Le strip affiche la bandelette 600×1800, pas la planche `READY_TO_PRINT`
+  envoyée à CUPS (deux bandes + offsets de calibration DNP).
+- Sans aucune photo dans `data/raw/`, l'aperçu utilise une image de
+  substitution : le cadrage est fidèle, pas le contenu.
+- Réservé à l'admin (`require_auth`), pas aux viewers anonymes du LAN.
+
 ## Usage en dev local (hors Pi)
 
 ```bash

@@ -27,7 +27,7 @@ from flask import (
     send_file,
     url_for,
 )
-from PIL import Image, ImageDraw
+from PIL import Image
 
 from config import (
     BG_10X15_FILE,
@@ -62,6 +62,7 @@ from web.evenements import (
     lister_evenements,
     selection_templates_evenement,
 )
+from web.photos_raw import image_substitution
 from web.session_guard import etat_verrou_session, refuser_mutation_pendant_session
 
 bp = Blueprint("templates", __name__, url_prefix="/templates")
@@ -731,14 +732,8 @@ def photo_exemple():
     if candidats:
         return send_file(max(candidats, key=os.path.getmtime), conditional=True)
 
-    image = Image.new("RGB", (1200, 800), "#d9dde5")
-    draw = ImageDraw.Draw(image)
-    draw.rectangle((40, 40, 1160, 760), outline="#7b8497", width=8)
-    draw.line((40, 40, 1160, 760), fill="#a0a8b7", width=5)
-    draw.line((1160, 40, 40, 760), fill="#a0a8b7", width=5)
-    draw.text((470, 380), "PHOTO EXEMPLE", fill="#303747")
     buf = io.BytesIO()
-    image.save(buf, "JPEG", quality=88)
+    image_substitution().save(buf, "JPEG", quality=88)
     buf.seek(0)
     return send_file(buf, mimetype="image/jpeg")
 

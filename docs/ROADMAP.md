@@ -384,8 +384,9 @@ agrège les temps de frame en mémoire et n'écrit que quelques lignes par sessi
 - [ ] **Éditeur visuel plus précis** *(4–8 h)*
   - Ajouter annuler/rétablir, déplacement au clavier, guides magnétiques et
     zones de sécurité/fond perdu.
-  - Proposer une impression de test depuis l'éditeur avec un rendu strictement
-    identique à celui du kiosque.
+  - ~~Proposer un **aperçu** de test avec un rendu strictement identique à celui
+    du kiosque.~~ Fait : `/templates/apercu` compose via `core.montage`.
+  - Reste ouvert : déclencher une **impression** de test depuis cet aperçu.
 - [ ] **Horloge serveur diagnostique** *(1–2 h)*
   - Compléter l'heure affichée par le fuseau horaire, l'état de synchronisation
     NTP et une alerte en cas de dérive.
