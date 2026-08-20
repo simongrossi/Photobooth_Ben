@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import hashlib
 import os
-import re
 import tempfile
 from dataclasses import dataclass
 
@@ -17,6 +16,7 @@ from config import (
     PATH_RAW, PATH_SKIPPED_DELETED, PATH_SKIPPED_RETAKE
 )
 from core.monitoring import est_image_publique
+from web.photos_raw import extraire_session_id
 from web.auth import require_auth, require_lecture
 from stats import load_sessions
 from web.evenements import lister_evenements, tous_les_tags
@@ -53,13 +53,8 @@ class Item:
     event_tags: list[str] | None = None
 
 
-_SESSION_ID_RE = re.compile(r"\d{4}-\d{2}-\d{2}_\d{2}h\d{2}_\d{2}")
-
-
-def _extraire_session_id(nom: str) -> str | None:
-    """Extrait l'identifiant timestamp commun aux fichiers d'une session."""
-    resultat = _SESSION_ID_RE.search(nom)
-    return resultat.group(0) if resultat else None
+# Extraction de l'identifiant de session : partagée avec l'aperçu du rendu final.
+_extraire_session_id = extraire_session_id
 
 
 def _lister_tous(type_galerie: str = "all") -> list[Item]:
