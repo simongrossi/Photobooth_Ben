@@ -14,6 +14,41 @@ sur `main` mais pas encore déployé.
 
 ---
 
+## `WIP` — Téléchargement ZIP de la galerie et exports différés
+
+### Added
+- **Tout récupérer en un clic depuis la galerie.** Il fallait jusqu'ici cliquer
+  photo par photo, ou passer par l'export d'un événement. Nouveau bouton
+  « Télécharger le ZIP » qui archive **toute la sélection du filtre courant**
+  (type `all`/`montages`/`raw`/`abandons`/`rejouées`, événement, tag), pagination
+  comprise, avec un `manifest.json` rappelant le filtre et listant les fichiers.
+  Accessible aux viewers comme la galerie elle-même.
+
+### Fixed
+- **Un export volumineux n'aboutissait pas.** Sur un événement de 2,7 Go, deux
+  causes cumulées : l'archive était construite dans `/tmp` (tmpfs en RAM) alors
+  que `photobooth-admin.service` tourne sous `MemoryMax=256M`, et un
+  `except OSError` trop large confondait « disque plein » avec « fichier source
+  disparu » — l'export atteignait 100 % en livrant une archive tronquée
+  annoncée « prête ». L'archive est désormais écrite dans `data/cache/exports/`,
+  l'espace disque est vérifié avant de commencer, et toute erreur d'écriture
+  fait échouer l'export visiblement en supprimant l'archive partielle.
+
+### Changed
+- **Les exports ZIP ne bloquent plus le navigateur.** « ZIP + brutes » sur un
+  événement pouvait figer la page une minute sans le moindre retour visuel.
+  L'archive est désormais construite dans un thread démon (`web/exports.py`) et
+  la requête redirige vers une page de suivi qui affiche une barre de
+  progression, puis déclenche le téléchargement dès que c'est prêt. Les trois
+  boutons (galerie, Export ZIP, ZIP + brutes) partagent ce mécanisme.
+- **Exports nettement plus rapides.** Les images sont stockées sans compression
+  dans l'archive : le deflate ne gagne rien sur du JPEG/PNG déjà compressé et
+  consommait l'essentiel du temps CPU. Seuls manifeste et CSV restent compressés.
+- Le filtrage de la galerie (événement, tag) est extrait dans
+  `_annoter_evenements()` / `_filtrer()`, partagés par le listing et l'export.
+
+---
+
 ## `WIP` — Aperçu du rendu final depuis l'admin
 
 ### Added

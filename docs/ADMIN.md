@@ -21,6 +21,9 @@ sur le même LAN, sans toucher au code.
   « Retirer » par photo → déplacée vers
   `data/corbeille/` (disparaît du slideshow et de la galerie en ≤ 30 s, jamais
   supprimée définitivement), restaurable depuis la section Corbeille.
+  Bouton **« Télécharger le ZIP »** : archive toutes les images du filtre
+  courant (type, événement, tag — pas seulement la page affichée), avec un
+  `manifest.json` récapitulant le filtre et les fichiers inclus.
   Les mires et sorties connues de tests sont exclues automatiquement.
 - **Templates** : bibliothèque des deux couches d'habillage — **overlays** (PNG
   par-dessus la photo) et **fonds** (image sous les photos) — upload, activation
@@ -245,6 +248,49 @@ pour le calage interactif, pas pour la validation finale.
 - Sans aucune photo dans `data/raw/`, l'aperçu utilise une image de
   substitution : le cadrage est fidèle, pas le contenu.
 - Réservé à l'admin (`require_auth`), pas aux viewers anonymes du LAN.
+
+## Exports ZIP (galerie et événements)
+
+Trois points d'entrée, un seul mécanisme :
+
+| Bouton | Route | Contenu |
+|---|---|---|
+| Galerie · « Télécharger le ZIP » | `/galerie/export.zip?type=&evenement=&tag=` | toutes les images du filtre courant + `manifest.json` |
+| Événements · « Export ZIP » | `/evenements/<id>/export.zip` | montages de l'événement + `manifest.json`, `sessions.jsonl`, `sessions.csv` |
+| Événements · « ZIP + brutes » | `/evenements/<id>/export.zip?inclure_raw=1` | idem + `data/raw/` (archive lourde, plusieurs Go) |
+
+**Construction différée.** Un « ZIP + brutes » représente vite plusieurs
+centaines de photos : la requête ne construit plus l'archive elle-même. Elle
+crée une tâche (`web/exports.py`), redirige vers `/export/<tache_id>` et cette
+page affiche une barre de progression en interrogeant `/export/<tache_id>/etat`
+toutes les 500 ms. Dès que l'archive est prête, le téléchargement démarre seul ;
+un lien manuel reste disponible en cas de blocage du navigateur.
+
+- Les images sont écrites **sans compression** (JPEG/PNG le sont déjà) : le
+  deflate ne gagnait rien et coûtait l'essentiel du temps. Seuls les fichiers
+  texte du ZIP sont compressés.
+- **L'archive est écrite dans `data/cache/exports/`, jamais dans `/tmp`.** Sur
+  la machine, `/tmp` est un tmpfs (en RAM) et `photobooth-admin.service` tourne
+  sous `MemoryMax=256M` : une archive de plusieurs Go y était comptée dans le
+  cgroup et faisait tuer le service en cours d'export. Le dossier `data/` est
+  sur le disque des photos, donc dimensionné pour elles.
+- **Contrôle d'espace avant de démarrer** : la somme des sources plus 512 Mo de
+  marge (`exports.MARGE_DISQUE`, pour que le kiosque puisse continuer à écrire)
+  doit tenir sur le disque, sinon l'export est refusé avec la taille manquante.
+- Une erreur d'écriture (disque plein) **fait échouer l'export visiblement** et
+  supprime l'archive partielle. Elle n'est jamais confondue avec un fichier
+  source disparu, qui lui est simplement ignoré.
+- Le téléchargement accepte les requêtes Range : une coupure réseau au milieu
+  d'un ZIP de plusieurs Go peut reprendre au lieu de tout recommencer.
+- L'archive est conservée 30 min (`exports.TTL_S`) puis supprimée, et au plus
+  8 archives (`exports.MAX_TACHES`) coexistent — les plus anciennes sont
+  purgées. Les archives orphelines (laissées par un redémarrage du service)
+  sont nettoyées au lancement de l'export suivant. Un lien de suivi périmé
+  renvoie 404 : il suffit de relancer l'export.
+- Les tâches vivent en mémoire du process admin : un redémarrage de
+  `photobooth-admin.service` annule les exports en cours.
+- Un fichier disparu entre le listing et l'écriture est ignoré plutôt que de
+  faire échouer tout l'export.
 
 ## Usage en dev local (hors Pi)
 

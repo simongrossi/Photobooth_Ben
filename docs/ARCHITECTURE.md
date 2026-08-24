@@ -264,6 +264,14 @@ gabarits reçoivent la même vue via un context processor Flask afin de désacti
 les contrôles concernés. Les uploads et la préparation d'un événement brouillon
 restent possibles car ils n'altèrent aucun fichier lu par la session en cours.
 
+**Exports ZIP en tâche de fond** : `web/exports.py` tient un registre de tâches
+protégé par un `threading.Lock`. Chaque export (galerie ou événement) construit
+son archive dans un thread démon pendant que la page `/export/<tache_id>`
+interroge l'état en JSON. Aucun partage avec le kiosque : ce sont des threads du
+process admin seul, et les tâches sont perdues à son redémarrage. Le registre est
+plafonné (8 archives, TTL 30 min) pour ne pas remplir `/tmp` avec des ZIP de
+plusieurs Go.
+
 ---
 
 ## Décisions architecturales notables
