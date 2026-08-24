@@ -237,6 +237,10 @@ PATH_TRANSITION_BIBLIO   = os.path.join(PATH_INTERFACE, "transition")
 PATH_FONTS_BIBLIO        = os.path.join(BASE_DIR, "assets/fonts/bibliotheque")
 PATH_SLIDESHOW_PERSO     = os.path.join(PATH_ASSETS, "slideshow")
 PATH_CORBEILLE           = os.path.join(PATH_DATA, "corbeille")
+# Sauvegardes ZIP complètes d'un événement terminé, prêtes à copier sur clé USB.
+# Volumineuses (tout l'événement, photos brutes comprises) : elles ne sont
+# supprimées que sur confirmation explicite de copie depuis l'admin.
+PATH_BACKUPS             = os.path.join(PATH_DATA, "backups")
 
 BG_ACCUEIL_EFFECTIF = resoudre_actif(FILE_BG_ACCUEIL_ACTIF, FILE_BG_ACCUEIL)
 POLICE_EFFECTIVE    = resoudre_actif(POLICE_FICHIER_ACTIF, POLICE_FICHIER)

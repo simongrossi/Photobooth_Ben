@@ -15,12 +15,13 @@ from flask import (
     redirect,
     render_template,
     request,
+    send_file,
     url_for,
 )
 
 import config
 from stats import calculer_stats, load_sessions
-from web import exports
+from web import backups, exports
 from web.auth import require_auth
 from web.db import connexion
 from web.evenements import (
@@ -174,6 +175,7 @@ def _chevauchements(debut: str, fin: str, evenement_id: str | None = None) -> li
 @require_auth
 def index():
     evenements = lister_evenements()
+    sauvegardes = backups.lister()
     return render_template(
         "evenements.html",
         evenements=evenements,
@@ -182,6 +184,8 @@ def index():
         emplacements_templates=_emplacements_avec_templates(),
         selection_creation=_selection_par_champ(_selection_active_courante()),
         templates_par_evenement=_noms_templates_evenements(),
+        sauvegardes=sauvegardes,
+        octets_lisibles=exports.octets_lisibles,
     )
 
 
@@ -329,8 +333,18 @@ def terminer(evenement_id: str):
     )
     if refus is not None:
         return refus
+    evenement = trouver_evenement(evenement_id)
     _changer_statut(evenement_id, "termine")
     flash("Événement terminé. Les prochaines sessions seront sans événement jusqu'à une activation.", "success")
+    # La sauvegarde part en fond : un échec ne doit pas empêcher de terminer.
+    if _lancer_sauvegarde(evenement) is None:
+        flash(
+            "Sauvegarde impossible : disque trop plein. Copiez puis validez une sauvegarde "
+            "existante, puis relancez-la depuis « Sauvegarder ».",
+            "error",
+        )
+    else:
+        flash("Sauvegarde complète en cours de préparation dans data/backups/.", "success")
     return redirect(url_for("evenements.index"))
 
 
@@ -357,21 +371,14 @@ def _sessions_evenement(evenement_id: str) -> list[dict]:
     return [session for session in sessions if session.get("event_id") == evenement_id]
 
 
-@bp.route("/<evenement_id>/export.zip")
-@require_auth
-def exporter(evenement_id: str):
-    """Prépare l'archive de l'événement en tâche de fond et suit la progression.
+def _contenu_archive(evenement, inclure_raw: bool) -> tuple[list[tuple[str, str]], dict[str, str], int]:
+    """Fichiers et pièces jointes de l'archive d'un événement.
 
-    Avec les photos brutes, l'archive pèse plusieurs Go et met une minute à se
-    construire : la construction part dans un thread et la page de suivi montre
-    l'avancement plutôt qu'un navigateur figé.
+    Partagé par l'export manuel et la sauvegarde automatique : les deux
+    produisent exactement la même archive, seule leur destination diffère.
     """
-    evenement = trouver_evenement(evenement_id)
-    if evenement is None:
-        abort(404)
-    sessions = _sessions_evenement(evenement_id)
+    sessions = _sessions_evenement(evenement.id)
     ids = {session.get("session_id") for session in sessions if session.get("session_id")}
-    inclure_raw = request.args.get("inclure_raw") == "1"
     items = [
         item for item in _lister_tous("all")
         if item.session_id in ids and (inclure_raw or item.mode != "raw")
@@ -392,17 +399,36 @@ def exporter(evenement_id: str):
         "nb_fichiers": len(items),
         "photos_brutes_incluses": inclure_raw,
     }
+    extras = {
+        "manifest.json": json.dumps(manifeste, ensure_ascii=False, indent=2),
+        "sessions.jsonl": "".join(json.dumps(s, ensure_ascii=False) + "\n" for s in sessions),
+        "sessions.csv": csv_buffer.getvalue(),
+    }
+    fichiers = [(item.chemin, f"photos/{item.mode}/{item.nom}") for item in items]
+    return fichiers, extras, len(items)
+
+
+@bp.route("/<evenement_id>/export.zip")
+@require_auth
+def exporter(evenement_id: str):
+    """Prépare l'archive de l'événement en tâche de fond et suit la progression.
+
+    Avec les photos brutes, l'archive pèse plusieurs Go et met une minute à se
+    construire : la construction part dans un thread et la page de suivi montre
+    l'avancement plutôt qu'un navigateur figé.
+    """
+    evenement = trouver_evenement(evenement_id)
+    if evenement is None:
+        abort(404)
+    inclure_raw = request.args.get("inclure_raw") == "1"
+    fichiers, extras, nb = _contenu_archive(evenement, inclure_raw)
     try:
         tache_id = exports.demarrer(
             nom_fichier=f"{evenement.slug}.zip",
-            libelle=f"{evenement.nom} — {len(items)} fichier{'s' if len(items) > 1 else ''}"
+            libelle=f"{evenement.nom} — {nb} fichier{'s' if nb > 1 else ''}"
                     f"{' (photos brutes incluses)' if inclure_raw else ''}",
-            fichiers=[(item.chemin, f"photos/{item.mode}/{item.nom}") for item in items],
-            extras={
-                "manifest.json": json.dumps(manifeste, ensure_ascii=False, indent=2),
-                "sessions.jsonl": "".join(json.dumps(s, ensure_ascii=False) + "\n" for s in sessions),
-                "sessions.csv": csv_buffer.getvalue(),
-            },
+            fichiers=fichiers,
+            extras=extras,
             retour=url_for("evenements.index"),
             role_requis="admin",
         )
@@ -410,3 +436,68 @@ def exporter(evenement_id: str):
         flash(f"Disque trop plein pour cette archive : {manque}.", "error")
         return redirect(url_for("evenements.index"))
     return redirect(url_for("export.suivi", tache_id=tache_id))
+
+
+def _lancer_sauvegarde(evenement) -> str | None:
+    """Construit la sauvegarde complète de l'événement dans `data/backups/`.
+
+    Renvoie l'identifiant de la tâche, ou None si le disque ne peut pas
+    l'accueillir — dans ce cas l'appelant prévient sans bloquer l'action en
+    cours : ne pas pouvoir sauvegarder ne doit jamais empêcher de terminer un
+    événement.
+    """
+    fichiers, extras, nb = _contenu_archive(evenement, inclure_raw=True)
+    destination = backups.chemin_pour(evenement.slug)
+    try:
+        return exports.demarrer(
+            nom_fichier=os.path.basename(destination),
+            libelle=f"Sauvegarde — {evenement.nom} · {nb} fichier{'s' if nb > 1 else ''} (photos brutes incluses)",
+            fichiers=fichiers,
+            extras=extras,
+            retour=url_for("evenements.index"),
+            role_requis="admin",
+            destination=destination,
+        )
+    except exports.EspaceInsuffisant:
+        return None
+
+
+@bp.route("/<evenement_id>/sauvegarder", methods=["POST"])
+@require_auth
+def sauvegarder(evenement_id: str):
+    """(Re)génère à la demande la sauvegarde complète d'un événement."""
+    evenement = trouver_evenement(evenement_id)
+    if evenement is None:
+        abort(404)
+    tache_id = _lancer_sauvegarde(evenement)
+    if tache_id is None:
+        flash(
+            "Disque trop plein pour la sauvegarde : copiez puis validez une sauvegarde "
+            "existante pour libérer de la place.",
+            "error",
+        )
+        return redirect(url_for("evenements.index"))
+    return redirect(url_for("export.suivi", tache_id=tache_id))
+
+
+@bp.route("/sauvegardes/<nom>/copiee", methods=["POST"])
+@require_auth
+def sauvegarde_copiee(nom: str):
+    """Confirme la copie sur clé USB : c'est la seule chose qui supprime une sauvegarde."""
+    if not backups.supprimer(nom):
+        abort(404)
+    flash("Sauvegarde supprimée — la place disque est libérée.", "success")
+    return redirect(url_for("evenements.index"))
+
+
+@bp.route("/sauvegardes/<nom>")
+@require_auth
+def telecharger_sauvegarde(nom: str):
+    """Téléchargement direct, pour copier sans passer par la machine."""
+    chemin = backups.resoudre(nom)
+    if chemin is None:
+        abort(404)
+    return send_file(
+        chemin, mimetype="application/zip", as_attachment=True,
+        download_name=nom, conditional=True,
+    )

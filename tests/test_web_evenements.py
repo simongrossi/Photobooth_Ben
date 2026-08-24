@@ -5,12 +5,13 @@ import base64
 import io
 import json
 import time
+import os
 import zipfile
 
 import pytest
 from PIL import Image
 
-from web import exports
+from web import backups, exports
 from web.app import create_app
 
 HEADERS = {"Authorization": "Basic " + base64.b64encode(b"admin:test").decode()}
@@ -36,6 +37,9 @@ def contexte(tmp_path, monkeypatch):
     import web.routes.templates_route as templates_route
 
     monkeypatch.setattr(config, "PATH_DATA", str(data))
+    # PATH_BACKUPS est figé à l'import : sans ce patch, les sauvegardes des
+    # tests atterriraient dans le vrai data/backups/ du dépôt.
+    monkeypatch.setattr(config, "PATH_BACKUPS", str(data / "backups"))
     monkeypatch.setattr(web.db, "DB_PATH", str(data / "admin.db"))
     monkeypatch.setattr(gallery, "PATH_PRINT", str(data / "print"))
     monkeypatch.setattr(gallery, "_RACINES_AUTORISEES", {
@@ -79,6 +83,11 @@ def _creer(client, nom="Mariage Alice & Ben", tags="mariage, Lyon", **templates)
 def _id_evenement():
     from web.evenements import lister_evenements
     return lister_evenements()[0].id
+
+
+def _statut(evenement_id):
+    from web.evenements import trouver_evenement
+    return trouver_evenement(evenement_id).statut
 
 
 def _simuler_session_kiosque(monkeypatch, *, age_s=0.0):
@@ -326,3 +335,111 @@ def test_export_zip(contexte):
         assert "sessions.csv" in noms
         assert any(nom.startswith("photos/10x15/") for nom in noms)
         assert any(nom.startswith("photos/raw/") for nom in noms)
+
+
+def _photo_dans_evenement(client, data, d10, raw):
+    """Crée un événement avec une session, un montage et une photo brute."""
+    _creer(client)
+    evenement_id = _id_evenement()
+    session_id = "2026-08-24_18h42_10"
+    session = {
+        "session_id": session_id, "mode": "10x15", "issue": "printed",
+        "nb_photos": 1, "duree_s": 30, "ts": "2026-08-24 18:42:30",
+        "event_id": evenement_id, "event_name": "Mariage Alice & Ben", "event_tags": ["mariage"],
+    }
+    (data / "sessions.jsonl").write_text(json.dumps(session) + "\n", encoding="utf-8")
+    Image.new("RGB", (20, 20)).save(d10 / f"montage_10x15_{session_id}.jpg")
+    Image.new("RGB", (20, 20)).save(raw / f"photo_{session_id}_1.jpg")
+    return evenement_id
+
+
+class TestSauvegardeAutomatique:
+    def test_terminer_produit_une_sauvegarde_complete(self, contexte):
+        client, data, d10, raw = contexte
+        evenement_id = _photo_dans_evenement(client, data, d10, raw)
+
+        client.post(f"/evenements/{evenement_id}/terminer", headers=HEADERS)
+        for tache_id in list(exports._taches):
+            exports.attendre(tache_id)
+
+        [sauvegarde] = backups.lister()
+        with zipfile.ZipFile(sauvegarde.chemin) as archive:
+            noms = archive.namelist()
+        # « toutes les photos + bruts » : montages ET photos brutes.
+        assert any(n.startswith("photos/10x15/") for n in noms)
+        assert any(n.startswith("photos/raw/") for n in noms), "les photos brutes doivent être incluses"
+        assert "manifest.json" in noms and "sessions.csv" in noms
+
+    def test_terminer_reste_effectif_si_la_sauvegarde_echoue(self, contexte, monkeypatch):
+        """Ne pas pouvoir sauvegarder ne doit jamais empêcher de terminer."""
+        client, data, d10, raw = contexte
+        evenement_id = _photo_dans_evenement(client, data, d10, raw)
+
+        def _plein(fichiers, dossier):
+            raise exports.EspaceInsuffisant(2_900_000_000, 1024, 512 * 1024 * 1024)
+
+        monkeypatch.setattr(exports, "verifier_espace", _plein)
+        reponse = client.post(
+            f"/evenements/{evenement_id}/terminer", headers=HEADERS, follow_redirects=True,
+        )
+        assert "Sauvegarde impossible" in reponse.get_data(as_text=True)
+        assert backups.lister() == []
+        # L'événement est bien terminé malgré l'échec de la sauvegarde.
+        assert _statut(evenement_id) == "termine"
+
+    def test_bouton_manuel_regenere(self, contexte):
+        client, data, d10, raw = contexte
+        evenement_id = _photo_dans_evenement(client, data, d10, raw)
+
+        reponse = client.post(f"/evenements/{evenement_id}/sauvegarder", headers=HEADERS)
+        assert reponse.status_code == 302
+        assert "/export/" in reponse.headers["Location"]
+        for tache_id in list(exports._taches):
+            exports.attendre(tache_id)
+        assert len(backups.lister()) == 1
+
+    def test_sauvegarde_survit_a_la_purge_des_taches(self, contexte):
+        """Une sauvegarde n'est pas une archive temporaire : la purge l'épargne."""
+        client, data, d10, raw = contexte
+        evenement_id = _photo_dans_evenement(client, data, d10, raw)
+        client.post(f"/evenements/{evenement_id}/sauvegarder", headers=HEADERS)
+        for tache_id in list(exports._taches):
+            exports.attendre(tache_id)
+        [sauvegarde] = backups.lister()
+
+        for tache_id in list(exports._taches):
+            exports.oublier(tache_id)
+        exports.demarrer("declencheur.zip", "", [])  # déclenche _purger
+
+        assert os.path.exists(sauvegarde.chemin), "la purge ne doit pas toucher aux sauvegardes"
+
+    def test_confirmation_de_copie_supprime(self, contexte):
+        client, data, d10, raw = contexte
+        evenement_id = _photo_dans_evenement(client, data, d10, raw)
+        client.post(f"/evenements/{evenement_id}/sauvegarder", headers=HEADERS)
+        for tache_id in list(exports._taches):
+            exports.attendre(tache_id)
+        [sauvegarde] = backups.lister()
+
+        reponse = client.post(
+            f"/evenements/sauvegardes/{sauvegarde.nom}/copiee", headers=HEADERS, follow_redirects=True,
+        )
+        assert "place disque est libérée" in reponse.get_data(as_text=True)
+        assert backups.lister() == []
+
+    def test_confirmation_refuse_un_chemin_hors_backups(self, contexte):
+        client, _, _, _ = contexte
+        assert client.post("/evenements/sauvegardes/..%2F..%2Fsessions.jsonl/copiee",
+                           headers=HEADERS).status_code in (404, 308)
+
+    def test_telechargement_direct(self, contexte):
+        client, data, d10, raw = contexte
+        evenement_id = _photo_dans_evenement(client, data, d10, raw)
+        client.post(f"/evenements/{evenement_id}/sauvegarder", headers=HEADERS)
+        for tache_id in list(exports._taches):
+            exports.attendre(tache_id)
+        [sauvegarde] = backups.lister()
+
+        reponse = client.get(f"/evenements/sauvegardes/{sauvegarde.nom}", headers=HEADERS)
+        assert reponse.status_code == 200
+        assert reponse.mimetype == "application/zip"
