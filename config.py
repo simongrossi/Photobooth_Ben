@@ -415,6 +415,8 @@ TXT_IMPRESSION_SANS     = "Terminer sans imprimer"
 TXT_IMPRESSION_REESSAYER = "RÉESSAYER"
 TXT_IMPRESSION_AIDE     = "APPELER L'ANIMATEUR"
 TXT_IMPRESSION_AIDE_MESSAGE = "Veuillez prévenir l'animateur"
+TXT_REAMORCAGE          = "Réarmement de l'imprimante..."
+TXT_ALERTE_PAPIER       = "PAPIER BIENTÔT ÉPUISÉ"
 
 # Échec de capture récupérable : l'invité choisit au lieu d'être renvoyé à
 # l'accueil sans explication. Le bouton du milieu relance le décompte dans la
@@ -459,6 +461,18 @@ INTERVALLE_CHECK_DISQUE_S  = 30.0   # fréquence de check (en secondes) pendant 
 SEUIL_TEMP_CRITIQUE_C      = 75.0
 INTERVALLE_CHECK_TEMP_S    = 30.0
 TEMP_PATH                  = "/sys/class/thermal/thermal_zone0/temp"
+
+# --- Monitoring média imprimante (tirages restants) ---
+# Gutenprint remonte "N native prints remaining" dans marker-message. On
+# prévient l'animateur avant la panne sèche plutôt que de la subir en pleine
+# soirée. Si le backend ne remonte rien, l'alerte est inerte silencieusement.
+SEUIL_TIRAGES_RESTANTS     = 20
+INTERVALLE_CHECK_MEDIA_S   = 120.0
+
+# --- Réamorçage d'une file CUPS désactivée ---
+# Attente maximale que la DS620 réponde après un changement de rouleau, avant
+# de réactiver la file. Réactiver trop tôt relance un job qui échoue aussitôt.
+DELAI_REAMORCAGE_S         = 30.0
 
 # --- Slideshow d'attente sur l'accueil (Sprint 6.2) ---
 # Après N secondes sans activité sur l'accueil, les montages passés défilent en plein écran
@@ -574,6 +588,9 @@ _CONFIG_OVERRIDES_WHITELIST = {
     "GRAIN_INTENSITE": int,
     "SEUIL_DISQUE_CRITIQUE_MB": float,
     "SEUIL_TEMP_CRITIQUE_C": float,
+    "SEUIL_TIRAGES_RESTANTS": int,
+    "INTERVALLE_CHECK_MEDIA_S": float,
+    "DELAI_REAMORCAGE_S": float,
     "ARDUINO_ENABLED": bool,
 }
 
@@ -594,6 +611,9 @@ _CONFIG_OVERRIDES_BOURNES = {
     "GRAIN_INTENSITE": (0, 100),
     "SEUIL_DISQUE_CRITIQUE_MB": (0.0, 100000.0),
     "SEUIL_TEMP_CRITIQUE_C": (10.0, 100.0),
+    "SEUIL_TIRAGES_RESTANTS": (0, 10000),
+    "INTERVALLE_CHECK_MEDIA_S": (10.0, 3600.0),
+    "DELAI_REAMORCAGE_S": (5.0, 120.0),
 }
 
 CONFIG_OVERRIDES_PATH = os.path.join(PATH_DATA, "config_overrides.json")
@@ -689,6 +709,8 @@ _ECRANS_OVERRIDES_WHITELIST = {
     "TXT_IMPRESSION_REESSAYER": (str, 1, _LONG_TEXTE_MAX),
     "TXT_IMPRESSION_AIDE": (str, 1, _LONG_TEXTE_MAX),
     "TXT_IMPRESSION_AIDE_MESSAGE": (str, 1, _LONG_TEXTE_MAX),
+    "TXT_REAMORCAGE": (str, 1, _LONG_TEXTE_MAX),
+    "TXT_ALERTE_PAPIER": (str, 1, _LONG_TEXTE_MAX),
     "TXT_CONFIRM_ABANDON_1": (str, 1, _LONG_TEXTE_MAX),
     "TXT_CONFIRM_ABANDON_2": (str, 1, _LONG_TEXTE_MAX),
     "TXT_BURST_COUNTDOWN": (str, 1, _LONG_TEXTE_MAX),
@@ -933,6 +955,9 @@ def _valider_config():
     # Monitoring température
     assert SEUIL_TEMP_CRITIQUE_C > 0, f"SEUIL_TEMP_CRITIQUE_C invalide : {SEUIL_TEMP_CRITIQUE_C}"
     assert INTERVALLE_CHECK_TEMP_S > 0
+    assert SEUIL_TIRAGES_RESTANTS >= 0, f"SEUIL_TIRAGES_RESTANTS invalide : {SEUIL_TIRAGES_RESTANTS}"
+    assert INTERVALLE_CHECK_MEDIA_S > 0, f"INTERVALLE_CHECK_MEDIA_S invalide : {INTERVALLE_CHECK_MEDIA_S}"
+    assert DELAI_REAMORCAGE_S > 0, f"DELAI_REAMORCAGE_S invalide : {DELAI_REAMORCAGE_S}"
 
     # Grain de pellicule
     assert 0 <= GRAIN_INTENSITE <= 100, f"GRAIN_INTENSITE hors [0,100] : {GRAIN_INTENSITE}"

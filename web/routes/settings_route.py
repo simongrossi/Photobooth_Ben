@@ -83,6 +83,9 @@ _META_REGLAGES = {
     "GRAIN_INTENSITE": ("style", "Intensité du grain", "Force de la texture appliquée aux photos.", "%"),
     "SEUIL_DISQUE_CRITIQUE_MB": ("systeme", "Alerte espace disque", "Seuil sous lequel l'interface signale un danger.", "Mo"),
     "SEUIL_TEMP_CRITIQUE_C": ("systeme", "Alerte température CPU", "Seuil thermique critique du Raspberry Pi.", "°C"),
+    "SEUIL_TIRAGES_RESTANTS": ("impression", "Alerte fin de rouleau", "Nombre de tirages restants sous lequel l'accueil affiche une alerte papier.", "tirages"),
+    "INTERVALLE_CHECK_MEDIA_S": ("impression", "Fréquence du check média", "Intervalle entre deux lectures du niveau de papier de la DNP.", "s"),
+    "DELAI_REAMORCAGE_S": ("impression", "Délai de réarmement", "Attente maximale que la DNP réponde après un changement de rouleau.", "s"),
     "ARDUINO_ENABLED": ("systeme", "Boîtier Arduino", "Active les trois boutons physiques et leurs LED.", ""),
 }
 

@@ -139,6 +139,8 @@ REGISTRE: tuple[Ecran, ...] = (
         champs=(
             ChampEditable("BANDEAU_ACCUEIL", "Bandeau — accueil", TEXTE,
                           "Texte du bandeau noir tant qu'aucun format n'est sélectionné."),
+            ChampEditable("TXT_ALERTE_PAPIER", "Alerte fin de rouleau", TEXTE,
+                          "Bandeau ambre affiché quand il reste peu de tirages."),
             ChampEditable("BANDEAU_10X15", "Bandeau — grand format", TEXTE,
                           "Affiché quand le grand format est sélectionné."),
             ChampEditable("BANDEAU_STRIP", "Bandeau — bandelettes", TEXTE,
@@ -249,6 +251,7 @@ REGISTRE: tuple[Ecran, ...] = (
             ChampEditable("TXT_IMPRESSION_REESSAYER", "Échec — réessayer", TEXTE),
             ChampEditable("TXT_IMPRESSION_AIDE", "Échec — appeler l'animateur", TEXTE),
             ChampEditable("TXT_IMPRESSION_AIDE_MESSAGE", "Échec — message d'aide", TEXTE),
+            ChampEditable("TXT_REAMORCAGE", "Échec — réarmement en cours", TEXTE),
             ChampEditable("DECALAGE_Y_MONTAGE_FINAL_STRIP", "Décalage du montage bandelettes",
                           POSITION, "Négatif = vers le haut.", "px"),
         ),

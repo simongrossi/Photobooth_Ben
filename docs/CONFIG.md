@@ -413,6 +413,26 @@ kiosque. Désactivé par défaut.
 | `INTERVALLE_CHECK_TEMP_S` | `30.0` | Fréquence check température pendant l'accueil |
 | `TEMP_PATH` | `/sys/class/thermal/thermal_zone0/temp` | Fichier système lu. Sur macOS/Windows, le monitor est inerte silencieusement |
 
+### Monitoring média imprimante (tirages restants)
+
+Gutenprint remonte le nombre de tirages restants dans `marker-message`
+(« 228 native prints remaining on 6x4 (PC) media »). Si le backend ne remonte
+rien d'exploitable, l'alerte est inerte silencieusement — comme `TempMonitor`
+hors Raspberry Pi.
+
+| Constante | Défaut | Bornes | Effet |
+|---|---|---|---|
+| `SEUIL_TIRAGES_RESTANTS` | `20` | 0 – 10000 | Bandeau ambre sur l'accueil sous ce nombre de tirages |
+| `INTERVALLE_CHECK_MEDIA_S` | `120.0` | 10 – 3600 | Fréquence de lecture du niveau de papier. Le check est sauté pendant une impression |
+| `DELAI_REAMORCAGE_S` | `30.0` | 5 – 120 | Attente maximale que la DS620 réponde après un changement de rouleau, avant `cupsenable` |
+
+Textes associés, éditables depuis l'admin web :
+
+| Constante | Défaut | Écran |
+|---|---|---|
+| `TXT_ALERTE_PAPIER` | `PAPIER BIENTÔT ÉPUISÉ` | Accueil |
+| `TXT_REAMORCAGE` | `Réarmement de l'imprimante...` | Fin de session |
+
 ### Slideshow d'attente
 
 | Constante | Défaut | Effet |
