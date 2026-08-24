@@ -5,25 +5,22 @@ import csv
 import io
 import json
 import os
-import tempfile
 import uuid
-import zipfile
 from datetime import datetime
 
 from flask import (
     Blueprint,
     abort,
-    after_this_request,
     flash,
     redirect,
     render_template,
     request,
-    send_file,
     url_for,
 )
 
 import config
 from stats import calculer_stats, load_sessions
+from web import exports
 from web.auth import require_auth
 from web.db import connexion
 from web.evenements import (
@@ -363,6 +360,12 @@ def _sessions_evenement(evenement_id: str) -> list[dict]:
 @bp.route("/<evenement_id>/export.zip")
 @require_auth
 def exporter(evenement_id: str):
+    """Prépare l'archive de l'événement en tâche de fond et suit la progression.
+
+    Avec les photos brutes, l'archive pèse plusieurs Go et met une minute à se
+    construire : la construction part dans un thread et la page de suivi montre
+    l'avancement plutôt qu'un navigateur figé.
+    """
     evenement = trouver_evenement(evenement_id)
     if evenement is None:
         abort(404)
@@ -374,43 +377,36 @@ def exporter(evenement_id: str):
         if item.session_id in ids and (inclure_raw or item.mode != "raw")
     ]
 
-    fichier_tmp = tempfile.NamedTemporaryFile(prefix="photobooth-export-", suffix=".zip", delete=False)
-    fichier_tmp.close()
-    with zipfile.ZipFile(fichier_tmp.name, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        manifeste = {
-            "evenement": evenement.__dict__,
-            "statistiques": calculer_stats(sessions),
-            "nb_fichiers": len(items),
-            "photos_brutes_incluses": inclure_raw,
-        }
-        archive.writestr("manifest.json", json.dumps(manifeste, ensure_ascii=False, indent=2))
-        archive.writestr(
-            "sessions.jsonl",
-            "".join(json.dumps(s, ensure_ascii=False) + "\n" for s in sessions),
+    csv_buffer = io.StringIO()
+    champs = ["session_id", "ts", "mode", "issue", "nb_photos", "duree_s", "event_id", "event_name", "event_tags"]
+    writer = csv.DictWriter(csv_buffer, fieldnames=champs, extrasaction="ignore")
+    writer.writeheader()
+    for session in sessions:
+        ligne = dict(session)
+        ligne["event_tags"] = ", ".join(session.get("event_tags", []))
+        writer.writerow(ligne)
+
+    manifeste = {
+        "evenement": evenement.__dict__,
+        "statistiques": calculer_stats(sessions),
+        "nb_fichiers": len(items),
+        "photos_brutes_incluses": inclure_raw,
+    }
+    try:
+        tache_id = exports.demarrer(
+            nom_fichier=f"{evenement.slug}.zip",
+            libelle=f"{evenement.nom} — {len(items)} fichier{'s' if len(items) > 1 else ''}"
+                    f"{' (photos brutes incluses)' if inclure_raw else ''}",
+            fichiers=[(item.chemin, f"photos/{item.mode}/{item.nom}") for item in items],
+            extras={
+                "manifest.json": json.dumps(manifeste, ensure_ascii=False, indent=2),
+                "sessions.jsonl": "".join(json.dumps(s, ensure_ascii=False) + "\n" for s in sessions),
+                "sessions.csv": csv_buffer.getvalue(),
+            },
+            retour=url_for("evenements.index"),
+            role_requis="admin",
         )
-        csv_buffer = io.StringIO()
-        champs = ["session_id", "ts", "mode", "issue", "nb_photos", "duree_s", "event_id", "event_name", "event_tags"]
-        writer = csv.DictWriter(csv_buffer, fieldnames=champs, extrasaction="ignore")
-        writer.writeheader()
-        for session in sessions:
-            ligne = dict(session)
-            ligne["event_tags"] = ", ".join(session.get("event_tags", []))
-            writer.writerow(ligne)
-        archive.writestr("sessions.csv", csv_buffer.getvalue())
-        for item in items:
-            archive.write(item.chemin, f"photos/{item.mode}/{item.nom}")
-
-    @after_this_request
-    def supprimer_temporaire(response):
-        try:
-            os.unlink(fichier_tmp.name)
-        except OSError:
-            pass
-        return response
-
-    return send_file(
-        fichier_tmp.name,
-        mimetype="application/zip",
-        as_attachment=True,
-        download_name=f"{evenement.slug}.zip",
-    )
+    except exports.EspaceInsuffisant as manque:
+        flash(f"Disque trop plein pour cette archive : {manque}.", "error")
+        return redirect(url_for("evenements.index"))
+    return redirect(url_for("export.suivi", tache_id=tache_id))

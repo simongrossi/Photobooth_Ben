@@ -104,8 +104,8 @@
             {% endif %}
             <a class="btn" href="{{ url_for('dashboard.index', evenement=evenement.id, periode='toutes') }}">Stats</a>
             <a class="btn" href="{{ url_for('gallery.index', evenement=evenement.id) }}">Photos</a>
-            <a class="btn" href="{{ url_for('evenements.exporter', evenement_id=evenement.id) }}">Export ZIP</a>
-            <a class="btn" href="{{ url_for('evenements.exporter', evenement_id=evenement.id, inclure_raw=1) }}">ZIP + brutes</a>
+            <a class="btn" href="{{ url_for('evenements.exporter', evenement_id=evenement.id) }}" title="Prépare l'archive et affiche la progression">Export ZIP</a>
+            <a class="btn" href="{{ url_for('evenements.exporter', evenement_id=evenement.id, inclure_raw=1) }}" title="Photos brutes incluses — archive lourde, la progression s'affiche">ZIP + brutes</a>
             {% if evenement.statut != 'archive' %}
             <form method="post" action="{{ url_for('evenements.archiver', evenement_id=evenement.id) }}"
                   onsubmit="return confirm('Archiver cet événement ?');">

@@ -10,6 +10,7 @@ import zipfile
 import pytest
 from PIL import Image
 
+from web import exports
 from web.app import create_app
 
 HEADERS = {"Authorization": "Basic " + base64.b64encode(b"admin:test").decode()}
@@ -275,6 +276,24 @@ def test_filtres_dashboard_et_galerie(contexte):
     assert client.get("/galerie/?tag=inconnu", headers=HEADERS).get_data(as_text=True).count("montage_10x15") == 0
 
 
+def test_export_disque_plein(contexte, monkeypatch):
+    """Le refus s'affiche sur la page événements au lieu d'un export condamné."""
+    client, data, d10, raw = contexte
+    _creer(client)
+    evenement_id = _id_evenement()
+
+    def _plein(fichiers, dossier):
+        raise exports.EspaceInsuffisant(2_900_000_000, 1024, 512 * 1024 * 1024)
+
+    monkeypatch.setattr(exports, "verifier_espace", _plein)
+    reponse = client.get(
+        f"/evenements/{evenement_id}/export.zip?inclure_raw=1",
+        headers=HEADERS, follow_redirects=True,
+    )
+    assert reponse.status_code == 200
+    assert "Disque trop plein" in reponse.get_data(as_text=True)
+
+
 def test_export_zip(contexte):
     client, data, d10, raw = contexte
     _creer(client)
@@ -289,8 +308,18 @@ def test_export_zip(contexte):
     Image.new("RGB", (20, 20)).save(d10 / f"montage_10x15_{session_id}.jpg")
     Image.new("RGB", (20, 20)).save(raw / f"photo_{session_id}_1.jpg")
 
-    reponse = client.get(f"/evenements/{evenement_id}/export.zip?inclure_raw=1", headers=HEADERS)
+    # L'export part en tâche de fond : on suit le lien de suivi puis le fichier.
+    lancement = client.get(f"/evenements/{evenement_id}/export.zip?inclure_raw=1", headers=HEADERS)
+    assert lancement.status_code == 302
+    tache_id = lancement.headers["Location"].rstrip("/").rsplit("/", 1)[-1]
+    assert exports.attendre(tache_id).etat == "pret"
+    reponse = client.get(f"/export/{tache_id}/fichier", headers=HEADERS)
     assert reponse.status_code == 200
+
+    # L'export d'un événement est admin-only : un viewer anonyme ne doit pas
+    # récupérer l'archive via son lien de suivi.
+    assert client.get(f"/export/{tache_id}").status_code == 404
+    assert client.get(f"/export/{tache_id}/fichier").status_code == 404
     with zipfile.ZipFile(io.BytesIO(reponse.data)) as archive:
         noms = archive.namelist()
         assert "manifest.json" in noms
