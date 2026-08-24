@@ -39,7 +39,14 @@ MemoryMax=256M
 # L'admin ne doit jamais prendre du CPU ou des I/O au kiosque pendant une capture.
 Nice=10
 CPUWeight=20
-IOSchedulingClass=idle
+# best-effort au niveau le plus bas (7), et NON « idle ». La classe idle ne
+# donne des I/O que lorsque le disque est totalement inactif : le slideshow du
+# kiosque lisant des images en continu sur l'accueil, l'admin y était affamé et
+# un telechargement de sauvegarde plafonnait a ~57 ko/s (13 h pour 2,5 Go).
+# best-effort/7 cede toujours le pas au kiosque (priorite 4 par defaut) mais ne
+# provoque plus de famine.
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
 
 TimeoutStopSec=10
 
