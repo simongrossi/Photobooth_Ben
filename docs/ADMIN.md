@@ -292,6 +292,79 @@ un lien manuel reste disponible en cas de blocage du navigateur.
 - Un fichier disparu entre le listing et l'écriture est ignoré plutôt que de
   faire échouer tout l'export.
 
+## Sauvegarde d'un événement terminé
+
+Cliquer **« Terminer »** sur un événement déclenche, en plus du changement de
+statut, la construction d'une **archive complète** — montages *et* photos brutes,
+plus `manifest.json` / `sessions.jsonl` / `sessions.csv` — déposée dans
+`data/backups/` sous le nom `<slug>__<AAAAMMJJ-HHMM>.zip`. Elle y attend d'être
+copiée sur une clé USB à la main.
+
+- La construction passe par le même mécanisme différé que les exports : elle ne
+  bloque rien et sa progression est visible. L'archive n'apparaît sous son nom
+  final qu'une fois **complète** (renommage atomique), donc un fichier présent
+  dans `data/backups/` est toujours un ZIP intègre.
+- **Ne pas pouvoir sauvegarder n'empêche jamais de terminer un événement.** Si
+  le disque est trop plein, l'événement passe quand même en « terminé » et un
+  message le signale.
+- Bouton **« Sauvegarder »** par événement pour (re)générer à la demande, y
+  compris sur un événement déjà terminé ou archivé.
+- La section **« Sauvegardes à copier »** de la page Événements liste ce qui
+  attend, avec taille et date, un lien de téléchargement direct, et le bouton
+  **« J'ai copié sur clé »**.
+
+⚠️ **Aucune purge automatique.** Une sauvegarde n'est supprimée que par la
+confirmation explicite de copie. C'est délibéré : perdre les photos d'un
+événement parce qu'un ménage automatique est passé avant la copie serait
+irrattrapable, alors qu'un disque qui se remplit se voit et se corrige. La
+contrepartie est réelle — chaque sauvegarde pèse autant que l'événement entier
+(plusieurs Go). **Copiez puis validez régulièrement**, sinon le disque du
+kiosque se remplira et les nouvelles photos ne pourront plus être écrites.
+
+```bash
+# Ce qui attend d'être copié, et ce que ça pèse
+du -sh data/backups/* 2>/dev/null || echo "aucune sauvegarde"
+```
+
+### Récupérer la sauvegarde — ne passez pas par le navigateur
+
+Une sauvegarde pèse plusieurs Go. Le bouton « Télécharger » de l'admin passe par
+le serveur de développement Flask : pratique pour un petit export, **inadapté à
+2,5 Go**. Par ordre de rapidité :
+
+| Voie | Débit typique | 2,5 Go |
+|---|---|---|
+| Clé USB branchée sur la machine | 30–100 Mo/s | 30 s – 1,5 min |
+| `rsync` en Ethernet | 50–100 Mo/s | 30 s – 1 min |
+| `rsync` en WiFi | 3–10 Mo/s | 4 – 15 min |
+| Bouton « Télécharger » (WiFi) | quelques centaines de ko/s | plusieurs heures |
+
+**Clé USB, directement sur la machine** — c'est la voie prévue par la
+fonctionnalité, et elle n'utilise pas du tout le réseau :
+
+```bash
+cp data/backups/*.zip /media/$USER/NOM_DE_LA_CLE/ && sync
+```
+
+**Depuis un autre poste**, `rsync` contourne le serveur Flask (il passe par
+`sshd`, qui n'est pas bridé) et **reprend là où il s'est arrêté** si la
+connexion coupe :
+
+```bash
+rsync -avP utilisateur@photobooth:~/Photobooth_Ben/data/backups/ ./sauvegardes/
+```
+
+Une fois la copie faite et vérifiée, validez-la dans l'admin (« J'ai copié sur
+clé ») pour libérer la place disque.
+
+> ⚠️ **Priorité I/O du service.** `photobooth-admin.service` tournait sous
+> `IOSchedulingClass=idle`, qui ne donne des I/O que si le disque est totalement
+> inactif. Le slideshow du kiosque lisant des images en continu, l'admin y était
+> affamé : un téléchargement plafonnait à ~57 ko/s, soit 13 h pour 2,5 Go.
+> L'unité utilise désormais `best-effort` en priorité 7 — le kiosque garde la
+> main, sans famine. Après mise à jour :
+> `sudo systemctl daemon-reload && sudo systemctl restart photobooth-admin`.
+
 ## Usage en dev local (hors Pi)
 
 ```bash

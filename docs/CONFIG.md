@@ -161,6 +161,7 @@ kiosque (slides : à chaud).
 | `PATH_FONTS_BIBLIO` | `assets/fonts/bibliotheque/` | Bibliothèque de polices |
 | `PATH_SLIDESHOW_PERSO` | `assets/slideshow/` | Visuels perso ajoutés à la rotation du slideshow |
 | `PATH_CORBEILLE` | `data/corbeille/` | Photos retirées de la galerie/slideshow (restaurables) |
+| `PATH_BACKUPS` | `data/backups/` | Sauvegardes ZIP complètes des événements terminés, à copier sur clé USB. Supprimées uniquement sur confirmation de copie depuis l'admin |
 | `PATH_EVENEMENT_ACTIF` | `data/evenement_actif.json` | Instantané atomique de l'événement lu par le kiosque au début d'une session |
 | `PATH_QUOTA_IMPRESSIONS` | `data/quota_impressions.json` | Compteur persistant de feuilles DNP + quota, partagé kiosque/web (voir `core/quota.py`) |
 | `BG_ACCUEIL_EFFECTIF` | résolu à l'import | Actif si présent, sinon `FILE_BG_ACCUEIL` |

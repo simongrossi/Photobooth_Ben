@@ -14,6 +14,36 @@ sur `main` mais pas encore déployé.
 
 ---
 
+## `WIP` — Sauvegarde automatique des événements terminés
+
+### Added
+- **Terminer un événement prépare son ZIP de sauvegarde.** Archive complète
+  (montages + photos brutes + manifeste + CSV) déposée dans `data/backups/`
+  sous `<slug>__<AAAAMMJJ-HHMM>.zip`, prête à copier sur une clé USB. Construite
+  en tâche de fond via `web/exports.py`, elle n'apparaît sous son nom final
+  qu'une fois complète (renommage atomique). Un échec de sauvegarde n'empêche
+  jamais de terminer l'événement.
+- Bouton **« Sauvegarder »** par événement pour régénérer à la demande, et
+  section **« Sauvegardes à copier »** listant ce qui attend (taille, date,
+  téléchargement direct, confirmation de copie).
+- `PATH_BACKUPS` dans `config.py` (`data/backups/`).
+
+### Fixed
+- **L'admin était affamé en I/O.** `photobooth-admin.service` tournait sous
+  `IOSchedulingClass=idle`, qui ne donne des I/O que lorsque le disque est
+  totalement inactif — or le slideshow du kiosque lit des images en continu.
+  Résultat : un téléchargement de sauvegarde plafonnait à ~57 ko/s, soit 13 h
+  pour 2,5 Go. Passage en `best-effort` priorité 7 : le kiosque garde la
+  priorité, sans famine.
+
+### Notes
+- **Aucune purge automatique** : seule la confirmation « J'ai copié sur clé »
+  supprime une sauvegarde. Choix délibéré — une purge qui passerait avant la
+  copie perdrait les photos définitivement. En contrepartie le disque se
+  remplit si on ne valide pas : la page l'annonce explicitement.
+
+---
+
 ## `WIP` — Téléchargement ZIP de la galerie et exports différés
 
 ### Added
