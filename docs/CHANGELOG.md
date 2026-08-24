@@ -14,6 +14,59 @@ sur `main` mais pas encore déployé.
 
 ---
 
+## `WIP` — Fiabilisation de l'impression DNP DS620
+
+Déclenché par un incident en événement : panne de papier réelle, puis blocage
+persistant après changement du rouleau et du ribbon. Ni le redémarrage du PC ni
+plusieurs « Démarrer l'imprimante » dans CUPS n'ont débloqué la situation.
+
+### Fixed
+- **L'écran d'erreur affiche enfin la cause réelle.**
+  `session.message_erreur_impression` était calculé, stocké et loggé — mais
+  jamais rendu. Seul « IMPRESSION NON ENVOYÉE » s'affichait, ce qui obligeait à
+  prendre un clavier et ouvrir CUPS pour comprendre.
+- **`reamorcer()` purge la file avant de la réactiver.** `cupsenable` seul
+  redispatche le job qui a provoqué l'erreur : il échoue de nouveau et CUPS
+  redésactive la file. L'état `Stopped` et le job en attente survivant tous deux
+  au reboot, la boucle ne se cassait pas d'elle-même. L'ordre est verrouillé par
+  un test.
+- **Le diagnostic raisonne par imprimante physique.** `DNP_10x15` et
+  `DNP_STRIP` pointent sur la même DS620 : réarmer une seule file laissait
+  l'autre replanter l'imprimante — la cause des reprises manuelles multiples.
+- **`test_printing` ne testait rien** : il assertait le module `unittest.result`
+  importé par erreur, et passait donc toujours.
+
+### Added
+- **Diagnostic IPP via `pycups`** (dépendance optionnelle, repli `lpstat`) :
+  `printer-state-reasons` donne des mots-clés normalisés et non localisés,
+  traduits en messages actionnables — « PAPIER ÉPUISÉ — recharger le bac »,
+  « BOURRAGE PAPIER », « CAPOT OUVERT », « RIBBON ÉPUISÉ ».
+- **La touche RÉESSAYER répare.** Pas de bouton supplémentaire — le boîtier n'en
+  a que trois, tous déjà utilisés. L'appui vaut confirmation humaine que le
+  papier est rechargé : rien ne se répare automatiquement dans le dos de
+  l'animateur.
+- **Alerte de fin de rouleau** : bandeau ambre sur l'accueil sous
+  `SEUIL_TIRAGES_RESTANTS` (20 par défaut), alimenté par le `marker-message` de
+  Gutenprint (« 228 native prints remaining »). Inerte silencieusement si le
+  backend ne remonte rien d'exploitable.
+- **`deploy/configurer_cups.sh`** : passe les files en
+  `printer-error-policy=retry-job` (CUPS ne désactive plus la file, le tirage
+  repart seul au rechargement), relève `JobRetryLimit` à ≈ 2 h, et échoue si
+  l'utilisateur du kiosque n'est pas dans `lpadmin`.
+
+### Changed
+- Un job en attente n'est plus « FILE D'ATTENTE PLEINE » mais « TIRAGE EN
+  ATTENTE » : avec `retry-job`, la file reste active.
+- Trois réglages surchargeables depuis l'admin (groupe *impression*) :
+  `SEUIL_TIRAGES_RESTANTS`, `INTERVALLE_CHECK_MEDIA_S`, `DELAI_REAMORCAGE_S`.
+
+### À vérifier sur la machine
+Le comportement de `marker-levels` après un changement de rouleau (sans
+impression intermédiaire) et la durée réelle du warm-up DS620 ne sont pas
+confirmés — voir la checklist finale du plan.
+
+---
+
 ## `WIP` — Sauvegarde automatique des événements terminés
 
 ### Added

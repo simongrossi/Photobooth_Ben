@@ -290,10 +290,24 @@ Pour les tests unitaires, `monkeypatch` suffit (voir `tests/test_montage.py`).
 corresponde exactement à la Surface retournée, même si le worker reçoit une
 nouvelle image pendant la conversion.
 
-**Sous-systèmes indépendants dans `core/monitoring.py`** : `DiskMonitor` et
-`lister_images_slideshow` ne dépendent pas de `SessionState`. Les checks disque
-et les scans du diaporama sont rate-limités, y compris lorsque le diaporama est
-vide. Testables en isolation.
+**Sous-systèmes indépendants dans `core/monitoring.py`** : `DiskMonitor`,
+`TempMonitor`, `MediaMonitor` et `lister_images_slideshow` ne dépendent pas de
+`SessionState`. Les checks disque, température, niveau de papier et les scans du
+diaporama sont rate-limités, y compris lorsque le diaporama est vide. Testables
+en isolation. `MediaMonitor` reçoit le `PrinterManager` par injection
+(duck-typing sur `.diagnostic(mode)`) pour que `core/monitoring.py` n'importe
+pas `core/printer.py`.
+
+**`core/printer.py` raisonne par imprimante physique, pas par file CUPS.**
+`DNP_10x15` et `DNP_STRIP` pointent sur la même DS620 : `diagnostic()` cumule
+les jobs des files partageant un `device-uri`, et `reamorcer()` les purge puis
+les réactive **toutes**, dans cet ordre — `cupsenable` avant `cancel -a`
+redispatche le job en échec, qui redésactive la file.
+
+La cause d'un blocage vient de `printer-state-reasons` (mots-clés IPP
+normalisés, non localisés) lu via **`pycups`**, dépendance optionnelle de plus
+aux côtés de `gphoto2` et `pyserial` : absente en CI et sur macOS, le module
+retombe alors sur un diagnostic `lpstat` à trois catégories.
 
 **Mises en page partagées par fichiers atomiques** : l'admin stocke la zone
 10×15 ou les trois zones strip de chaque template dans SQLite puis publie le

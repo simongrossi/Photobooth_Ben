@@ -487,3 +487,84 @@ class TestReamorcer:
         monkeypatch.setattr(printer, "cups", _cups_avec())
         self._tracer(monkeypatch)
         assert mgr.reamorcer("xxx").message == "MODE INCONNU"
+
+
+class TestRobustesseCups:
+    """Chemins d'erreur du reamorcage : ce sont eux qui doivent tenir en soirée."""
+
+    def test_pycups_qui_leve_retombe_sur_lpstat(self, mgr, monkeypatch):
+        class CupsCasse:
+            def Connection(self):  # noqa: N802
+                raise RuntimeError("cupsd injoignable")
+
+        monkeypatch.setattr(printer, "cups", CupsCasse())
+
+        def _dispatch(cmd, **kw):
+            if "-o" in cmd:
+                return SimpleNamespace(stdout="", stderr="", returncode=0)
+            return SimpleNamespace(stdout="printer DNP_10x15 is idle. enabled",
+                                   stderr="", returncode=0)
+
+        monkeypatch.setattr(printer.subprocess, "run", _dispatch)
+        assert mgr.diagnostic("10x15").pret is True
+
+    def test_file_sans_device_uri_reste_seule(self, mgr, monkeypatch):
+        """Device inconnu : on ne groupe pas au hasard."""
+        monkeypatch.setattr(printer, "cups", FakeCups({
+            "DNP_10x15": {"printer-state": 3, "printer-state-reasons": ["none"]},
+            "DNP_STRIP": {"printer-state": 3, "printer-state-reasons": ["none"]},
+        }))
+        assert mgr._files_du_meme_device("10x15") == ["DNP_10x15"]
+
+    def test_jobs_en_attente_mode_inconnu(self, mgr, monkeypatch):
+        monkeypatch.setattr(printer, "cups", _cups_avec())
+        assert mgr.jobs_en_attente("xxx") is None
+
+    def test_jobs_en_attente_file_sans_nom(self, mgr):
+        assert mgr.jobs_en_attente_file("") is None
+
+    def test_lpstat_injoignable_donne_erreur_systeme(self, mgr, monkeypatch):
+        monkeypatch.setattr(printer, "cups", None)
+        monkeypatch.setattr(printer.subprocess, "run", _fake_run_factory(
+            "", raises=OSError("lpstat absent"),
+        ))
+        etat = mgr.diagnostic("10x15")
+        assert etat.pret is False
+        assert etat.message == "ERREUR SYSTÈME CUPS"
+
+    def test_commande_cups_absente_ne_leve_pas(self, mgr, monkeypatch):
+        """cancel/cupsenable introuvables : on journalise, on ne plante pas."""
+        monkeypatch.setattr(printer, "cups", _cups_avec(raison="media-empty-error", etat=5))
+        monkeypatch.setattr(printer.time, "sleep", lambda _s: None)
+
+        def _run(cmd, **kw):
+            if cmd[0] in ("cancel", "cupsenable", "cupsaccept"):
+                raise FileNotFoundError(cmd[0])
+            return SimpleNamespace(stdout="", stderr="", returncode=0)
+
+        monkeypatch.setattr(printer.subprocess, "run", _run)
+        etat = mgr.reamorcer("10x15", delai_max_s=0.0)
+        assert etat.file_desactivee is True
+
+    def test_commande_cups_en_echec_ne_leve_pas(self, mgr, monkeypatch):
+        """cupsenable refusé (pas dans lpadmin) : on journalise, on ne plante pas."""
+        monkeypatch.setattr(printer, "cups", _cups_avec(raison="media-empty-error", etat=5))
+        monkeypatch.setattr(printer.time, "sleep", lambda _s: None)
+
+        def _run(cmd, **kw):
+            if cmd[0] in ("cancel", "cupsenable", "cupsaccept"):
+                raise printer.subprocess.CalledProcessError(1, cmd, stderr="forbidden")
+            return SimpleNamespace(stdout="", stderr="", returncode=0)
+
+        monkeypatch.setattr(printer.subprocess, "run", _run)
+        assert mgr.reamorcer("10x15", delai_max_s=0.0).pret is False
+
+    def test_attente_sort_des_que_l_imprimante_repond(self, mgr, monkeypatch):
+        """Warm-up terminé avant l'échéance : on n'attend pas les 30 s."""
+        monkeypatch.setattr(printer, "cups", _cups_avec())
+        dodos = []
+        monkeypatch.setattr(printer.time, "sleep", dodos.append)
+        monkeypatch.setattr(printer.subprocess, "run", _fake_run_factory(""))
+
+        mgr._attendre_imprimante("10x15", delai_max_s=30.0)
+        assert dodos == []

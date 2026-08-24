@@ -99,7 +99,32 @@ Toutes les 30–60 min, vérifier du coin de l'œil :
   (le mode dégradé fonctionne mais sans photo réelle)
 - [ ] **Queue d'impression** : regarder la pile de photos qui sort — si rien ne sort
   alors que des impressions sont lancées, `lpstat -o` pour voir les jobs CUPS
-- [ ] **Papier & ruban** de l'imprimante DNP (un pack = ~400 tirages selon format)
+- [ ] **Papier & ruban** de l'imprimante DNP (un pack = ~400 tirages selon format).
+  Un **bandeau ambre** sur l'accueil prévient sous 20 tirages restants
+
+### Diagnostiquer l'imprimante DNP
+
+La cause réelle d'un blocage est un mot-clé IPP, pas le texte de `lpstat` :
+
+```bash
+ipptool -tv ipp://localhost/printers/DNP_10x15 get-printer-attributes.test | grep -iE "printer-state|marker"
+```
+
+`printer-state-reasons` donne la cause (`media-empty-error`, `media-jam`,
+`cover-open`…), `marker-message` le nombre de tirages restants.
+
+**Attention** : `DNP_10x15` et `DNP_STRIP` pointent sur la **même** DS620. Une
+panne les bloque toutes les deux, et réarmer une seule file laisse l'autre
+replanter l'imprimante. Le kiosque les traite ensemble ; en manuel, ne jamais
+en oublier une. Et toujours purger **avant** de réactiver :
+
+```bash
+cancel -a DNP_10x15; cancel -a DNP_STRIP
+cupsenable DNP_10x15; cupsenable DNP_STRIP
+```
+
+Dans l'autre ordre, `cupsenable` redispatche le job en échec, qui redésactive
+la file aussitôt.
 
 ### En cas de blocage total
 
@@ -126,7 +151,9 @@ Ne **pas** couper l'alim du Pi brutalement sauf nécessité — attendre un reto
 | Symptôme | Cause probable | Action |
 |---|---|---|
 | Écran figé sur "Connexion à l'appareil photo" > 10 s | gvfs monopolise la caméra | `sudo killall gvfs-gphoto2-volume-monitor` |
-| Photo prise mais imprimante silencieuse | File CUPS bloquée | `lpstat -o` → `cancel -a` → relancer print |
+| Photo prise mais imprimante silencieuse | File CUPS bloquée | Appuyer sur **RÉESSAYER** : le kiosque purge la file et la réactive. La cause exacte s'affiche à l'écran |
+| Message « PAPIER ÉPUISÉ » | Fin de rouleau | Charger le rouleau, éteindre/rallumer la DS620, attendre ~30 s, puis **RÉESSAYER** |
+| Réarmement sans effet | Utilisateur hors du groupe `lpadmin` | `sudo usermod -aG lpadmin photobooth` puis relancer `sudo ./deploy/configurer_cups.sh` |
 | Boutons Arduino inertes | Port série changé | Vérifier `ls /dev/ttyUSB*` → ajuster `ARDUINO_PORT` → redémarrer |
 | Lenteur inhabituelle | Disque plein, RAM pleine | `df -h`, `free -h` — purger `data/temp/` |
 | Couleurs d'impression fades | Ruban en fin de vie | Remplacer le pack DNP |

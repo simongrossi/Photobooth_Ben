@@ -76,6 +76,37 @@ python3 --version          # >= 3.9
    - `DNP_STRIP` → format 2×6 (bandelettes)
 6. Pour chaque file : désactiver "Automatically reject jobs" et "Do not cache"
 
+Les deux files pointent volontairement sur **la même imprimante physique** —
+seuls les formats diffèrent. Le kiosque en tient compte : une panne bloque les
+deux files, et il les réarme ensemble.
+
+### 4.1 Politique d'erreur (obligatoire)
+
+```bash
+sudo ./deploy/configurer_cups.sh
+```
+
+À lancer **une fois par machine**, indépendamment de `install.sh` (qui ne
+concerne que les cibles systemd — sur un mini-PC en autostart XFCE, `install.sh`
+n'est jamais exécuté).
+
+Le script :
+
+- passe les deux files en `printer-error-policy=retry-job`, pour que CUPS ne
+  **désactive** plus la file sur une panne de papier. Sans ça, l'état `Stopped`
+  et le job en échec survivent au redémarrage du PC, et chaque « Démarrer
+  l'imprimante » relance le job fautif qui redésactive aussitôt la file ;
+- relève `JobRetryLimit` à 240 (≈ 2 h au lieu de 2 min 30), pour qu'un tirage
+  survive au temps de changement d'un rouleau ;
+- **échoue explicitement** si l'utilisateur du kiosque n'est pas dans le groupe
+  `lpadmin` — sans ce droit, le réarmement depuis le kiosque est inopérant.
+
+Vérification :
+
+```bash
+lpstat -l -p DNP_10x15 | grep -i policy
+```
+
 ### Test d'impression
 
 ```bash
