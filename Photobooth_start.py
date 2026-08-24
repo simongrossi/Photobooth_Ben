@@ -23,7 +23,7 @@ from config import (
     PULSE_MIN, PULSE_VITESSE,
     QUOTA_IMPRESSIONS_INCREMENT,
     SEUIL_DISQUE_CRITIQUE_MB, SEUIL_TEMP_CRITIQUE_C,
-    DELAI_REAMORCAGE_S,
+    DELAI_REAMORCAGE_S, SEUIL_TIRAGES_RESTANTS, INTERVALLE_CHECK_MEDIA_S,
     STRIP_BURST_DELAI_S, STRIP_MODE_BURST,
     TAILLE_DECOMPTE, TAILLE_TEXTE_BANDEAU,
     TEMP_PATH,
@@ -297,6 +297,7 @@ from core.arduino import ArduinoController  # noqa: E402
 # --- Monitoring disque + slideshow listing (extraits dans core/monitoring.py) ---
 from core.monitoring import (  # noqa: E402
     DiskMonitor,
+    MediaMonitor,
     TempMonitor,
     formater_ligne_perf,
     lire_rss_mb,
@@ -327,6 +328,7 @@ splash_connexion_camera = _ui_non_initialisee
 arduino_ctrl: ArduinoController | None = None
 disk_monitor: DiskMonitor | None = None
 temp_monitor: TempMonitor | None = None
+media_monitor: MediaMonitor | None = None
 BANDEAU_CACHE = None
 session = SessionState(last_activity_ts=0.0)
 heartbeat_kiosque: HeartbeatKiosque | None = None
@@ -445,7 +447,7 @@ def _initialiser_runtime() -> None:
     global UIContext, AccueilAssets, setup_sounds, jouer_son, draw_text_shadow_soft
     global inserer_background, afficher_message_plein_ecran, executer_avec_spinner
     global ecran_erreur, ecran_attente_impression, splash_connexion_camera
-    global arduino_ctrl, disk_monitor, temp_monitor, BANDEAU_CACHE, session, running
+    global arduino_ctrl, disk_monitor, temp_monitor, media_monitor, BANDEAU_CACHE, session, running
     global heartbeat_kiosque, dernier_tirage_reussi_ts, dernier_tirage_reussi_mode
     global slideshow_images, slideshow_last_refresh, slideshow_cached_surface, slideshow_cached_for_idx
     global fond_accueil, icon_10x15_norm, icon_10x15_select, icon_strip_norm, icon_strip_select
@@ -510,6 +512,10 @@ def _initialiser_runtime() -> None:
     )
     temp_monitor = TempMonitor(
         path=TEMP_PATH, seuil_c=SEUIL_TEMP_CRITIQUE_C, intervalle_s=INTERVALLE_CHECK_TEMP_S,
+    )
+    media_monitor = MediaMonitor(
+        printer_mgr, "10x15",
+        seuil_tirages=SEUIL_TIRAGES_RESTANTS, intervalle_s=INTERVALLE_CHECK_MEDIA_S,
     )
 
     BANDEAU_CACHE = pygame.Surface((WIDTH, BANDEAU_HAUTEUR))
@@ -1167,6 +1173,23 @@ def _render_accueil_normal(session: SessionState) -> None:
             (WIDTH // 2 - txt_alerte.get_width() // 2,
              y_alerte + (alerte_h - txt_alerte.get_height()) // 2),
         )
+        y_alerte += alerte_h
+
+    # Fin de rouleau : prevenir l'animateur avant la panne seche, plutot que
+    # de la decouvrir en pleine soiree quand la file se bloque.
+    if media_monitor.critique and media_monitor.tirages_restants is not None:
+        alerte = pygame.Surface((WIDTH, alerte_h), pygame.SRCALPHA)
+        alerte.fill((200, 160, 20, 220))
+        screen.blit(alerte, (0, y_alerte))
+        txt_alerte = font_bandeau.render(
+            f"⚠ {config.TXT_ALERTE_PAPIER} — {media_monitor.tirages_restants} tirages restants",
+            True, (255, 255, 255),
+        )
+        screen.blit(
+            txt_alerte,
+            (WIDTH // 2 - txt_alerte.get_width() // 2,
+             y_alerte + (alerte_h - txt_alerte.get_height()) // 2),
+        )
 
 
 def render_accueil(session: SessionState) -> None:
@@ -1177,6 +1200,7 @@ def render_accueil(session: SessionState) -> None:
     Déclenche aussi les checks monitoring périodiques (rate-limités)."""
     disk_monitor.tick()
     temp_monitor.tick()
+    media_monitor.tick(occupe=session.impression_en_cours)
 
     idle_seconds = time.time() - session.last_activity_ts
     if ACTIVER_DIAPORAMA_VEILLE and idle_seconds > DUREE_IDLE_SLIDESHOW and session.mode_actuel is None:
