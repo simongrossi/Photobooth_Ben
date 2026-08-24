@@ -943,3 +943,13 @@ form.inline { display: inline; margin: 0; }
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   text-transform: lowercase;
 }
+
+/* Barre de progression (génération d'archive ZIP). */
+.progression {
+  height: 10px; border-radius: 5px; background: var(--na-bg);
+  overflow: hidden; margin: .6rem 0;
+}
+.progression__barre {
+  height: 100%; width: 0; background: var(--accent); border-radius: 5px;
+  transition: width .3s ease;
+}

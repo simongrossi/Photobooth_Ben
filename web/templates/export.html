@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block titre %}Préparation de l'archive · Photobooth{% endblock %}
+{% block contenu %}
+<div class="dashboard-header">
+  <h1>Préparation de l'archive</h1>
+</div>
+
+<section class="panel" data-export="{{ tache.id }}">
+  <p><strong>{{ tache.libelle }}</strong></p>
+  <p class="muted" id="export-detail">{{ tache.faits }} / {{ tache.total }} fichier{{ 's' if tache.total > 1 }} — {{ tache.as_dict().taille }} / {{ tache.as_dict().taille_estimee }}</p>
+  <div class="progression"><div class="progression__barre" id="export-barre" style="width: {{ tache.pourcent }}%"></div></div>
+  <p id="export-message" class="muted">Construction en cours — laissez cette page ouverte, le téléchargement démarrera tout seul.</p>
+  <p>
+    <a class="btn btn--primary" id="export-lien" href="{{ url_for('export.fichier', tache_id=tache.id) }}" hidden>⬇ Télécharger {{ tache.nom_fichier }}</a>
+    <a class="btn" href="{{ tache.retour }}">Retour</a>
+  </p>
+</section>
+
+<script>
+(function () {
+  const conteneur = document.querySelector("[data-export]");
+  const id = conteneur.dataset.export;
+  const barre = document.getElementById("export-barre");
+  const detail = document.getElementById("export-detail");
+  const message = document.getElementById("export-message");
+  const lien = document.getElementById("export-lien");
+  let telecharge = false;
+
+  async function sonder() {
+    let etat;
+    try {
+      const reponse = await fetch(`/export/${id}/etat`, { headers: { "Accept": "application/json" } });
+      if (!reponse.ok) throw new Error("archive expirée");
+      etat = await reponse.json();
+    } catch (err) {
+      message.textContent = "Suivi interrompu : " + err.message + ". Relancez l'export.";
+      return;
+    }
+    barre.style.width = etat.pourcent + "%";
+    detail.textContent = `${etat.faits} / ${etat.total} fichiers — ${etat.taille} / ${etat.taille_estimee}`;
+    if (etat.etat === "pret") {
+      message.textContent = "Archive prête — le téléchargement démarre.";
+      lien.hidden = false;
+      if (!telecharge) { telecharge = true; window.location.href = lien.href; }
+      return;
+    }
+    if (etat.etat === "erreur") {
+      message.textContent = "Échec de la génération : " + (etat.erreur || "erreur inconnue")
+        + " — l'archive incomplète a été supprimée.";
+      return;
+    }
+    setTimeout(sonder, 500);
+  }
+  sonder();
+})();
+</script>
+{% endblock %}

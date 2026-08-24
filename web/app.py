@@ -19,6 +19,7 @@ from web.routes import (
     dashboard,
     ecrans_route,
     evenements_route,
+    export_route,
     gallery,
     kiosque_route,
     settings_route,
@@ -56,6 +57,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     app.register_blueprint(ecrans_route.bp)
     app.register_blueprint(settings_route.bp)
     app.register_blueprint(evenements_route.bp)
+    app.register_blueprint(export_route.bp)
 
     from web.auth import SESSION_ADMIN_QUITTE, require_auth, role_courant
 
