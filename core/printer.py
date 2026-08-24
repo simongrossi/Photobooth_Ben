@@ -140,9 +140,8 @@ class PrinterManager:
             return [nom_file]
         return [n for n in toutes if imprimantes.get(n, {}).get("device-uri") == device]
 
-    def jobs_en_attente(self, mode: str) -> Optional[int]:
-        """Nombre de jobs CUPS visibles pour la file, ou None si inconnu."""
-        nom_file = self._noms.get(mode)
+    def jobs_en_attente_file(self, nom_file: str) -> Optional[int]:
+        """Nombre de jobs CUPS visibles pour UNE file, ou None si inconnu."""
         if not nom_file:
             return None
         try:
@@ -158,43 +157,111 @@ class PrinterManager:
             return None
         return len([ligne for ligne in resultat.stdout.splitlines() if ligne.strip()])
 
-    def is_ready(self, mode: str):
-        """Retourne True si la file est prête, sinon une chaîne décrivant le problème.
-        Dans les deux cas, `self.last_error` reflète l'état (None si prêt)."""
+    def jobs_en_attente(self, mode: str) -> Optional[int]:
+        """Jobs en attente sur l'imprimante physique du mode (toutes ses files).
+
+        Retourne None si AUCUNE file n'a pu etre interrogee : le dashboard
+        distingue "file vide" de "file inconnue"."""
+        files = self._files_du_meme_device(mode)
+        if not files:
+            return None
+        comptes = [self.jobs_en_attente_file(f) for f in files]
+        connus = [c for c in comptes if c is not None]
+        if not connus:
+            return None
+        return sum(connus)
+
+    def diagnostic(self, mode: str) -> EtatImprimante:
+        """Etat de l'imprimante physique servant ce mode.
+
+        Lit `printer-state-reasons` via pycups quand il est disponible : ce sont
+        des mots-cles IPP normalises, contrairement au texte localise de
+        `lpstat`. Sans pycups, repli sur un diagnostic a trois categories."""
         nom_file = self._noms.get(mode)
         if not nom_file:
-            return self._echec("MODE INCONNU")
+            return EtatImprimante(pret=False, raison="mode-inconnu", message="MODE INCONNU")
 
-        # --- 1. CHECK DES JOBS (Évite l'accumulation de photos) ---
+        files = self._files_du_meme_device(mode)
+        jobs = sum(self.jobs_en_attente_file(f) or 0 for f in files)
+
+        imprimantes = self._imprimantes_cups()
+        if imprimantes is None:
+            return self._diagnostic_lpstat(nom_file, jobs)
+
+        raison = ""
+        desactivee = False
+        tirages: Optional[int] = None
+        for f in files:
+            attrs = imprimantes.get(f, {})
+            if attrs.get("printer-state") == ETAT_IPP_ARRETE:
+                desactivee = True
+            for r in attrs.get("printer-state-reasons") or []:
+                if r and r != "none" and not raison:
+                    raison = r
+            if tirages is None:
+                tirages = tirages_restants_depuis_marker(attrs.get("marker-message", ""))
+
+        if raison:
+            message = message_pour_raison(raison)
+        elif desactivee:
+            message = "FILE D'IMPRESSION ARRÊTÉE"
+        elif jobs:
+            message = "TIRAGE EN ATTENTE"
+        else:
+            message = ""
+
+        return EtatImprimante(
+            pret=not (raison or desactivee or jobs),
+            raison=raison,
+            message=message,
+            file_desactivee=desactivee,
+            jobs=jobs,
+            tirages_restants=tirages,
+        )
+
+    def _diagnostic_lpstat(self, nom_file: str, jobs: int) -> EtatImprimante:
+        """Repli sans pycups : trois categories seulement.
+
+        Le texte de `lpstat` est localise, on ne pretend pas a un diagnostic
+        fin — juste a ne pas etre moins bon que le code historique."""
         try:
-            jobs_proc = subprocess.run(["lpstat", "-o", nom_file], capture_output=True, text=True, timeout=2)
-            # On filtre les lignes vides pour compter les vrais jobs
-            lines = [line for line in jobs_proc.stdout.strip().split('\n') if line]
-            if len(lines) >= 1:
-                return self._echec("FILE D'ATTENTE PLEINE")
+            resultat = subprocess.run(
+                ["lpstat", "-p", nom_file], capture_output=True, text=True, timeout=2
+            )
+            sortie = resultat.stdout.lower()
         except Exception:
-            pass
+            return EtatImprimante(
+                pret=False, raison="cups-injoignable",
+                message="ERREUR SYSTÈME CUPS", jobs=jobs,
+            )
 
-        # --- 2. CHECK DE L'ÉTAT PHYSIQUE ---
-        try:
-            result = subprocess.run(["lpstat", "-p", nom_file], capture_output=True, text=True, timeout=2)
-            out = result.stdout.lower()
+        if any(x in sortie for x in ("paused", "en pause", "disabled", "désactivée")):
+            return EtatImprimante(
+                pret=False, raison="paused", message="FILE D'IMPRESSION ARRÊTÉE",
+                file_desactivee=True, jobs=jobs,
+            )
 
-            # ATTENTION : On ne met PAS 'paused' ici, car CUPS met en pause quand c'est éteint
-            etats_ok = ("idle", "enabled", "activée", "printing", "inoccupée")
+        etats_ok = ("idle", "enabled", "activée", "printing", "inoccupée")
+        if not any(x in sortie for x in etats_ok):
+            return EtatImprimante(
+                pret=False, raison="offline", message="IMPRIMANTE HORS LIGNE", jobs=jobs,
+            )
 
-            # Si on détecte "paused", c'est que l'imprimante est offline
-            if "paused" in out or "en pause" in out:
-                return self._echec("IMPRIMANTE ÉTEINTE OU DÉBRANCHÉE")
+        if jobs:
+            return EtatImprimante(pret=False, message="TIRAGE EN ATTENTE", jobs=jobs)
 
-            if not any(x in out for x in etats_ok):
-                return self._echec("IMPRIMANTE HORS LIGNE")
+        return EtatImprimante(pret=True)
 
-        except Exception:
-            return self._echec("ERREUR SYSTÈME CUPS")
+    def is_ready(self, mode: str):
+        """True si prete, sinon une chaine decrivant le probleme.
 
-        self.last_error = None
-        return True
+        Mince enveloppe autour de `diagnostic()` : le contrat historique est
+        conserve pour Photobooth_start.py et web/routes/dashboard.py."""
+        etat = self.diagnostic(mode)
+        if etat.pret:
+            self.last_error = None
+            return True
+        return self._echec(etat.message)
 
     def send(self, chemin: str, mode: str, verifier: bool = True) -> bool:
         """Envoie à la file correspondante. Retourne True si l'envoi a démarré.

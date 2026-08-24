@@ -97,12 +97,22 @@ class TestLastError:
         assert mgr.last_error == "MODE INCONNU"
 
     def test_file_pleine_memorise(self, mgr, monkeypatch):
-        # lpstat -o renvoie une ligne de job → file pleine
-        monkeypatch.setattr(printer.subprocess, "run", _fake_run_factory(
-            "DNP_10x15-42 photobooth 1024 ..."
-        ))
-        assert mgr.is_ready("10x15") == "FILE D'ATTENTE PLEINE"
-        assert mgr.last_error == "FILE D'ATTENTE PLEINE"
+        # Un job en attente n'est plus une "file pleine" : avec retry-job, c'est
+        # un tirage qui attend du papier.
+        monkeypatch.setattr(printer, "cups", None)
+
+        def _dispatch(cmd, **kw):
+            if "-o" in cmd:
+                return SimpleNamespace(
+                    stdout="DNP_10x15-42 photobooth 1024 ...", stderr="", returncode=0
+                )
+            return SimpleNamespace(
+                stdout="printer DNP_10x15 is idle. enabled", stderr="", returncode=0
+            )
+
+        monkeypatch.setattr(printer.subprocess, "run", _dispatch)
+        assert mgr.is_ready("10x15") == "TIRAGE EN ATTENTE"
+        assert mgr.last_error == "TIRAGE EN ATTENTE"
 
     def test_reset_a_none_si_pret(self, mgr, monkeypatch):
         mgr.is_ready("inconnu")
@@ -119,6 +129,18 @@ class TestLastError:
 
 class TestFileAttente:
     def test_compte_les_jobs(self, mgr, monkeypatch):
+        """Cumule sur toutes les files du peripherique : 2 lignes x 2 files."""
+        monkeypatch.setattr(printer, "cups", None)
+        monkeypatch.setattr(printer.subprocess, "run", _fake_run_factory(
+            "DNP_10x15-41 user 100\nDNP_10x15-42 user 200\n"
+        ))
+        assert mgr.jobs_en_attente("10x15") == 4
+
+    def test_compte_une_seule_file(self, mgr, monkeypatch):
+        monkeypatch.setattr(printer, "cups", FakeCups({
+            "DNP_10x15": {"device-uri": "usb://a"},
+            "DNP_STRIP": {"device-uri": "usb://b"},
+        }))
         monkeypatch.setattr(printer.subprocess, "run", _fake_run_factory(
             "DNP_10x15-41 user 100\nDNP_10x15-42 user 200\n"
         ))
@@ -307,3 +329,91 @@ class TestGroupementParPeripherique:
     def test_mode_inconnu(self, mgr, monkeypatch):
         monkeypatch.setattr(printer, "cups", FakeCups(DEUX_FILES_MEME_DS620))
         assert mgr._files_du_meme_device("xxx") == []
+
+
+def _cups_avec(raison="none", etat=3, marker="228 native prints remaining on 6x4 (PC) media"):
+    """Deux files sur la même DS620, dans l'état demandé."""
+    attrs = {
+        "device-uri": "gutenprint53+usb://dnp-ds620/DS6X54003557",
+        "printer-state": etat,
+        "printer-state-reasons": [raison],
+        "marker-message": marker,
+    }
+    return FakeCups({"DNP_10x15": dict(attrs), "DNP_STRIP": dict(attrs)})
+
+
+class TestDiagnostic:
+    def test_imprimante_prete(self, mgr, monkeypatch):
+        monkeypatch.setattr(printer, "cups", _cups_avec())
+        monkeypatch.setattr(printer.subprocess, "run", _fake_run_factory(""))
+        etat = mgr.diagnostic("10x15")
+        assert etat.pret is True
+        assert etat.message == ""
+        assert etat.tirages_restants == 228
+
+    def test_papier_vide(self, mgr, monkeypatch):
+        monkeypatch.setattr(printer, "cups", _cups_avec(raison="media-empty-error", etat=5))
+        monkeypatch.setattr(printer.subprocess, "run", _fake_run_factory(""))
+        etat = mgr.diagnostic("10x15")
+        assert etat.pret is False
+        assert etat.message == "PAPIER ÉPUISÉ — recharger le bac"
+        assert etat.file_desactivee is True
+
+    def test_file_arretee_sans_raison(self, mgr, monkeypatch):
+        monkeypatch.setattr(printer, "cups", _cups_avec(etat=5))
+        monkeypatch.setattr(printer.subprocess, "run", _fake_run_factory(""))
+        etat = mgr.diagnostic("10x15")
+        assert etat.file_desactivee is True
+        assert etat.message == "FILE D'IMPRESSION ARRÊTÉE"
+
+    def test_jobs_cumules_sur_les_deux_files(self, mgr, monkeypatch):
+        """Un strip coincé doit bloquer un 10x15 : même imprimante physique."""
+        monkeypatch.setattr(printer, "cups", _cups_avec())
+        monkeypatch.setattr(printer.subprocess, "run", _fake_run_factory(
+            "DNP_10x15-42 photobooth 1024\n"
+        ))
+        etat = mgr.diagnostic("10x15")
+        assert etat.jobs == 2          # une ligne par file, deux files
+        assert etat.pret is False
+        assert etat.message == "TIRAGE EN ATTENTE"
+
+    def test_marker_illisible_tirages_none(self, mgr, monkeypatch):
+        monkeypatch.setattr(printer, "cups", _cups_avec(marker="ribbon OK"))
+        monkeypatch.setattr(printer.subprocess, "run", _fake_run_factory(""))
+        assert mgr.diagnostic("10x15").tirages_restants is None
+
+    def test_mode_inconnu(self, mgr, monkeypatch):
+        monkeypatch.setattr(printer, "cups", _cups_avec())
+        etat = mgr.diagnostic("xxx")
+        assert etat.pret is False
+        assert etat.message == "MODE INCONNU"
+
+
+class TestReplisSansPycups:
+    """Sans pycups, on retombe sur le diagnostic grossier historique."""
+
+    def test_idle_est_pret(self, mgr, monkeypatch):
+        monkeypatch.setattr(printer, "cups", None)
+
+        def _dispatch(cmd, **kw):
+            if "-o" in cmd:
+                return SimpleNamespace(stdout="", stderr="", returncode=0)
+            return SimpleNamespace(stdout="printer DNP_10x15 is idle. enabled",
+                                   stderr="", returncode=0)
+
+        monkeypatch.setattr(printer.subprocess, "run", _dispatch)
+        assert mgr.diagnostic("10x15").pret is True
+
+    def test_disabled_detecte(self, mgr, monkeypatch):
+        monkeypatch.setattr(printer, "cups", None)
+
+        def _dispatch(cmd, **kw):
+            if "-o" in cmd:
+                return SimpleNamespace(stdout="", stderr="", returncode=0)
+            return SimpleNamespace(stdout="printer DNP_10x15 disabled since lundi",
+                                   stderr="", returncode=0)
+
+        monkeypatch.setattr(printer.subprocess, "run", _dispatch)
+        etat = mgr.diagnostic("10x15")
+        assert etat.file_desactivee is True
+        assert etat.pret is False
