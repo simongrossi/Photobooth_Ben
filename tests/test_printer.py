@@ -5,7 +5,6 @@ Mocke `subprocess.run` / `subprocess.Popen` pour éviter tout appel réel à CUP
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest import result
 
 import pytest
 
@@ -61,10 +60,15 @@ class TestIsReady:
         assert mgr.is_ready("10x15") is not True
 
     def test_printing(self, mgr, monkeypatch):
-        monkeypatch.setattr(printer.subprocess, "run", _fake_run_factory(
-            "printer DNP_STRIP now printing job-42"
-        ))
-        assert result is True or result not in ["IMPRIMANTE HORS LIGNE", "ERREUR SYSTÈME CUPS"]
+        def _dispatch(cmd, **kw):
+            if "-o" in cmd:
+                return SimpleNamespace(stdout="", stderr="", returncode=0)
+            return SimpleNamespace(
+                stdout="printer DNP_STRIP now printing job-42", stderr="", returncode=0
+            )
+
+        monkeypatch.setattr(printer.subprocess, "run", _dispatch)
+        assert mgr.is_ready("strips") is True
 
     def test_output_vide_renvoie_false(self, mgr, monkeypatch):
         monkeypatch.setattr(printer.subprocess, "run", _fake_run_factory(""))
