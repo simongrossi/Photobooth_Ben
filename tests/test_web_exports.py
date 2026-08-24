@@ -89,6 +89,54 @@ class TestNonDestruction:
             assert os.path.isfile(source)
 
 
+class TestDestination:
+    """Archive déplacée vers un emplacement stable (cas des sauvegardes)."""
+
+    def test_archive_deplacee_vers_la_destination(self, tmp_path, fichiers):
+        cible = str(tmp_path / "backups" / "evenement.zip")
+        tache = exports.attendre(exports.demarrer("evenement.zip", "", fichiers, destination=cible))
+        assert tache.etat == "pret"
+        assert tache.chemin == cible
+        assert os.path.isfile(cible)
+        assert not os.path.exists(tache.chemin_travail), "le fichier de travail doit avoir été renommé"
+        with zipfile.ZipFile(cible) as archive:
+            assert len(archive.namelist()) == 3
+
+    def test_destination_lisible_pour_copie(self, tmp_path, fichiers):
+        """tempfile crée en 0600 ; une sauvegarde doit rester copiable."""
+        cible = str(tmp_path / "backups" / "evenement.zip")
+        exports.attendre(exports.demarrer("e.zip", "", fichiers, destination=cible))
+        assert oct(os.stat(cible).st_mode)[-3:] == "644"
+
+    def test_destination_impossible_remonte_en_erreur(self, tmp_path, fichiers, monkeypatch):
+        def _refus(*args, **kwargs):
+            raise OSError(13, "Permission denied")
+
+        monkeypatch.setattr(exports.os, "replace", _refus)
+        cible = str(tmp_path / "backups" / "evenement.zip")
+        tache = exports.attendre(exports.demarrer("e.zip", "", fichiers, destination=cible))
+        assert tache.etat == "erreur"
+        assert "Permission denied" in tache.erreur
+        assert not os.path.exists(cible)
+        assert not os.path.exists(tache.chemin_travail), "pas de fichier de travail abandonné"
+
+    def test_purge_epargne_une_archive_a_destination(self, tmp_path, fichiers):
+        cible = str(tmp_path / "backups" / "evenement.zip")
+        tache_id = exports.demarrer("e.zip", "", fichiers, destination=cible)
+        exports.attendre(tache_id)
+        exports.etat(tache_id).fini_le -= exports.TTL_S + 1
+        exports.demarrer("declencheur.zip", "", [])  # déclenche la purge
+        assert exports.etat(tache_id) is None, "la tâche doit être oubliée"
+        assert os.path.isfile(cible), "mais la sauvegarde doit survivre"
+
+    def test_oublier_epargne_une_archive_a_destination(self, tmp_path, fichiers):
+        cible = str(tmp_path / "backups" / "evenement.zip")
+        tache_id = exports.demarrer("e.zip", "", fichiers, destination=cible)
+        exports.attendre(tache_id)
+        exports.oublier(tache_id)
+        assert os.path.isfile(cible)
+
+
 class TestEspaceDisque:
     def test_refuse_si_le_disque_ne_suit_pas(self, fichiers, monkeypatch):
         """Échouer tout de suite vaut mieux que remplir le disque à mi-parcours."""

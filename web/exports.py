@@ -109,6 +109,9 @@ class Tache:
     etat: str = "en_cours"  # en_cours | pret | erreur
     chemin: str | None = None
     chemin_travail: str = ""
+    # Destination finale hors dossier de cache : l'archive y est deplacee une
+    # fois complete et echappe alors a la purge (cas des sauvegardes).
+    destination: str | None = None
     erreur: str | None = None
     cree_le: float = field(default_factory=time.time)
     fini_le: float | None = None
@@ -160,7 +163,9 @@ def _purger(maintenant: float | None = None) -> None:
         expirees.append(tache.id)
     for tache_id in set(expirees):
         tache = _taches.pop(tache_id, None)
-        if tache and tache.chemin:
+        # `destination` : l'archive a quitté le cache (sauvegarde d'événement),
+        # elle ne suit plus le cycle de vie de la tâche.
+        if tache and tache.chemin and tache.destination is None:
             try:
                 os.unlink(tache.chemin)
             except OSError:
@@ -223,6 +228,7 @@ def demarrer(
     extras: dict[str, str] | None = None,
     retour: str = "/",
     role_requis: str = "lecture",
+    destination: str | None = None,
 ) -> str:
     """Lance la construction en fond et renvoie l'identifiant de suivi.
 
@@ -240,6 +246,7 @@ def demarrer(
         retour=retour,
         role_requis=role_requis,
         taille_estimee=taille_estimee,
+        destination=destination,
     )
     with _verrou:
         # Purge après insertion : la nouvelle tâche compte dans le plafond.
@@ -267,8 +274,27 @@ def demarrer(
             tache.fini_le = time.time()
             tache.etat = "erreur"
             return
+        if destination is not None:
+            # Renommage atomique (même système de fichiers) : la destination
+            # n'existe qu'une fois l'archive complète, jamais à moitié écrite.
+            try:
+                os.makedirs(os.path.dirname(destination), exist_ok=True)
+                os.replace(fichier_tmp.name, destination)
+                # tempfile crée en 0600 : une sauvegarde doit rester lisible
+                # pour la copier (partage réseau, autre compte, gestionnaire
+                # de fichiers) sans avoir à passer par root.
+                os.chmod(destination, 0o644)
+            except OSError as exc:
+                try:
+                    os.unlink(fichier_tmp.name)
+                except OSError:
+                    pass
+                tache.erreur = str(exc)
+                tache.fini_le = time.time()
+                tache.etat = "erreur"
+                return
         # `etat` en dernier : il sert de barrière pour les lecteurs.
-        tache.chemin = fichier_tmp.name
+        tache.chemin = destination or fichier_tmp.name
         tache.faits = tache.total
         tache.fini_le = time.time()
         tache.etat = "pret"
@@ -300,7 +326,7 @@ def oublier(tache_id: str) -> None:
     """Retire une tâche et son archive (utilisé par les tests)."""
     with _verrou:
         tache = _taches.pop(tache_id, None)
-    if tache and tache.chemin:
+    if tache and tache.chemin and tache.destination is None:
         try:
             os.unlink(tache.chemin)
         except OSError:
