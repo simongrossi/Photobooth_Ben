@@ -6,10 +6,90 @@ Encapsule `lpstat` + `lp` dans un PrinterManager avec vérif d'état et 2 files
 Sprint 4.3 + 4.6 : extrait de Photobooth_start.py.
 """
 from __future__ import annotations
+import re
 import subprocess
+from dataclasses import dataclass
 from typing import Optional
 
 from core.logger import log_info, log_critical
+
+try:
+    import cups  # type: ignore
+except ImportError:  # CI et macOS de dev : le diagnostic bascule sur lpstat
+    cups = None  # type: ignore
+
+
+# --- Diagnostic IPP -------------------------------------------------------
+#
+# CUPS expose la cause reelle d'un blocage dans `printer-state-reasons`, sous
+# forme de mots-cles normalises et NON localises — contrairement au texte de
+# `lpstat`, qui depend de la langue du systeme. Les mots-cles portent un
+# suffixe de gravite (`-error`, `-warning`, `-report`) qu'on retire avant de
+# chercher la correspondance.
+
+_SUFFIXES_GRAVITE = ("-error", "-warning", "-report")
+
+_MESSAGES_RAISONS = {
+    "media-empty": "PAPIER ÉPUISÉ — recharger le bac",
+    "media-needed": "PAPIER ÉPUISÉ — recharger le bac",
+    "media-jam": "BOURRAGE PAPIER",
+    "marker-supply-empty": "RIBBON ÉPUISÉ",
+    "marker-supply-low": "RIBBON BIENTÔT ÉPUISÉ",
+    "cover-open": "CAPOT OUVERT",
+    "door-open": "CAPOT OUVERT",
+    "connecting-to-device": "IMPRIMANTE ÉTEINTE OU DÉBRANCHÉE",
+    "timed-out": "IMPRIMANTE ÉTEINTE OU DÉBRANCHÉE",
+    "paused": "FILE D'IMPRESSION ARRÊTÉE",
+}
+
+# Etat IPP `printer-state` : 3 = idle, 4 = processing, 5 = stopped.
+ETAT_IPP_ARRETE = 5
+
+# marker-message de Gutenprint : "228 native prints remaining on 6x4 (PC) media".
+# Chaine produite en C par le backend, donc non traduite.
+_RE_TIRAGES = re.compile(r"(\d+)\s+native prints remaining", re.IGNORECASE)
+
+
+def normaliser_raison(raison: str) -> str:
+    """Retire le suffixe de gravite d'un mot-cle IPP."""
+    for suffixe in _SUFFIXES_GRAVITE:
+        if raison.endswith(suffixe):
+            return raison[: -len(suffixe)]
+    return raison
+
+
+def message_pour_raison(raison: str) -> str:
+    """Traduit un mot-cle IPP en message affichable a l'animateur.
+
+    Une raison inconnue est affichee telle quelle : un code brut lisible vaut
+    mieux qu'un message generique qui induirait en erreur."""
+    return _MESSAGES_RAISONS.get(normaliser_raison(raison), f"Imprimante : {raison}")
+
+
+def tirages_restants_depuis_marker(marker_message: str) -> Optional[int]:
+    """Nombre de tirages restants extrait du marker-message Gutenprint.
+
+    Retourne None si le format change : l'alerte devient alors inerte plutot
+    que fausse."""
+    if not marker_message:
+        return None
+    trouve = _RE_TIRAGES.search(marker_message)
+    return int(trouve.group(1)) if trouve else None
+
+
+@dataclass
+class EtatImprimante:
+    """Photo instantanee de l'imprimante physique (pas d'une seule file CUPS).
+
+    Les deux files DNP partagent une meme DS620 : raisonner par file laisse
+    passer un job coince dans l'autre, qui replantera l'imprimante."""
+
+    pret: bool
+    raison: str = ""              # mot-cle IPP brut, "" si aucun
+    message: str = ""             # texte affichable, "" si prete
+    file_desactivee: bool = False
+    jobs: int = 0                 # cumule sur toutes les files du peripherique
+    tirages_restants: Optional[int] = None
 
 
 class PrinterManager:

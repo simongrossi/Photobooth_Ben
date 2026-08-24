@@ -9,7 +9,12 @@ from types import SimpleNamespace
 import pytest
 
 from core import printer
-from core.printer import PrinterManager
+from core.printer import (
+    EtatImprimante,
+    PrinterManager,
+    message_pour_raison,
+    tirages_restants_depuis_marker,
+)
 
 
 @pytest.fixture
@@ -200,3 +205,51 @@ class TestPurge:
             ["cancel", "-a", "DNP_10x15"],
             ["cancel", "-a", "DNP_STRIP"],
         ]
+
+
+# --- Diagnostic IPP (sprint fiabilisation DNP) ---
+
+
+class TestMessagePourRaison:
+    def test_papier_vide(self):
+        assert message_pour_raison("media-empty") == "PAPIER ÉPUISÉ — recharger le bac"
+
+    def test_suffixe_error_ignore(self):
+        """Les mots-clés IPP portent des suffixes -error/-warning/-report."""
+        assert message_pour_raison("media-empty-error") == "PAPIER ÉPUISÉ — recharger le bac"
+
+    def test_suffixe_warning_ignore(self):
+        assert message_pour_raison("media-jam-warning") == "BOURRAGE PAPIER"
+
+    def test_suffixe_report_ignore(self):
+        assert message_pour_raison("cover-open-report") == "CAPOT OUVERT"
+
+    def test_imprimante_debranchee(self):
+        assert message_pour_raison("connecting-to-device") == "IMPRIMANTE ÉTEINTE OU DÉBRANCHÉE"
+
+    def test_raison_inconnue_affichee_brute(self):
+        """Un code brut lisible vaut mieux qu'un message générique qui trompe."""
+        assert message_pour_raison("wedged") == "Imprimante : wedged"
+
+
+class TestTiragesRestants:
+    def test_message_gutenprint(self):
+        msg = "228 native prints remaining on 6x4 (PC) media"
+        assert tirages_restants_depuis_marker(msg) == 228
+
+    def test_format_inattendu_renvoie_none(self):
+        """Format changé → alerte inerte plutôt que fausse."""
+        assert tirages_restants_depuis_marker("ribbon OK") is None
+
+    def test_message_vide(self):
+        assert tirages_restants_depuis_marker("") is None
+
+
+class TestEtatImprimante:
+    def test_defauts(self):
+        etat = EtatImprimante(pret=True)
+        assert etat.raison == ""
+        assert etat.message == ""
+        assert etat.file_desactivee is False
+        assert etat.jobs == 0
+        assert etat.tirages_restants is None
