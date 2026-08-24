@@ -167,3 +167,73 @@ def test_actions_apres_echec_terminer_reessayer_et_aide(tmp_path, monkeypatch):
     )
     assert terminaisons == ["print_failed"]
     assert actions == ["print_help_requested", "finish_without_print"]
+
+
+def test_reessayer_reamorce_si_file_desactivee(tmp_path, monkeypatch):
+    """Le cas de l'incident : la file est désactivée. RÉESSAYER doit la purger
+    et la réactiver AVANT de relancer, sinon le job en échec repart et
+    replante l'imprimante."""
+    from core.printer import EtatImprimante
+
+    session = _session_avec_montage(tmp_path)
+    session.erreur_impression = True
+    appels = []
+
+    monkeypatch.setattr(app, "_journaliser_action", lambda action, **d: None)
+    monkeypatch.setattr(app, "_verifier_quota_ou_debloquer", lambda _s: True)
+    monkeypatch.setattr(
+        app, "pygame", SimpleNamespace(event=SimpleNamespace(clear=lambda: None))
+    )
+    monkeypatch.setattr(app, "terminer_session_et_revenir_accueil", lambda _issue: None)
+    monkeypatch.setattr(
+        app.printer_mgr, "diagnostic",
+        lambda _mode: EtatImprimante(
+            pret=False, raison="media-empty-error",
+            message="PAPIER ÉPUISÉ — recharger le bac", file_desactivee=True,
+        ),
+    )
+    monkeypatch.setattr(
+        app.printer_mgr, "reamorcer",
+        lambda _mode, *a, **kw: appels.append("reamorcer") or EtatImprimante(pret=True),
+    )
+    monkeypatch.setattr(app, "executer_avec_spinner", lambda fonction, _msg: fonction())
+    monkeypatch.setattr(
+        app, "traiter_impression_session",
+        lambda _s: appels.append("impression") or "printed",
+    )
+
+    app._handle_erreur_impression(
+        SimpleNamespace(key=app.TOUCHE_MILIEU), session, maintenant=12.0
+    )
+
+    assert appels == ["reamorcer", "impression"]
+
+
+def test_reessayer_ne_reamorce_pas_si_file_saine(tmp_path, monkeypatch):
+    """Pas de purge gratuite quand la file va bien : on perdrait un job en cours."""
+    from core.printer import EtatImprimante
+
+    session = _session_avec_montage(tmp_path)
+    session.erreur_impression = True
+    appels = []
+
+    monkeypatch.setattr(app, "_journaliser_action", lambda action, **d: None)
+    monkeypatch.setattr(app, "_verifier_quota_ou_debloquer", lambda _s: True)
+    monkeypatch.setattr(
+        app, "pygame", SimpleNamespace(event=SimpleNamespace(clear=lambda: None))
+    )
+    monkeypatch.setattr(app, "terminer_session_et_revenir_accueil", lambda _issue: None)
+    monkeypatch.setattr(app.printer_mgr, "diagnostic",
+                        lambda _mode: EtatImprimante(pret=True))
+    monkeypatch.setattr(app.printer_mgr, "reamorcer",
+                        lambda _mode, *a, **kw: appels.append("reamorcer"))
+    monkeypatch.setattr(
+        app, "traiter_impression_session",
+        lambda _s: appels.append("impression") or "printed",
+    )
+
+    app._handle_erreur_impression(
+        SimpleNamespace(key=app.TOUCHE_MILIEU), session, maintenant=12.0
+    )
+
+    assert appels == ["impression"]

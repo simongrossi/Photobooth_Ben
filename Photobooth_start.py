@@ -23,6 +23,7 @@ from config import (
     PULSE_MIN, PULSE_VITESSE,
     QUOTA_IMPRESSIONS_INCREMENT,
     SEUIL_DISQUE_CRITIQUE_MB, SEUIL_TEMP_CRITIQUE_C,
+    DELAI_REAMORCAGE_S,
     STRIP_BURST_DELAI_S, STRIP_MODE_BURST,
     TAILLE_DECOMPTE, TAILLE_TEXTE_BANDEAU,
     TEMP_PATH,
@@ -1782,6 +1783,18 @@ def _handle_erreur_impression(event: pygame.event.Event, session: SessionState, 
             session.dernier_clic_time = maintenant
             pygame.event.clear()
             return
+
+        # L'appui vaut confirmation que le papier est recharge. On purge la
+        # file AVANT de la reactiver : sinon le job en echec repart et
+        # redesactive l'imprimante (la boucle vecue en evenement).
+        etat = printer_mgr.diagnostic(session.mode_actuel)
+        if etat.file_desactivee:
+            _journaliser_action("printer_reset", raison=etat.raison)
+            executer_avec_spinner(
+                lambda: printer_mgr.reamorcer(session.mode_actuel, DELAI_REAMORCAGE_S),
+                config.TXT_REAMORCAGE,
+            )
+
         issue = traiter_impression_session(session)
         pygame.event.clear()
         if issue != "print_failed":
