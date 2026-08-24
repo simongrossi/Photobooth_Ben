@@ -11,7 +11,7 @@ import subprocess
 from dataclasses import dataclass
 from typing import Optional
 
-from core.logger import log_info, log_critical
+from core.logger import log_info, log_critical, log_warning
 
 try:
     import cups  # type: ignore
@@ -109,6 +109,36 @@ class PrinterManager:
         """Mémorise le message d'erreur et le retourne (contrat is_ready inchangé)."""
         self.last_error = message
         return message
+
+    def _imprimantes_cups(self) -> Optional[dict]:
+        """Attributs IPP de toutes les files, ou None si pycups est indisponible."""
+        if cups is None:
+            return None
+        try:
+            return cups.Connection().getPrinters()
+        except Exception as e:
+            log_warning(f"CUPS injoignable via pycups : {e}")
+            return None
+
+    def _files_du_meme_device(self, mode: str) -> list[str]:
+        """Files CUPS partageant l'imprimante physique du mode demande.
+
+        Les deux files DNP pointent sur la meme DS620 : un job coince dans
+        l'une bloque l'autre. Sans pycups on ne peut pas lire `device-uri` — on
+        retourne alors toutes les files configurees. C'est le repli prudent :
+        en verifier une de trop est sans effet, en oublier une laisse un job
+        empoisonne qui replantera l'imprimante."""
+        nom_file = self._noms.get(mode)
+        if not nom_file:
+            return []
+        toutes = list(dict.fromkeys(self._noms.values()))
+        imprimantes = self._imprimantes_cups()
+        if imprimantes is None:
+            return toutes
+        device = imprimantes.get(nom_file, {}).get("device-uri")
+        if not device:
+            return [nom_file]
+        return [n for n in toutes if imprimantes.get(n, {}).get("device-uri") == device]
 
     def jobs_en_attente(self, mode: str) -> Optional[int]:
         """Nombre de jobs CUPS visibles pour la file, ou None si inconnu."""

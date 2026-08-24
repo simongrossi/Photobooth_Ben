@@ -253,3 +253,57 @@ class TestEtatImprimante:
         assert etat.file_desactivee is False
         assert etat.jobs == 0
         assert etat.tirages_restants is None
+
+
+class FakeCups:
+    """Faux module pycups. Même rôle que FakeSerial dans tests/test_arduino.py."""
+
+    def __init__(self, imprimantes):
+        self._imprimantes = imprimantes
+
+    def Connection(self):  # noqa: N802 — on imite l'API pycups
+        return self
+
+    def getPrinters(self):  # noqa: N802
+        return self._imprimantes
+
+
+DEUX_FILES_MEME_DS620 = {
+    "DNP_10x15": {
+        "device-uri": "gutenprint53+usb://dnp-ds620/DS6X54003557",
+        "printer-state": 3,
+        "printer-state-reasons": ["none"],
+        "marker-message": "228 native prints remaining on 6x4 (PC) media",
+    },
+    "DNP_STRIP": {
+        "device-uri": "gutenprint53+usb://dnp-ds620/DS6X54003557",
+        "printer-state": 3,
+        "printer-state-reasons": ["none"],
+        "marker-message": "228 native prints remaining on 6x4 (PC) media",
+    },
+}
+
+
+class TestGroupementParPeripherique:
+    def test_files_partageant_le_device(self, mgr, monkeypatch):
+        monkeypatch.setattr(printer, "cups", FakeCups(DEUX_FILES_MEME_DS620))
+        assert sorted(mgr._files_du_meme_device("10x15")) == ["DNP_10x15", "DNP_STRIP"]
+
+    def test_devices_distincts_ne_sont_pas_groupes(self, mgr, monkeypatch):
+        monkeypatch.setattr(printer, "cups", FakeCups({
+            "DNP_10x15": {"device-uri": "usb://dnp-ds620/A", "printer-state": 3,
+                          "printer-state-reasons": ["none"]},
+            "DNP_STRIP": {"device-uri": "cups-pdf:/", "printer-state": 3,
+                          "printer-state-reasons": ["none"]},
+        }))
+        assert mgr._files_du_meme_device("10x15") == ["DNP_10x15"]
+
+    def test_sans_pycups_repli_conservateur(self, mgr, monkeypatch):
+        """Sans pycups on ne peut pas savoir : on groupe, quitte à vérifier une
+        file de trop. L'inverse laisserait un job empoisonné en place."""
+        monkeypatch.setattr(printer, "cups", None)
+        assert sorted(mgr._files_du_meme_device("10x15")) == ["DNP_10x15", "DNP_STRIP"]
+
+    def test_mode_inconnu(self, mgr, monkeypatch):
+        monkeypatch.setattr(printer, "cups", FakeCups(DEUX_FILES_MEME_DS620))
+        assert mgr._files_du_meme_device("xxx") == []
