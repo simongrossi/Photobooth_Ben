@@ -3,10 +3,11 @@
 Module pur (pas de pygame, pas d'accès caméra). Expose :
 - `DiskMonitor` : check périodique rate-limité de l'espace disque libre
 - `TempMonitor` : idem pour la température CPU (Raspberry Pi)
+- `MediaMonitor` : idem pour les tirages restants sur l'imprimante DNP
 - `lister_images_slideshow()` : scan des dossiers d'impression pour alimenter
   le slideshow d'attente sur l'accueil
 
-Les deux monitors partagent le même pattern : `tick()` rate-limité, flag
+Les trois monitors partagent le même pattern : `tick()` rate-limité, flag
 `critique`, log warning sur la transition OK→critique uniquement.
 """
 from __future__ import annotations
@@ -110,6 +111,69 @@ class TempMonitor:
             self.temp_c = None
         except (OSError, ValueError) as e:
             log_warning(f"Check température échoué : {e}")
+
+
+class MediaMonitor:
+    """Monitore les tirages restants sur l'imprimante, expose un flag critique.
+
+    Même pattern que DiskMonitor et TempMonitor : `tick()` rate-limité, flag
+    `critique`, warning loggé à la seule transition OK→critique.
+
+    Le PrinterManager est injecté (duck-typing sur `.diagnostic(mode)`) pour que
+    `core/monitoring.py` n'ait pas à importer `core/printer.py`.
+
+    Si le backend ne remonte pas de nombre de tirages exploitable,
+    `tirages_restants` reste None et le monitor est inerte silencieusement —
+    comme TempMonitor hors Raspberry Pi.
+
+    Usage :
+        media = MediaMonitor(printer_mgr, "10x15", seuil_tirages=20, intervalle_s=120)
+        while running:
+            media.tick(occupe=session.impression_en_cours)
+            if media.critique:
+                afficher_bandeau_alerte(media.tirages_restants)
+    """
+
+    def __init__(self, printer_mgr, mode: str, seuil_tirages: int,
+                 intervalle_s: float) -> None:
+        self.printer_mgr = printer_mgr
+        self.mode = mode
+        self.seuil_tirages = seuil_tirages
+        self.intervalle_s = intervalle_s
+        self._dernier_check_ts: float = 0.0
+        self.critique: bool = False
+        self.tirages_restants: Optional[int] = None
+
+    def tick(self, maintenant: Optional[float] = None, occupe: bool = False) -> None:
+        """Check périodique (rate-limité à `intervalle_s`).
+
+        `occupe=True` (impression en cours) court-circuite le check : on
+        n'interroge pas CUPS pendant un envoi."""
+        if occupe:
+            return
+        if maintenant is None:
+            maintenant = time.time()
+        if maintenant - self._dernier_check_ts < self.intervalle_s:
+            return
+        self._dernier_check_ts = maintenant
+        try:
+            etat = self.printer_mgr.diagnostic(self.mode)
+        except Exception as e:
+            log_warning(f"Check média périodique échoué : {e}")
+            return
+
+        self.tirages_restants = etat.tirages_restants
+        if self.tirages_restants is None:
+            self.critique = False
+            return
+
+        etait_critique = self.critique
+        self.critique = self.tirages_restants <= self.seuil_tirages
+        if self.critique and not etait_critique:
+            log_warning(
+                f"Papier bientôt épuisé : {self.tirages_restants} tirages restants "
+                f"(seuil : {self.seuil_tirages})"
+            )
 
 
 def lire_rss_mb(

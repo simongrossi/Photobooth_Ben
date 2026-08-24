@@ -1,18 +1,21 @@
 """test_monitoring.py — tests unitaires de core/monitoring.py.
 
-Couvre DiskMonitor (rate-limit, transition OK→critique, exception silencieuse)
-et lister_images_slideshow (tri mtime, filtres extension, dossiers absents).
+Couvre DiskMonitor et MediaMonitor (rate-limit, transition OK→critique,
+exception silencieuse) et lister_images_slideshow (tri mtime, filtres
+extension, dossiers absents).
 """
 from __future__ import annotations
 
 import os
 import time
+from types import SimpleNamespace
 
 import pytest
 
 from core import monitoring
 from core.monitoring import (
     DiskMonitor,
+    MediaMonitor,
     TempMonitor,
     est_image_publique,
     formater_ligne_perf,
@@ -316,3 +319,78 @@ class TestFormaterLignePerf:
         )
         assert "rss=n/a" in ligne
         assert "preview_fps=n/a" in ligne
+
+
+# ========================================================================================
+# --- MediaMonitor : tirages restants sur la DNP ---
+# ========================================================================================
+
+
+class FauxPrinter:
+    def __init__(self, tirages):
+        self.tirages = tirages
+        self.appels = 0
+
+    def diagnostic(self, _mode):
+        self.appels += 1
+        return SimpleNamespace(tirages_restants=self.tirages)
+
+
+class TestMediaMonitor:
+    def test_au_dessus_du_seuil(self):
+        mon = MediaMonitor(FauxPrinter(228), "10x15", seuil_tirages=20, intervalle_s=0.0)
+        mon.tick()
+        assert mon.critique is False
+        assert mon.tirages_restants == 228
+
+    def test_sous_le_seuil(self):
+        mon = MediaMonitor(FauxPrinter(12), "10x15", seuil_tirages=20, intervalle_s=0.0)
+        mon.tick()
+        assert mon.critique is True
+
+    def test_seuil_atteint_exactement(self):
+        mon = MediaMonitor(FauxPrinter(20), "10x15", seuil_tirages=20, intervalle_s=0.0)
+        mon.tick()
+        assert mon.critique is True
+
+    def test_warning_une_seule_fois(self, monkeypatch):
+        """Même contrat que DiskMonitor : log à la transition uniquement."""
+        warnings = []
+        monkeypatch.setattr("core.monitoring.log_warning", warnings.append)
+        mon = MediaMonitor(FauxPrinter(5), "10x15", seuil_tirages=20, intervalle_s=0.0)
+        mon.tick()
+        mon.tick()
+        assert len(warnings) == 1
+
+    def test_rate_limite(self):
+        faux = FauxPrinter(228)
+        mon = MediaMonitor(faux, "10x15", seuil_tirages=20, intervalle_s=120.0)
+        mon.tick(maintenant=1000.0)
+        mon.tick(maintenant=1001.0)
+        assert faux.appels == 1
+
+    def test_inerte_si_backend_muet(self):
+        """marker-message illisible → ni alerte ni fausse information."""
+        mon = MediaMonitor(FauxPrinter(None), "10x15", seuil_tirages=20, intervalle_s=0.0)
+        mon.tick()
+        assert mon.critique is False
+        assert mon.tirages_restants is None
+
+    def test_ignore_pendant_une_impression(self):
+        """Ne pas interroger CUPS pendant un envoi."""
+        faux = FauxPrinter(228)
+        mon = MediaMonitor(faux, "10x15", seuil_tirages=20, intervalle_s=0.0)
+        mon.tick(occupe=True)
+        assert faux.appels == 0
+
+    def test_exception_avalee(self, monkeypatch):
+        class PrinterCasse:
+            def diagnostic(self, _mode):
+                raise RuntimeError("CUPS injoignable")
+
+        warnings = []
+        monkeypatch.setattr("core.monitoring.log_warning", warnings.append)
+        mon = MediaMonitor(PrinterCasse(), "10x15", seuil_tirages=20, intervalle_s=0.0)
+        mon.tick()
+        assert mon.critique is False
+        assert len(warnings) == 1
