@@ -1546,6 +1546,17 @@ def render_validation(session: SessionState) -> bool:
             15,
             int(WIDTH * 0.8),
         )
+        # La cause precise etait calculee et loggee, mais jamais montree :
+        # l'animateur devait sortir du kiosque pour la connaitre.
+        if session.message_erreur_impression:
+            _dessiner_texte_centre_avec_garde(
+                screen,
+                session.message_erreur_impression,
+                font_bandeau,
+                config.COULEUR_ABANDON_CONSIGNE,
+                15 + font_alerte.get_height() + 8,
+                int(WIDTH * 0.8),
+            )
 
     # 5. Overlay de confirmation d'abandon
     if session.abandon_confirm_until and time.time() < session.abandon_confirm_until:
@@ -1641,6 +1652,17 @@ def render_fin(session: SessionState) -> None:
             15,
             int(WIDTH * 0.8),
         )
+        # La cause precise etait calculee et loggee, mais jamais montree :
+        # l'animateur devait sortir du kiosque pour la connaitre.
+        if session.message_erreur_impression:
+            _dessiner_texte_centre_avec_garde(
+                screen,
+                session.message_erreur_impression,
+                font_bandeau,
+                config.COULEUR_ABANDON_CONSIGNE,
+                15 + font_alerte.get_height() + 8,
+                int(WIDTH * 0.8),
+            )
 
     # 5. Overlay de confirmation d'abandon
     if session.abandon_confirm_until and time.time() < session.abandon_confirm_until:
