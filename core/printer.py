@@ -8,6 +8,7 @@ Sprint 4.3 + 4.6 : extrait de Photobooth_start.py.
 from __future__ import annotations
 import re
 import subprocess
+import time
 from dataclasses import dataclass
 from typing import Optional
 
@@ -251,6 +252,68 @@ class PrinterManager:
             return EtatImprimante(pret=False, message="TIRAGE EN ATTENTE", jobs=jobs)
 
         return EtatImprimante(pret=True)
+
+    def _commande_cups(self, cmd: list[str], libelle: str) -> bool:
+        """Lance une commande CUPS, journalise le resultat, ne leve jamais."""
+        try:
+            subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=10)
+            log_info(f"CUPS : {libelle} OK")
+            return True
+        except subprocess.CalledProcessError as e:
+            log_critical(f"CUPS : echec {libelle} : {e.stderr}")
+        except FileNotFoundError:
+            log_critical(f"CUPS : commande '{cmd[0]}' introuvable ({libelle})")
+        except Exception as e:
+            log_critical(f"CUPS : erreur {libelle} : {e}")
+        return False
+
+    def _attendre_imprimante(self, mode: str, delai_max_s: float) -> None:
+        """Attend que la DS620 reponde, au plus `delai_max_s`.
+
+        Apres un changement de rouleau, l'imprimante met une vingtaine de
+        secondes a relire le ribbon. Reactiver la file avant qu'elle reponde
+        relance un job qui echoue aussitot."""
+        echeance = time.monotonic() + delai_max_s
+        while time.monotonic() < echeance:
+            raison = normaliser_raison(self.diagnostic(mode).raison)
+            if raison not in ("connecting-to-device", "timed-out"):
+                return
+            time.sleep(1.0)
+        log_warning(f"Imprimante toujours injoignable apres {delai_max_s:.0f} s")
+
+    def reamorcer(self, mode: str, delai_max_s: float = 30.0) -> EtatImprimante:
+        """Purge les jobs puis reactive toutes les files de l'imprimante.
+
+        L'ORDRE EST LE CORRECTIF. `cupsenable` seul redispatche immediatement
+        le job qui a provoque l'erreur ; il echoue de nouveau et CUPS
+        redesactive la file. C'est exactement la boucle vecue en evenement, que
+        ni le redemarrage du PC ni plusieurs « Demarrer l'imprimante » n'ont
+        cassee.
+
+        Les deux files DNP partageant une seule DS620, elles sont traitees
+        ensemble : en reamorcer une seule laisse l'autre replanter l'imprimante.
+        """
+        files = self._files_du_meme_device(mode)
+        if not files:
+            return EtatImprimante(pret=False, raison="mode-inconnu", message="MODE INCONNU")
+
+        log_info(f"🔧 Reamorcage de {', '.join(files)}...")
+
+        # 1. Purger d'abord — sinon l'etape 3 relance le job en echec.
+        for nom_file in files:
+            self._commande_cups(["cancel", "-a", nom_file], f"purge de {nom_file}")
+
+        # 2. Laisser a la DS620 le temps de repondre apres un changement de media.
+        self._attendre_imprimante(mode, delai_max_s)
+
+        # 3. Reactiver, files vides.
+        for nom_file in files:
+            self._commande_cups(["cupsenable", nom_file], f"reactivation de {nom_file}")
+            self._commande_cups(["cupsaccept", nom_file], f"reouverture de {nom_file}")
+
+        etat = self.diagnostic(mode)
+        log_info(f"Reamorcage termine : {etat.message or 'imprimante prete'}")
+        return etat
 
     def is_ready(self, mode: str):
         """True si prete, sinon une chaine decrivant le probleme.

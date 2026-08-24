@@ -417,3 +417,73 @@ class TestReplisSansPycups:
         etat = mgr.diagnostic("10x15")
         assert etat.file_desactivee is True
         assert etat.pret is False
+
+
+class TestReamorcer:
+    @staticmethod
+    def _tracer(monkeypatch):
+        """Enregistre l'ordre exact des commandes CUPS lancées."""
+        appels = []
+
+        def _run(cmd, **kw):
+            appels.append(list(cmd))
+            return SimpleNamespace(stdout="", stderr="", returncode=0)
+
+        monkeypatch.setattr(printer.subprocess, "run", _run)
+        monkeypatch.setattr(printer.time, "sleep", lambda _s: None)
+        return appels
+
+    def test_cancel_avant_cupsenable(self, mgr, monkeypatch):
+        """LE test du correctif. Réactiver avant de purger relance le job en
+        échec, qui redésactive la file — la boucle vécue en événement."""
+        monkeypatch.setattr(printer, "cups", _cups_avec(raison="media-empty-error", etat=5))
+        appels = self._tracer(monkeypatch)
+
+        mgr.reamorcer("10x15", delai_max_s=0.0)
+
+        index_cancel = next(i for i, c in enumerate(appels) if c[0] == "cancel")
+        index_enable = next(i for i, c in enumerate(appels) if c[0] == "cupsenable")
+        assert index_cancel < index_enable
+
+    def test_traite_les_deux_files(self, mgr, monkeypatch):
+        """Réarmer une seule file laissait l'autre replanter l'imprimante."""
+        monkeypatch.setattr(printer, "cups", _cups_avec(raison="media-empty-error", etat=5))
+        appels = self._tracer(monkeypatch)
+
+        mgr.reamorcer("10x15", delai_max_s=0.0)
+
+        purgees = {c[2] for c in appels if c[0] == "cancel"}
+        reactivees = {c[1] for c in appels if c[0] == "cupsenable"}
+        assert purgees == {"DNP_10x15", "DNP_STRIP"}
+        assert reactivees == {"DNP_10x15", "DNP_STRIP"}
+
+    def test_ne_touche_aucune_file_hors_dnp(self, mgr, monkeypatch):
+        """La machine héberge une dizaine d'imprimantes de bureau."""
+        monkeypatch.setattr(printer, "cups", _cups_avec(raison="media-empty-error", etat=5))
+        appels = self._tracer(monkeypatch)
+
+        mgr.reamorcer("10x15", delai_max_s=0.0)
+
+        cibles = {c[-1] for c in appels if c[0] in ("cancel", "cupsenable", "cupsaccept")}
+        assert cibles <= {"DNP_10x15", "DNP_STRIP"}
+
+    def test_attente_bornee(self, mgr, monkeypatch):
+        """Imprimante injoignable : on abandonne, on ne boucle pas."""
+        monkeypatch.setattr(printer, "cups", _cups_avec(raison="connecting-to-device"))
+        self._tracer(monkeypatch)
+
+        faux_temps = {"t": 0.0}
+        monkeypatch.setattr(printer.time, "monotonic", lambda: faux_temps["t"])
+
+        def _dormir(_s):
+            faux_temps["t"] += 1.0
+
+        monkeypatch.setattr(printer.time, "sleep", _dormir)
+
+        mgr.reamorcer("10x15", delai_max_s=5.0)
+        assert faux_temps["t"] <= 6.0
+
+    def test_mode_inconnu(self, mgr, monkeypatch):
+        monkeypatch.setattr(printer, "cups", _cups_avec())
+        self._tracer(monkeypatch)
+        assert mgr.reamorcer("xxx").message == "MODE INCONNU"
