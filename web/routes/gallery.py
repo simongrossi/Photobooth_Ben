@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import tempfile
 from dataclasses import dataclass
+from datetime import datetime
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, send_file, url_for
 from PIL import Image
@@ -16,10 +18,11 @@ from config import (
     PATH_RAW, PATH_SKIPPED_DELETED, PATH_SKIPPED_RETAKE
 )
 from core.monitoring import est_image_publique
+from web import exports
 from web.photos_raw import extraire_session_id
 from web.auth import require_auth, require_lecture
 from stats import load_sessions
-from web.evenements import lister_evenements, tous_les_tags
+from web.evenements import lister_evenements, slugifier, tous_les_tags, trouver_evenement
 
 bp = Blueprint("gallery", __name__, url_prefix="/galerie")
 
@@ -175,41 +178,55 @@ def _lister_corbeille() -> list[Item]:
     return items
 
 
-@bp.route("/")
-@require_lecture
-def index():
+def _type_demande() -> str:
+    """Type de galerie de la requête, retombe sur « all » si inconnu."""
     type_galerie = request.args.get("type", "all")
-    if type_galerie not in TYPES_GALERIE:
-        type_galerie = "all"
-    tous = _lister_tous(type_galerie)
+    return type_galerie if type_galerie in TYPES_GALERIE else "all"
+
+
+def _annoter_evenements(items: list[Item]) -> list[str]:
+    """Attache event_id/name/tags à chaque item, renvoie les tags connus triés."""
     sessions = load_sessions(os.path.join(config.PATH_DATA, "sessions.jsonl")) or []
-    tags_disponibles = sorted(
-        set(tous_les_tags())
-        | {str(tag) for session in sessions for tag in session.get("event_tags", [])},
-        key=str.casefold,
-    )
     sessions_par_id = {
         session.get("session_id"): session
         for session in sessions
         if session.get("session_id")
     }
-    for item in tous:
+    for item in items:
         metadata = sessions_par_id.get(item.session_id, {})
         item.event_id = metadata.get("event_id")
         item.event_name = metadata.get("event_name")
         item.event_tags = metadata.get("event_tags") or []
+    return sorted(
+        set(tous_les_tags())
+        | {str(tag) for session in sessions for tag in session.get("event_tags", [])},
+        key=str.casefold,
+    )
 
-    evenement_filtre = request.args.get("evenement", "")
-    tag_filtre = request.args.get("tag", "")
+
+def _filtrer(items: list[Item], evenement_filtre: str, tag_filtre: str) -> list[Item]:
+    """Filtres événement (« __sans__ » = hors événement) et tag, insensibles à la casse."""
     if evenement_filtre == "__sans__":
-        tous = [item for item in tous if not item.event_id]
+        items = [item for item in items if not item.event_id]
     elif evenement_filtre:
-        tous = [item for item in tous if item.event_id == evenement_filtre]
+        items = [item for item in items if item.event_id == evenement_filtre]
     if tag_filtre:
-        tous = [
-            item for item in tous
+        items = [
+            item for item in items
             if tag_filtre.casefold() in {str(t).casefold() for t in item.event_tags}
         ]
+    return items
+
+
+@bp.route("/")
+@require_lecture
+def index():
+    type_galerie = _type_demande()
+    tous = _lister_tous(type_galerie)
+    tags_disponibles = _annoter_evenements(tous)
+    evenement_filtre = request.args.get("evenement", "")
+    tag_filtre = request.args.get("tag", "")
+    tous = _filtrer(tous, evenement_filtre, tag_filtre)
     page = max(1, int(request.args.get("page", "1") or "1"))
     debut = (page - 1) * PAGE_SIZE
     fin = debut + PAGE_SIZE
@@ -229,6 +246,95 @@ def index():
         evenements=lister_evenements(),
         tags=tags_disponibles,
     )
+
+
+LIBELLES_TYPE = {
+    "all": "tout",
+    "montages": "montages",
+    "raw": "brutes",
+    "deleted": "abandons",
+    "retake": "rejouees",
+}
+
+
+def _nom_archive(type_galerie: str, evenement_filtre: str, tag_filtre: str) -> str:
+    """Nom de fichier lisible rappelant le filtre exporté."""
+    morceaux = ["photobooth", LIBELLES_TYPE.get(type_galerie, type_galerie)]
+    if evenement_filtre == "__sans__":
+        morceaux.append("sans-evenement")
+    elif evenement_filtre:
+        evenement = trouver_evenement(evenement_filtre)
+        morceaux.append(evenement.slug if evenement else slugifier(evenement_filtre))
+    if tag_filtre:
+        morceaux.append(slugifier(tag_filtre))
+    morceaux.append(datetime.now().strftime("%Y%m%d-%H%M"))
+    return "-".join(m for m in morceaux if m) + ".zip"
+
+
+@bp.route("/export.zip")
+@require_lecture
+def exporter():
+    """Prépare en tâche de fond une archive de toute la sélection courante.
+
+    Reprend exactement les filtres de la page (type, événement, tag) : ce que la
+    galerie affiche est ce que le ZIP contient, pagination comprise. La
+    construction part en fond et la page de suivi affiche la progression —
+    plusieurs centaines de photos brutes prennent sinon une minute d'attente
+    aveugle.
+    """
+    type_galerie = _type_demande()
+    evenement_filtre = request.args.get("evenement", "")
+    tag_filtre = request.args.get("tag", "")
+    retour = url_for(
+        "gallery.index", type=type_galerie, evenement=evenement_filtre, tag=tag_filtre,
+    )
+    items = _lister_tous(type_galerie)
+    _annoter_evenements(items)
+    items = _filtrer(items, evenement_filtre, tag_filtre)
+    if not items:
+        flash("Aucune image à télécharger pour ce filtre.", "error")
+        return redirect(retour)
+
+    fichiers: list[tuple[str, str]] = []
+    inclus: list[dict] = []
+    deja_vus: set[tuple[str, str]] = set()
+    for item in items:
+        cle = (item.mode, item.nom)
+        if cle in deja_vus:
+            continue
+        deja_vus.add(cle)
+        fichiers.append((item.chemin, f"photos/{item.mode}/{item.nom}"))
+        inclus.append({
+            "nom": item.nom,
+            "mode": item.mode,
+            "session_id": item.session_id,
+            "event_id": item.event_id,
+            "event_name": item.event_name,
+            "event_tags": item.event_tags or [],
+        })
+    manifeste = {
+        "genere_le": datetime.now().isoformat(timespec="seconds"),
+        "filtres": {
+            "type": type_galerie,
+            "evenement": evenement_filtre or None,
+            "tag": tag_filtre or None,
+        },
+        "nb_fichiers": len(inclus),
+        "fichiers": inclus,
+    }
+    try:
+        tache_id = exports.demarrer(
+            nom_fichier=_nom_archive(type_galerie, evenement_filtre, tag_filtre),
+            libelle=f"Galerie — {LIBELLES_TYPE.get(type_galerie, type_galerie)} · {len(fichiers)} image"
+                    f"{'s' if len(fichiers) > 1 else ''}",
+            fichiers=fichiers,
+            extras={"manifest.json": json.dumps(manifeste, ensure_ascii=False, indent=2)},
+            retour=retour,
+        )
+    except exports.EspaceInsuffisant as manque:
+        flash(f"Disque trop plein pour cette archive : {manque}.", "error")
+        return redirect(retour)
+    return redirect(url_for("export.suivi", tache_id=tache_id))
 
 
 @bp.route("/retirer/<mode>/<nom>", methods=["POST"])

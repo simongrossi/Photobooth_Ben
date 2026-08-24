@@ -31,6 +31,10 @@
   </label>
   <button class="btn btn--primary" type="submit">Filtrer</button>
   {% if evenement_filtre or tag_filtre %}<a class="btn" href="{{ url_for('gallery.index', type=type_galerie) }}">Effacer</a>{% endif %}
+  {% if total %}
+  <a class="btn" href="{{ url_for('gallery.exporter', type=type_galerie, evenement=evenement_filtre, tag=tag_filtre) }}"
+     title="Archive ZIP de toutes les images affichées par ce filtre ({{ total }})">⬇ Télécharger le ZIP ({{ total }})</a>
+  {% endif %}
 </form>
 
 {% if items %}

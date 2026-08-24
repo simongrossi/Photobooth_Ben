@@ -3,11 +3,14 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 import os
+import zipfile
 
 import pytest
 from PIL import Image
 
+from web import exports
 from web.app import create_app
 
 HEADERS = {"Authorization": "Basic " + base64.b64encode(b"admin:test").decode()}
@@ -297,3 +300,89 @@ class TestFiltrerCategories:
         assert "photo_001.jpg" in html
         assert "strip_001.jpg" in html
         assert '?type=all" class="btn-filter active"' in html
+
+
+class TestExportZip:
+    def _telecharger(self, client, requete="/galerie/export.zip", headers=HEADERS):
+        """Suit le flux différé : lancement → attente de la tâche → fichier."""
+        lancement = client.get(requete, headers=headers)
+        assert lancement.status_code == 302, lancement.status_code
+        tache_id = lancement.headers["Location"].rstrip("/").rsplit("/", 1)[-1]
+        assert exports.attendre(tache_id).etat == "pret"
+        return client.get(f"/export/{tache_id}/fichier", headers=headers)
+
+    def _archive(self, reponse):
+        return zipfile.ZipFile(io.BytesIO(reponse.data))
+
+    def test_zip_contient_toutes_les_images_du_filtre(self, client):
+        r = self._telecharger(client)
+        assert r.status_code == 200
+        assert r.mimetype == "application/zip"
+        with self._archive(r) as archive:
+            noms = set(archive.namelist())
+        assert "photos/10x15/photo_001.jpg" in noms
+        assert "photos/strip/strip_001.jpg" in noms
+
+    def test_zip_respecte_le_filtre_de_type(self, client):
+        r = self._telecharger(client, "/galerie/export.zip?type=montages")
+        with self._archive(r) as archive:
+            photos = sorted(n for n in archive.namelist() if n.startswith("photos/"))
+        assert photos == ["photos/10x15/photo_001.jpg", "photos/strip/strip_001.jpg"]
+
+    def test_zip_type_sans_image_redirige_vers_la_galerie(self, client):
+        # Aucune photo brute dans la fixture : le filtre doit vider la sélection.
+        r = client.get("/galerie/export.zip?type=raw", headers=HEADERS)
+        assert r.status_code == 302
+        assert "/export/" not in r.headers["Location"]
+
+    def test_manifeste_decrit_les_filtres(self, client):
+        r = self._telecharger(client, "/galerie/export.zip?type=montages")
+        with self._archive(r) as archive:
+            manifeste = json.loads(archive.read("manifest.json"))
+        assert manifeste["filtres"]["type"] == "montages"
+        assert manifeste["nb_fichiers"] == len(manifeste["fichiers"])
+
+    def test_selection_vide_redirige_avec_message(self, client):
+        r = client.get("/galerie/export.zip?evenement=inconnu", headers=HEADERS)
+        assert r.status_code == 302
+        assert "/galerie/" in r.headers["Location"]
+
+    def test_nom_de_fichier_rappelle_le_filtre(self, client):
+        r = self._telecharger(client, "/galerie/export.zip?type=montages")
+        assert "photobooth-montages-" in r.headers["Content-Disposition"]
+
+    def test_lecture_seule_autorisee(self, client):
+        assert self._telecharger(client, headers={}).status_code == 200
+
+    def test_page_de_suivi_affiche_la_progression(self, client):
+        lancement = client.get("/galerie/export.zip", headers=HEADERS)
+        tache_id = lancement.headers["Location"].rstrip("/").rsplit("/", 1)[-1]
+        page = client.get(f"/export/{tache_id}", headers=HEADERS)
+        assert page.status_code == 200
+        assert b"progression__barre" in page.data
+        exports.attendre(tache_id)
+        etat = client.get(f"/export/{tache_id}/etat", headers=HEADERS).get_json()
+        assert etat["etat"] == "pret"
+        assert etat["pourcent"] == 100
+        assert etat["faits"] == etat["total"] == 2
+
+    def test_disque_plein_refuse_avec_un_message(self, client, monkeypatch):
+        """Refus lisible plutôt qu'un export voué à saturer le disque."""
+        def _plein(fichiers, dossier):
+            raise exports.EspaceInsuffisant(2_900_000_000, 1024, 512 * 1024 * 1024)
+
+        monkeypatch.setattr(exports, "verifier_espace", _plein)
+        r = client.get("/galerie/export.zip", headers=HEADERS, follow_redirects=True)
+        assert r.status_code == 200
+        assert "Disque trop plein" in r.get_data(as_text=True)
+        assert "2.7 Go d&#39;archive" in r.get_data(as_text=True)
+
+    def test_tache_inconnue(self, client):
+        assert client.get("/export/inexistante", headers=HEADERS).status_code == 404
+        assert client.get("/export/inexistante/etat", headers=HEADERS).status_code == 404
+        assert client.get("/export/inexistante/fichier", headers=HEADERS).status_code == 404
+
+    def test_refuse_sans_acces_libre_ni_admin(self, client, monkeypatch):
+        monkeypatch.setenv("PHOTOBOOTH_ACCES_LIBRE", "0")
+        r = client.get("/galerie/export.zip")
+        assert r.status_code == 401
